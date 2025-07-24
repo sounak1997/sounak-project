@@ -1,0 +1,22 @@
+# Node.js specific ignores (for my-angular-node-backend)
+my-angular-node-backend/node_modules/
+my-angular-node-backend/.env
+my-angular-node-backend/npm-debug.log*
+
+# Angular specific ignores (for my-angular-frontend)
+my-angular-frontend/node_modules/
+my-angular-frontend/dist/
+my-angular-frontend/src/environments/environment*.ts.bak
+my-angular-frontend/src/environments/environment.prod.ts.bak
+my-angular-frontend/.angular/cache/
+my-angular-frontend/coverage/
+
+# General ignores (for both projects and your local setup)
+.env
+.DS_Store          # macOS specific
+.idea/             # IntelliJ IDEA specific
+.vscode/           # VS Code specific (if you don't want settings committed)
+*.log
+npm-debug.log*
+yarn-error.log*
+.eslintcache
