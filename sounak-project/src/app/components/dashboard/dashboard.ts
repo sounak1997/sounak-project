@@ -7,7 +7,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 
 import { ApiService } from '../../services/api';// For fetching users
-import { AuthService } from '../../services/auth.service'; // For logout and user info
+import { AuthService } from '../../services/auth.service'; // For logout and user infoo
 
 
 interface UserProfile {
