@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["src/app/app.scss"],
+  "sourcesContent": [".example-spacer {\n  flex: 1 1 auto; /* Pushes elements to opposite ends */\n}\n\n.main-content {\n  padding: 20px; /* Add some padding around the main content */\n}\n\n.tab-content {\n  padding: 20px;\n}"],
+  "mappings": ";AAAA,CAAA;AACE,QAAA,EAAA,EAAA;;AAGF,CAAA;AACE,WAAA;;AAGF,CAAA;AACE,WAAA;;",
+  "names": []
+}

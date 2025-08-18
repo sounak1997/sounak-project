@@ -1,0 +1,47 @@
+<div class="dashboard-container">
+  <mat-card *ngIf="userProfile$ | async as userProfile">
+    <mat-card-header>
+      <mat-card-title>Welcome, {{ userProfile.name }}!</mat-card-title>
+      <mat-card-subtitle>Email: {{ userProfile.email }}</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      <p>This is your personalized dashboard.</p>
+      
+      <button mat-raised-button color="accent" (click)="store.dispatch(UserActions.loadUserProfile())">
+        Refresh My Profile (Protected)
+      </button>
+
+      <p *ngIf="userProfile && userProfile._id">Your User ID: {{ userProfile._id }}</p>
+
+      <h4 style="margin-top: 20px;">General Users List (from API):</h4>
+      
+      <div *ngIf="loading$ | async">
+        <p>Loading users...</p>
+      </div>
+
+      <ul *ngIf="usersFromApi$ | async as users; else noUsers">
+        <li *ngFor="let user of users">{{ user.name }} ({{ user.email }})</li>
+      </ul>
+      <ng-template #noUsers>
+        <p>No general users found or failed to load.</p>
+      </ng-template>
+
+    </mat-card-content>
+    <mat-card-actions align="end">
+      <button mat-raised-button color="primary" routerLink="/add-user">Add New User</button>
+      <button mat-raised-button color="warn" (click)="logout()">Logout</button>
+    </mat-card-actions>
+  </mat-card>
+
+  <mat-card *ngIf="!(userProfile$ | async)">
+    <mat-card-header>
+      <mat-card-title>Access Denied</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <p>Please login to view this page.</p>
+    </mat-card-content>
+    <mat-card-actions align="end">
+      <button mat-button routerLink="/login">Go to Login</button>
+    </mat-card-actions>
+  </mat-card>
+</div>
