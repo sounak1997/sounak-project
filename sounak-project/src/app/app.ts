@@ -32,8 +32,8 @@ import { map } from 'rxjs/operators'; // <--- IMPORTANT: Import the map operator
     MatToolbarModule,
     MatButtonModule,
     MatTabsModule,
-    LoginComponent,
-    RegisterComponent,
+    //LoginComponent,
+    //RegisterComponent,
     
   ],
   templateUrl: './app.html',
