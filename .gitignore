@@ -10,6 +10,7 @@ my-angular-frontend/src/environments/environment*.ts.bak
 my-angular-frontend/src/environments/environment.prod.ts.bak
 my-angular-frontend/.angular/cache/
 my-angular-frontend/coverage/
+node_modules/
 
 # General ignores (for both projects and your local setup)
 .env
