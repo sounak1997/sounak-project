@@ -13,3 +13,18 @@ export const loadUsersFailure = createAction(
   '[User] Load Users Failure',
   props<{ error: any }>()
 );
+
+export const addUser = createAction(
+  '[User] Add User',
+  props<{ user: Partial<User> }>()  // Partial because password may be included
+);
+
+export const addUserSuccess = createAction(
+  '[User] Add User Success',
+  props<{ user: User }>()
+);
+
+export const addUserFailure = createAction(
+  '[User] Add User Failure',
+  props<{ error: any }>()
+);

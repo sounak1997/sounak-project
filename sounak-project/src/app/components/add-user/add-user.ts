@@ -1,4 +1,3 @@
-// src/app/pages/add-user/add-user.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -7,10 +6,11 @@ import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
-import { MatSnackBar } from '@angular/material/snack-bar';
 
-// Import your API service
-import { ApiService } from '../../services/api.service';
+import { Store } from '@ngrx/store';
+import { addUser } from '../../store/user/user.actions';
+import { UserState } from '../../store/user/user.reducer';
+import { CommonModule as NgCommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-add-user',
@@ -31,9 +31,8 @@ export class AddUserComponent implements OnInit {
 
   constructor(
     private fb: FormBuilder,
-    private router: Router,
-    private apiService: ApiService, // Inject the API service
-    private snackBar: MatSnackBar,
+    private store: Store<UserState> ,
+    private router: Router // ✅ Inject the Router
   ) {}
 
   ngOnInit(): void {
@@ -46,21 +45,13 @@ export class AddUserComponent implements OnInit {
 
   onSubmit(): void {
     if (this.userForm.valid) {
-      // Make the API call directly
-      this.apiService.addUser(this.userForm.value).subscribe({
-        next: (response) => {
-          this.snackBar.open('User added successfully!', 'Dismiss', { duration: 3000 });
-          this.router.navigate(['/dashboard']);
-        },
-        error: (err) => {
-          console.error('Failed to add user:', err);
-          this.snackBar.open('Failed to add user. Please try again.', 'Dismiss', { duration: 5000 });
-        }
-      });
+      // Dispatch the action; effect handles API call, store update, snackbar, navigation
+      this.store.dispatch(addUser({ user: this.userForm.value }));
     }
   }
 
   cancel(): void {
-    this.router.navigate(['/dashboard']);
+     this.router.navigate(['/user-list']);
+    //history.back();
   }
 }
