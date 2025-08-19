@@ -11,12 +11,16 @@ export class ApiService {
 
   constructor(private http: HttpClient) { }
 
-  getUsers(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.backendUrl}/users`);
+  getUsers(): Observable<any> {
+    return this.http.get<any>(`${this.backendUrl}/users`);
   }
 
   createUser(user: any): Observable<any> {
     return this.http.post<any>(`${this.backendUrl}/users`, user);
+  }
+
+  addUser(userData: any) {
+    return this.http.post(`${this.backendUrl}/users`, userData);
   }
 
   // --- NEW SPECIFIC GET PROFILE METHOD ---

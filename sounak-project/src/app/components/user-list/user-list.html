@@ -1,0 +1,33 @@
+<div class="user-list-container">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>All Users</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      
+      <!-- Loading Spinner -->
+      <div *ngIf="loading$ | async" class="loading-spinner">
+        <mat-spinner></mat-spinner>
+      </div>
+
+      <!-- User List -->
+      <mat-list *ngIf="(users$ | async) as users">
+        <div *ngIf="users.length > 0; else noUsers">
+          <mat-list-item *ngFor="let user of users; trackBy: trackById">
+            <div matListItemTitle>{{ user.name }}</div>
+            <div matListItemLine>{{ user.email }}</div>
+          </mat-list-item>
+        </div>
+        <ng-template #noUsers>
+          <p>No users found.</p>
+        </ng-template>
+      </mat-list>
+
+      <!-- Error Message -->
+      <div *ngIf="error$ | async">
+        <p>Failed to load users. Please try again later.</p>
+      </div>
+
+    </mat-card-content>
+  </mat-card>
+</div>

@@ -1,3 +1,4 @@
+// src/app/pages/add-user/add-user.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
@@ -5,12 +6,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
-import { Store } from '@ngrx/store';
 import { Router } from '@angular/router';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { User } from '../../models/user.model';
-import * as UserActions from '../../state/user/user.actions';
-import { UserState } from '../../state/user/user.state';
+// Import your API service
+import { ApiService } from '../../services/api.service';
 
 @Component({
   selector: 'app-add-user',
@@ -31,8 +31,9 @@ export class AddUserComponent implements OnInit {
 
   constructor(
     private fb: FormBuilder,
-    private store: Store<{ user: UserState }>,
-    private router: Router
+    private router: Router,
+    private apiService: ApiService, // Inject the API service
+    private snackBar: MatSnackBar,
   ) {}
 
   ngOnInit(): void {
@@ -45,15 +46,17 @@ export class AddUserComponent implements OnInit {
 
   onSubmit(): void {
     if (this.userForm.valid) {
-      const newUser: User = {
-        _id: Math.random().toString(), // Simple mock ID
-        name: this.userForm.value.name,
-        email: this.userForm.value.email,
-        // Password is not stored in state
-      };
-      
-      this.store.dispatch(UserActions.addUser({ user: newUser }));
-      this.router.navigate(['/dashboard']);
+      // Make the API call directly
+      this.apiService.addUser(this.userForm.value).subscribe({
+        next: (response) => {
+          this.snackBar.open('User added successfully!', 'Dismiss', { duration: 3000 });
+          this.router.navigate(['/dashboard']);
+        },
+        error: (err) => {
+          console.error('Failed to add user:', err);
+          this.snackBar.open('Failed to add user. Please try again.', 'Dismiss', { duration: 5000 });
+        }
+      });
     }
   }
 

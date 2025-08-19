@@ -3,14 +3,14 @@
   <span class="toolbar-spacer"></span>
 
   <button mat-button routerLink="/dashboard" routerLinkActive="active-link" *ngIf="isLoggedIn$ | async">Dashboard</button>
+  <button mat-button routerLink="/add-user" routerLinkActive="active-link" *ngIf="isLoggedIn$ | async">Add User</button>
+  <button mat-button routerLink="/user-list" routerLinkActive="active-link" *ngIf="isLoggedIn$ | async">User List</button>
   <button mat-button routerLink="/login" routerLinkActive="active-link" *ngIf="!(isLoggedIn$ | async)">Login</button>
   <button mat-button routerLink="/register" routerLinkActive="active-link" *ngIf="!(isLoggedIn$ | async)">Register</button>
   <button mat-button (click)="logout()" *ngIf="isLoggedIn$ | async">Logout</button>
 </mat-toolbar>
 
 <router-outlet></router-outlet>
-
-
 
 
 
