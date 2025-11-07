@@ -82,6 +82,12 @@ export class DashboardComponent implements OnInit {
         // This might fail if /api/users is also protected and no token is sent
       }
     });
+
+    this.apiService.getProfileDesc().subscribe({
+      next:(data: any) => {
+        console.log(data);
+      }
+    })
   }
 
 

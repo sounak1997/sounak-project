@@ -27,5 +27,9 @@ export class ApiService {
   getProfile(): Observable<any> { // You can define a UserProfile interface if you have one
     return this.http.get<any>(`${this.backendUrl}/auth/profile`);
   }
+
+  getProfileDesc():Observable<any>{
+    return this.http.get<any>(`${this.backendUrl}/users/get`)
+  }
   // --- END NEW SPECIFIC GET PROFILE METHOD ---
 }

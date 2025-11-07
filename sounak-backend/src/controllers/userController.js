@@ -40,8 +40,27 @@ const getProfile = async (req, res) => {
   }
 };
 
+const getProfileDesc = async (req, res) => {
+  try {
+    // Assuming you can get the user's ID from the request (e.g., from a JWT token)
+    //const userId = req.user._id; 
+    //const profile = await User.findById(userId, { name: 1, email: 1 });
+    const profile = {id:1, name: 'sounak'}
+
+    if (profile) {
+      res.status(200).json(profile);
+    } else {
+      res.status(404).json({ message: 'User profile not found' });
+    }
+  } catch (err) {
+    console.error('Error fetching user profile:', err);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};
+
 module.exports = {
   getUsers,
   createUser,
   getProfile,
+  getProfileDesc
 };

@@ -14,7 +14,7 @@
       <mat-list *ngIf="(users$ | async) as users">
         <div *ngIf="users.length > 0; else noUsers">
           <mat-list-item *ngFor="let user of users; trackBy: trackById">
-            <div matListItemTitle>{{ user.name }}</div>
+            <div matListItemTitle>{{ user.name | capitalizeWord}}</div>
             <div matListItemLine>{{ user.email }}</div>
           </mat-list-item>
         </div>

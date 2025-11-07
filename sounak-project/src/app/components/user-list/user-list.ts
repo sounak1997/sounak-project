@@ -8,13 +8,14 @@ import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { CapitalizeWordPipe } from '../../pipes/capitalize-word-pipe';
 
 @Component({
   selector: 'app-user-list',
   templateUrl: './user-list.html',
   styleUrls: ['./user-list.scss'],
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatListModule, MatProgressSpinnerModule],
+  imports: [CommonModule, MatCardModule, MatListModule, MatProgressSpinnerModule,CapitalizeWordPipe],
 })
 export class UserListComponent implements OnInit {
   users$: Observable<User[]>;
