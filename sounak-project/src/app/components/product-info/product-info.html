@@ -1,0 +1,53 @@
+<mat-card class="product-info-card mat-elevation-z4">
+    <mat-card-header>
+        <mat-card-title>
+            Quick Info: {{ productData?.product_id || 'Loading Product...' }} 
+        </mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+        @if (isLoading) {
+            <div class="loading-container">
+                <mat-spinner diameter="32"></mat-spinner>
+                <p>Fetching quick info for {{ productId }}...</p>
+            </div>
+        } 
+        @else if (productData) {
+            <div class="info-details">
+                <h3>Technical Specifications</h3>
+                <dl class="specs-list">
+                    <dt>Details ID:</dt> <dd>{{ productData.id }}</dd>
+                    <dt>Vendor SKU:</dt> <dd>{{ productData.vendor_sku }}</dd>
+                    <dt>Rating:</dt> <dd>{{ productData.internal_rating }}</dd>
+                    
+                    <hr>
+                    
+                    @if (productData.technical_specs['drivers']) {
+                        <dt>Drivers:</dt> <dd>{{ productData.technical_specs['drivers'] }}</dd>
+                        <dt>Charging Port:</dt> <dd>{{ productData.technical_specs['charging_port'] }}</dd>
+                        <dt>Battery Life:</dt> <dd>{{ productData.technical_specs['battery_life_hours'] }} hours</dd>
+                        <dt>ANC:</dt> <dd>{{ productData.technical_specs['active_noise_cancellation'] ? 'Yes' : 'No' }}</dd>
+                    }
+                    
+                    @if (productData.technical_specs['layout']) {
+                        <dt>Layout:</dt> <dd>{{ productData.technical_specs['layout'] }}</dd>
+                        <dt>Keycaps:</dt> <dd>{{ productData.technical_specs['keycaps'] }}</dd>
+                        <dt>Switch Type:</dt> <dd>{{ productData.technical_specs['switch_type'] }}</dd>
+                    }
+                    
+                    @if (productData.technical_specs['connectivity'] && productData.technical_specs['connectivity'].length) {
+                        <dt>Connectivity:</dt> 
+                        <dd class="connectivity-tags">
+                            {{ productData.technical_specs['connectivity'].join(', ') }} 
+                        </dd>
+                    }
+                </dl>
+                
+                <p class="timestamp">Last Updated: {{ productData.updated_at | date:'medium' }}</p>
+            </div>
+        }
+        @else {
+            <p>Could not retrieve quick information for product ID: {{ productId }}.</p>
+        }
+    </mat-card-content>
+</mat-card>

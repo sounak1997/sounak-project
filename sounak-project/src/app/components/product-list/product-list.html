@@ -1,0 +1,101 @@
+<div class="product-list-container">
+  <mat-card>
+    <mat-card-header>
+      <mat-card-title>🛍️ Available Product List</mat-card-title>
+      <mat-card-subtitle>Data retrieved from PostgreSQL backend.</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (isLoading) {
+        <div class="loading-spinner">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p>Loading products...</p>
+        </div>
+      } 
+      @else if (products.length === 0) {
+        <p>No products found in the database.</p>
+        <button mat-button (click)="fetchProducts()">Retry Load</button>
+      } 
+      @else {
+        <table mat-table [dataSource]="products" class="mat-elevation-z8">
+
+          <ng-container matColumnDef="id">
+            <th mat-header-cell *matHeaderCellDef> ID </th>
+            <td mat-cell *matCellDef="let element"> {{element.id}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="name">
+            <th mat-header-cell *matHeaderCellDef> Name </th>
+            <td mat-cell *matCellDef="let element"> 
+              <span 
+                class="product-name-link" 
+                (click)="showProductInfo(element.id)"> {{element.name}} 
+              </span>
+            </td>
+          </ng-container>
+
+          <ng-container matColumnDef="price">
+            <th mat-header-cell *matHeaderCellDef> Price </th>
+            <td mat-cell *matCellDef="let element"> {{element.price | number:'1.2-2'}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="category">
+            <th mat-header-cell *matHeaderCellDef> Category </th>
+            <td mat-cell *matCellDef="let element"> {{element.category}} </td>
+          </ng-container>
+
+          <ng-container matColumnDef="stock">
+            <th mat-header-cell *matHeaderCellDef> Stock </th>
+            <td mat-cell *matCellDef="let element"> {{element.stock}} </td>
+          </ng-container>
+          
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef> Actions </th>
+            <td mat-cell *matCellDef="let element">
+              <button 
+                mat-button 
+                [color]="selectedProductId === element.id ? 'accent' : 'primary'"
+                (click)="viewDetails(element.id)">
+                {{ selectedProductId === element.id ? 'Hide Details' : 'Details' }}
+              </button>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+        </table>
+      }
+    </mat-card-content>
+    
+    <mat-card-actions class="product-info-container" *ngIf="products.length > 0">
+        <ng-container #infoContainer></ng-container> </mat-card-actions>
+    
+    <mat-card-actions class="product-details-area" *ngIf="products.length > 0">
+        @defer (when selectedProductId) {
+            <app-product-detail [productId]="selectedProductId" />
+        } 
+        @placeholder {
+            <mat-card style="width: 100%;">
+              <mat-card-content>Click "Details" to view product profile.</mat-card-content>
+            </mat-card>
+        }
+        @loading (after 100ms; minimum 500ms) {
+            <mat-card style="width: 100%;">
+              <mat-card-content class="defer-loading-state">
+                <mat-spinner diameter="24"></mat-spinner>
+                Loading profile module...
+              </mat-card-content>
+            </mat-card>
+        }
+        @error {
+            <mat-card style="width: 100%;">
+              <mat-card-content style="color: red;">Failed to load product details module.</mat-card-content>
+            </mat-card>
+        }
+    </mat-card-actions>
+
+    <mat-card-actions align="end">
+      <button mat-button routerLink="/dashboard">Back to Dashboard</button>
+    </mat-card-actions>
+  </mat-card>
+</div>

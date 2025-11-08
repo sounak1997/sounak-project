@@ -4,27 +4,34 @@
       <mat-card-title>All Users</mat-card-title>
     </mat-card-header>
     <mat-card-content>
-      
-      <!-- Loading Spinner -->
+
       <div *ngIf="loading$ | async" class="loading-spinner">
-        <mat-spinner></mat-spinner>
+        <mat-spinner diameter="40"></mat-spinner>
       </div>
 
-      <!-- User List -->
       <mat-list *ngIf="(users$ | async) as users">
         <div *ngIf="users.length > 0; else noUsers">
           <mat-list-item *ngFor="let user of users; trackBy: trackById">
-            <div matListItemTitle>{{ user.name | capitalizeWord}}</div>
-            <div matListItemLine>{{ user.email }}</div>
+
+            <div class="user-info">
+              <div matListItemTitle>{{ user.name | capitalizeWord }}</div>
+              <div matListItemLine>{{ user.email }}</div>
+            </div>
+
+            <button mat-icon-button color="primary" (click)="showProfile(user)"
+              [attr.aria-label]="'Show profile information for ' + user.name">
+              <mat-icon>info</mat-icon>
+            </button>
+
           </mat-list-item>
         </div>
+
         <ng-template #noUsers>
-          <p>No users found.</p>
+          <p id="noUsers">No users found.</p>
         </ng-template>
       </mat-list>
 
-      <!-- Error Message -->
-      <div *ngIf="error$ | async">
+      <div *ngIf="error$ | async" class="error-message">
         <p>Failed to load users. Please try again later.</p>
       </div>
 

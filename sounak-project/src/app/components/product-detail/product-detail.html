@@ -1,0 +1,29 @@
+<mat-card class="product-detail-card">
+    <mat-card-header>
+        <mat-card-title>Product Details</mat-card-title>
+    </mat-card-header>
+
+    <mat-card-content>
+        @if (isLoading) {
+            <div class="loading-container">
+                <mat-spinner diameter="32"></mat-spinner>
+                <p>Loading details for {{ productId }}...</p>
+            </div>
+        } 
+        @else if (product) {
+            <div class="product-details">
+                <h3>{{ product.name }}</h3>
+                <p><strong>ID:</strong> {{ product.id }}</p>
+                <p><strong>Price:</strong> {{ product.price | currency:'USD':'symbol':'1.2-2' }}</p>
+                <p><strong>Category:</strong> {{ product.category }}</p>
+                <p><strong>Stock:</strong> {{ product.stock }}</p>
+                <hr>
+                <h4>Description</h4>
+                <p>{{ product.description || 'No detailed description available.' }}</p>
+            </div>
+        }
+        @else {
+            <p>Select a product to view details.</p>
+        }
+    </mat-card-content>
+</mat-card>

@@ -11,6 +11,7 @@ import { authGuard } from './guards/auth-guard';
 
 import { userReducer } from './store/user/user.reducer';
 import { UserEffects } from './store/user/user.effects';
+import { ProductListComponent } from './components/product-list/product-list';
 
 export const routes: Routes = [
   { path: 'login', component: LoginComponent },
@@ -31,7 +32,12 @@ export const routes: Routes = [
       )
     ]
   },
+  { 
+    path: 'products', 
+    component: ProductListComponent, // Directly using the standalone component
+    canActivate: [authGuard] // Assuming product list also requires authentication
+  },
 
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
-  { path: '**', redirectTo: '/dashboard' }
+  { path: '**', redirectTo: '/dashboard' },
 ];

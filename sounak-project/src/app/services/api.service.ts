@@ -32,4 +32,18 @@ export class ApiService {
     return this.http.get<any>(`${this.backendUrl}/users/get`)
   }
   // --- END NEW SPECIFIC GET PROFILE METHOD ---
+  //Products Related
+  getProductsList(): Observable<any> {
+    // Calls the backend endpoint: GET /api/products
+    return this.http.get<any>(`${this.backendUrl}/products/list`);
+  }
+
+  getProductDetails(id: any): Observable<any> {
+    // Calls the backend endpoint: GET /api/products
+    return this.http.get<any>(`${this.backendUrl}/products/` + id);
+  }
+  getProductInfo(id: any): Observable<any> {
+    // Calls the backend endpoint: GET /api/products
+    return this.http.get<any>(`${this.backendUrl}/products/` + id + `/info`);
+  }
 }

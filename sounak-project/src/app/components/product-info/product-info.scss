@@ -1,0 +1,57 @@
+.product-info-card { 
+  margin-top: 20px; 
+  border-left: 5px solid #ff4081; /* Accent color */
+  transition: all 0.3s ease-in-out;
+}
+
+.loading-container { 
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+    padding: 10px; 
+    color: #555;
+}
+
+.info-details { 
+    padding: 10px 0; 
+}
+
+h3 {
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+    margin-top: 0;
+    color: #3f51b5; /* Primary color */
+}
+
+/* Styling for Definition List (Specs List) */
+.specs-list {
+    display: grid;
+    grid-template-columns: 120px 1fr; /* Two columns: Label (120px) and Value (rest) */
+    gap: 5px 10px;
+    margin: 0;
+    padding: 0;
+    
+    dt {
+        font-weight: bold;
+        color: #555;
+        text-align: right;
+    }
+
+    dd {
+        margin-left: 0;
+    }
+
+    hr {
+        grid-column: 1 / -1; /* Span across both columns */
+        border: none;
+        border-top: 1px dashed #ddd;
+        margin: 5px 0;
+    }
+}
+
+.timestamp {
+    font-size: 0.8em;
+    color: #999;
+    text-align: right;
+    margin-top: 15px;
+}

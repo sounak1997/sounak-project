@@ -90,6 +90,11 @@ export class DashboardComponent implements OnInit {
     })
   }
 
+  goToProductList(): void {
+    // Navigate to the new route, e.g., '/products'
+    console.log('sounak')
+    this.router.navigate(['/products']);
+  }
 
   logout(): void {
     this.authService.logout();

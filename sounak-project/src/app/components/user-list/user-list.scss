@@ -1,0 +1,81 @@
+.user-list-container {
+  display: flex;
+  justify-content: center; // Center the card horizontally
+  padding: 24px; // Overall page padding
+
+  mat-card {
+    width: 100%;
+    max-width: 600px; // Set a reasonable max width for the list card
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); // Soft, elevated shadow
+    transition: box-shadow 0.3s ease-in-out;
+
+    &:hover {
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15); // Slight lift on hover
+    }
+
+    mat-card-header {
+      padding-bottom: 16px; // Add space below the header
+      border-bottom: 1px solid #eee; // Subtle separator
+
+      mat-card-title {
+        font-size: 1.5rem;
+        font-weight: 500;
+        color: #3f51b5; // Primary color for the title
+      }
+    }
+
+    mat-card-content {
+      padding-top: 16px;
+    }
+
+    .loading-spinner {
+      display: flex;
+      justify-content: center;
+      padding: 30px;
+    }
+  }
+}
+
+mat-list {
+  padding: 0; // Remove default mat-list padding
+
+  mat-list-item {
+    height: auto !important; // Allow items to grow based on content
+    padding: 12px 0; // Vertical spacing for list items
+    border-bottom: 1px dashed #f0f0f0; // Subtle separation between users
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    // Custom layout for the list item content
+    ::ng-deep .mat-list-item-content {
+      display: flex;
+      justify-content: space-between; // Distribute space between text and button
+      align-items: center;
+      width: 100%;
+      padding: 0 16px; // Internal padding for the list item content
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+
+      div[matListItemTitle] {
+        font-weight: 600;
+        color: #333;
+      }
+      div[matListItemLine] {
+        font-size: 0.85em;
+        color: #777;
+      }
+    }
+  }
+}
+
+#noUsers,
+.error-message {
+  text-align: center;
+  padding: 20px;
+  color: #a00; // Red for errors
+}
