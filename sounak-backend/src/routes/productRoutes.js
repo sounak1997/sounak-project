@@ -1,8 +1,14 @@
-// my-angular-node-backend/src/routes/productRoutes.js
+// src/routes/productRoutes.js
 const express = require('express');
 const router = express.Router();
+const productController = require('../controllers/productController');
 
-// Define product routes here later, e.g.:
-// router.get('/', productController.getProducts);
+// 1. GET /api/products (List endpoint must come first)
+router.get('/list', productController.getProductsList);
 
-module.exports = router; // Correct: Exports the router instance directly ddd
+// 2. GET /api/products/:id (Details endpoint)
+router.get('/:id/info', productController.getProductInfo);
+router.get('/:id', productController.getProductDetails);
+
+
+module.exports = router;

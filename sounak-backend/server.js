@@ -1,9 +1,12 @@
-// my-angular-backend/server.js
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+
+// --- Database Configuration Imports ---
 const connectDB = require('./src/config/db.config');
+require('./src/config/pg.config'); // <-- ADDED: This line executes the PostgreSQL connection test
+
 const { errorHandler } = require('./src/middleware/errorMiddleware');
 const { loggerMiddleware } = require('./src/middleware/loggerMiddleware');
 const passport = require('passport'); // Import Passport
@@ -12,7 +15,8 @@ const configurePassport = require('./src/config/passport'); // Import Passport c
 const app = express();
 
 // Database Connection
-connectDB();
+connectDB(); // MongoDB connection is executed
+// PostgreSQL connection test runs automatically via the require('./src/config/pg.config') above
 
 // Middleware
 app.use(express.json()); // Body parser for JSON
