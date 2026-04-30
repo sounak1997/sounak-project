@@ -1,77 +1,80 @@
 // src/services/productService.js
-const pgPool = require('../config/pg.config'); 
+const pgPool = require('../config/pg.config');
+const cache = require('./cacheService');
 
-// --- 1. Get List of Products ---
+const KEYS = {
+  ALL_PRODUCTS: 'products:all',
+  product: (id) => `products:${id}`,
+  productInfo: (id) => `products:info:${id}`,
+};
 
-/**
- * Fetches a list of all products from PostgreSQL.
- * @returns {Array<object>} An array of product objects, or an empty array if none are found.
- */
+// --- 1. Get List of Products (Redis-cached) ---
 exports.getAllProducts = async () => {
-    // Query selects key fields for a list view
-    const sqlQuery = `
-        SELECT id, name, price, category, stock 
-        FROM products 
-        ORDER BY name ASC
-    `;
-    
-    try {
-        const result = await pgPool.query(sqlQuery);
-        
-        // Return the array of all rows found (PostgreSQL result format)
-        return result.rows; 
-    } catch (error) {
-        console.error('Database Error fetching product list (Postgres):', error.message);
-        // Throw a specific error for the controller to handle gracefully
-        throw new Error("POSTGRES_ERROR: Could not retrieve the list of products.");
-    }
+  const cached = await cache.get(KEYS.ALL_PRODUCTS);
+  if (cached) {
+    console.log('[Cache HIT] products:all');
+    return cached;
+  }
+
+  const sqlQuery = `
+    SELECT id, name, price, category, stock
+    FROM products
+    ORDER BY name ASC
+  `;
+  try {
+    const result = await pgPool.query(sqlQuery);
+    await cache.set(KEYS.ALL_PRODUCTS, result.rows, 300);
+    console.log('[Cache SET] products:all');
+    return result.rows;
+  } catch (error) {
+    console.error('Database Error fetching product list (Postgres):', error.message);
+    throw new Error('POSTGRES_ERROR: Could not retrieve the list of products.');
+  }
 };
 
-
-// --- 2. Get Single Product Details ---
-
-/**
- * Fetches product details from PostgreSQL by product ID.
- * @param {string} productId - The ID of the product to fetch.
- * @returns {object | null} The product data or null if not found.
- */
+// --- 2. Get Single Product Details (Redis-cached) ---
 exports.getProductDetails = async (productId) => {
-    // Basic validation
-    if (!productId || typeof productId !== 'string') {
-        // Throw an error that the controller can translate to a 400 Bad Request
-        throw new Error("Invalid product ID format.");
-    }
-    
-    // Parameterized query using $1 for security
-    const sqlQuery = `SELECT * FROM products WHERE id = $1`;
-    
-    try {
-        const result = await pgPool.query(sqlQuery, [productId]); 
+  if (!productId || typeof productId !== 'string') {
+    throw new Error('Invalid product ID format.');
+  }
 
-        if (result.rows.length === 0) {
-            return null; // Product not found
-        }
-        
-        return result.rows[0]; // Return the single product row
-    } catch (error) {
-        console.error('Database Error fetching product details (Postgres):', error.message);
-        throw new Error("POSTGRES_ERROR: Could not retrieve product details.");
-    }
+  const cacheKey = KEYS.product(productId);
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    console.log(`[Cache HIT] ${cacheKey}`);
+    return cached;
+  }
+
+  const sqlQuery = `SELECT * FROM products WHERE id = $1`;
+  try {
+    const result = await pgPool.query(sqlQuery, [productId]);
+    if (result.rows.length === 0) return null;
+    await cache.set(cacheKey, result.rows[0], 300);
+    console.log(`[Cache SET] ${cacheKey}`);
+    return result.rows[0];
+  } catch (error) {
+    console.error('Database Error fetching product details (Postgres):', error.message);
+    throw new Error('POSTGRES_ERROR: Could not retrieve product details.');
+  }
 };
 
+// --- 3. Get Product Info (Redis-cached) ---
 exports.getProductInfo = async (productId) => {
-    const sqlQuery = `SELECT * FROM product_details WHERE product_id = $1`;
-    
-    try {
-       console.log('sounak')
-        const result = await pgPool.query(sqlQuery, [productId]);
+  const cacheKey = KEYS.productInfo(productId);
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    console.log(`[Cache HIT] ${cacheKey}`);
+    return cached;
+  }
 
-        
-        return result.rows[0];
-
-    } catch (error) {
-        
-        console.error(`Database error fetching product details for ID ${productId}:`, error.message);
-        throw new Error('Failed to retrieve product information due to a database issue.');
-    }
+  const sqlQuery = `SELECT * FROM product_details WHERE product_id = $1`;
+  try {
+    const result = await pgPool.query(sqlQuery, [productId]);
+    const row = result.rows[0] || null;
+    if (row) await cache.set(cacheKey, row, 300);
+    return row;
+  } catch (error) {
+    console.error(`Database error fetching product info for ID ${productId}:`, error.message);
+    throw new Error('Failed to retrieve product information due to a database issue.');
+  }
 };
