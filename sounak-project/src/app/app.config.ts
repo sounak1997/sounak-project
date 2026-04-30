@@ -33,7 +33,7 @@ export const appConfig: ApplicationConfig = {
 
     // --- NgRx Store & Effects ---
     provideStore({ route: routerReducer, user: userReducer }),
-    //provideEffects(UserEffects),
+    provideEffects([UserEffects]),
     provideStoreDevtools({ maxAge: 25, logOnly: !isDevMode() }),
     provideRouterStore(),
     importProvidersFrom(

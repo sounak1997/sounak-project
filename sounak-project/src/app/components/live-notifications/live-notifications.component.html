@@ -1,0 +1,159 @@
+<div class="notifications-page">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-left">
+      <h1>
+        <mat-icon>wifi</mat-icon>
+        Live Notifications
+      </h1>
+      <span class="sse-badge">SSE + Signals</span>
+    </div>
+    <div class="header-right">
+      <span class="connection-status">{{ connectionStatus() }}</span>
+    </div>
+  </div>
+
+  <!-- Control bar -->
+  <div class="control-bar">
+    <div class="controls-left">
+      <button mat-stroked-button (click)="reconnect()" [disabled]="connected()">
+        <mat-icon>refresh</mat-icon> Reconnect
+      </button>
+      <button mat-stroked-button (click)="togglePause()">
+        <mat-icon>{{ isPaused() ? 'play_arrow' : 'pause' }}</mat-icon>
+        {{ isPaused() ? 'Resume' : 'Pause' }}
+      </button>
+      @if (unreadCount() > 0) {
+        <button mat-stroked-button (click)="markAllRead()">
+          <mat-icon>done_all</mat-icon> Mark read ({{ unreadCount() }})
+        </button>
+      }
+    </div>
+    <div class="controls-right">
+      @if (hasNotifications()) {
+        <button mat-button color="warn" (click)="clearAll()">
+          <mat-icon>delete_sweep</mat-icon> Clear all
+        </button>
+      }
+    </div>
+  </div>
+
+  <!-- Computed stats row -->
+  <div class="stats-row">
+    <div class="stat-chip">
+      <mat-icon>notifications</mat-icon>
+      <span>{{ notifications().length }} total</span>
+    </div>
+    <div class="stat-chip purple">
+      <mat-icon>person_add</mat-icon>
+      <span>{{ userRegistrationEvents().length }} registrations</span>
+    </div>
+    <div class="stat-chip blue">
+      <mat-icon>campaign</mat-icon>
+      <span>{{ generalNotifications().length }} alerts</span>
+    </div>
+    @if (isPaused()) {
+      <div class="stat-chip orange">
+        <mat-icon>pause</mat-icon>
+        <span>Paused</span>
+      </div>
+    }
+  </div>
+
+  <!-- Error banner -->
+  @if (connectionError()) {
+    <div class="error-banner">
+      <mat-icon>error_outline</mat-icon>
+      <span>{{ connectionError() }}</span>
+      <button mat-button (click)="reconnect()">Retry</button>
+    </div>
+  }
+
+  <!-- SSE info card (shown when not connected yet) -->
+  @if (!connected() && !connectionError()) {
+    <div class="info-card">
+      <mat-icon>sensors</mat-icon>
+      <div>
+        <strong>Connecting to SSE stream...</strong>
+        <p>Listening on <code>/api/notifications/stream</code></p>
+        <p>Events are pushed in real-time via RabbitMQ → Express → Browser.</p>
+      </div>
+    </div>
+  }
+
+  <!-- Latest event highlight -->
+  @if (latestEvent() && latestEvent()!.type !== 'CONNECTED') {
+    <div class="latest-event" [style.border-left-color]="getTypeColor(latestEvent()!.type)">
+      <mat-icon [style.color]="getTypeColor(latestEvent()!.type)">{{ getIcon(latestEvent()!.type) }}</mat-icon>
+      <div class="latest-content">
+        <span class="latest-label">Latest</span>
+        <span class="latest-message">{{ latestEvent()!.message }}</span>
+        <span class="latest-time">{{ latestEvent()!.timestamp | date: 'HH:mm:ss' }}</span>
+      </div>
+    </div>
+  }
+
+  <!-- Notification feed -->
+  <mat-card class="feed-card">
+    <mat-card-header>
+      <mat-card-title>Event Feed</mat-card-title>
+      <mat-card-subtitle>Real-time events from RabbitMQ via Server-Sent Events</mat-card-subtitle>
+    </mat-card-header>
+    <mat-card-content>
+      @if (!hasNotifications()) {
+        <div class="empty-feed">
+          <mat-icon>notifications_none</mat-icon>
+          <p>No events yet</p>
+          <p class="hint">Register a new user to trigger an event</p>
+        </div>
+      } @else {
+        <div class="feed-list">
+          @for (event of notifications(); track trackByTimestamp($index, event)) {
+            <div class="feed-item" [class.connected-event]="event.type === 'CONNECTED'">
+              <mat-icon
+                class="event-icon"
+                [style.color]="getTypeColor(event.type)"
+              >{{ getIcon(event.type) }}</mat-icon>
+              <div class="event-body">
+                <span class="event-type" [style.color]="getTypeColor(event.type)">
+                  {{ event.type }}
+                </span>
+                <span class="event-message">{{ event.message }}</span>
+              </div>
+              <span class="event-time">{{ event.timestamp | date: 'HH:mm:ss' }}</span>
+            </div>
+          }
+        </div>
+      }
+    </mat-card-content>
+  </mat-card>
+
+  <!-- How it works -->
+  <mat-card class="info-card-bottom">
+    <mat-card-header>
+      <mat-card-title>How it works</mat-card-title>
+    </mat-card-header>
+    <mat-card-content>
+      <div class="flow-steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <span>User registers → <code>authController</code> calls <code>publishUserRegistered()</code></span>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <span>Message published to <strong>RabbitMQ</strong> queue <code>user_registered</code></span>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <span><code>notificationConsumer</code> consumes message and calls <code>broadcastToAll()</code></span>
+        </div>
+        <div class="step">
+          <span class="step-num">4</span>
+          <span>Browser receives event via <strong>SSE</strong> → signal updated → UI re-renders</span>
+        </div>
+      </div>
+    </mat-card-content>
+  </mat-card>
+
+</div>

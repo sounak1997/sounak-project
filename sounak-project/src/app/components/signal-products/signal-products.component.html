@@ -1,0 +1,114 @@
+<div class="signal-products-container">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div class="header-left">
+      <h1 class="page-title">
+        <mat-icon>bolt</mat-icon>
+        {{ title() }}
+      </h1>
+      <span class="badge-label">NgRx Signal Store</span>
+    </div>
+    <div class="header-actions">
+      <button mat-icon-button (click)="toggleViewMode()" [title]="isGridMode() ? 'Switch to list' : 'Switch to grid'">
+        <mat-icon>{{ isGridMode() ? 'view_list' : 'grid_view' }}</mat-icon>
+      </button>
+      <button mat-stroked-button (click)="store.loadProducts()" [disabled]="store.loading()">
+        <mat-icon>refresh</mat-icon> Reload
+      </button>
+    </div>
+  </div>
+
+  <!-- Stats bar -->
+  <div class="stats-bar">
+    <span class="stats-text">{{ statsText() }}</span>
+    @if (store.isFiltered() || selectedCategory() !== 'All') {
+      <button mat-button color="warn" class="clear-btn" (click)="clearFilters()">
+        <mat-icon>close</mat-icon> Clear filters
+      </button>
+    }
+  </div>
+
+  <!-- Search -->
+  <mat-form-field appearance="outline" class="search-field">
+    <mat-label>Search products...</mat-label>
+    <mat-icon matPrefix>search</mat-icon>
+    <input matInput [ngModel]="localSearch()" (ngModelChange)="onSearchChange($event)" />
+  </mat-form-field>
+
+  <!-- Category chips (signal input controls visibility) -->
+  @if (showCategories()) {
+    <div class="category-chips">
+      @for (cat of categoryList(); track cat) {
+        <button
+          mat-stroked-button
+          class="chip-btn"
+          [class.active]="selectedCategory() === cat"
+          (click)="onCategorySelect(cat)"
+        >
+          {{ cat }}
+        </button>
+      }
+    </div>
+  }
+
+  <!-- Loading -->
+  @if (store.loading()) {
+    <div class="loading-center">
+      <mat-spinner diameter="48"></mat-spinner>
+      <p>Loading products...</p>
+    </div>
+  }
+
+  <!-- Error -->
+  @if (store.error()) {
+    <div class="error-card">
+      <mat-icon>error_outline</mat-icon>
+      <span>{{ store.error() }}</span>
+      <button mat-button (click)="store.clearError()">Dismiss</button>
+    </div>
+  }
+
+  <!-- Product Grid -->
+  @if (!store.loading() && !store.error()) {
+    @if (displayedProducts().length === 0) {
+      <div class="empty-state">
+        <mat-icon>inventory_2</mat-icon>
+        <p>No products found</p>
+      </div>
+    } @else {
+      <div [class]="isGridMode() ? 'products-grid' : 'products-list'">
+        @for (product of displayedProducts(); track trackByProductId($index, product)) {
+          <mat-card
+            class="product-card"
+            [class.selected]="store.selectedProduct()?.id === product.id"
+            (click)="onProductClick(product)"
+          >
+            <mat-card-header>
+              <mat-card-title>{{ product.name }}</mat-card-title>
+              <mat-card-subtitle>{{ product.category }}</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              <div class="product-meta">
+                <span class="price">${{ product.price | number: '1.2-2' }}</span>
+                <span class="stock" [class.low-stock]="product.stock < 10">
+                  <mat-icon class="stock-icon">{{ product.stock < 10 ? 'warning' : 'check_circle' }}</mat-icon>
+                  {{ product.stock }} in stock
+                </span>
+              </div>
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
+    }
+  }
+
+  <!-- Selected product detail -->
+  @if (store.selectedProduct()) {
+    <div class="selected-detail">
+      <h3>Selected: {{ store.selectedProduct()!.name }}</h3>
+      <pre>{{ store.selectedProduct() | json }}</pre>
+    </div>
+  }
+
+</div>

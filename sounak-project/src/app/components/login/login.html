@@ -1,27 +1,44 @@
-<div class="auth-container">
-  <mat-card>
-    <mat-card-header>
-      <mat-card-title>Login</mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
-      <form (ngSubmit)="onSubmit()">
-        <mat-form-field appearance="fill" class="full-width-input">
-          <mat-label>Email</mat-label>
-          <input matInput type="email" [(ngModel)]="email" name="email" required>
-        </mat-form-field>
+<div class="auth-page">
+  <div class="auth-brand">
+    <div class="brand-icon">
+      <mat-icon>bolt</mat-icon>
+    </div>
+    <h2>SounakApp</h2>
+    <p>Angular 20 · Signals · NgRx · Redis · RabbitMQ</p>
+  </div>
 
-        <mat-form-field appearance="fill" class="full-width-input">
-          <mat-label>Password</mat-label>
-          <input matInput type="password" [(ngModel)]="password" name="password" required>
-        </mat-form-field>
+  <div class="auth-card">
+    <div class="card-header">
+      <mat-icon class="header-icon">lock_open</mat-icon>
+      <h1>Welcome back</h1>
+      <p>Sign in to your account</p>
+    </div>
 
-        <button mat-raised-button color="primary" type="submit" [disabled]="loading">
-          {{ loading ? 'Logging in...' : 'Login' }}
+    <form (ngSubmit)="onSubmit()" class="auth-form">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Email address</mat-label>
+        <mat-icon matPrefix>email</mat-icon>
+        <input matInput type="email" [(ngModel)]="email" name="email" required autocomplete="email" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Password</mat-label>
+        <mat-icon matPrefix>lock</mat-icon>
+        <input matInput [type]="showPassword ? 'text' : 'password'" [(ngModel)]="password" name="password" required />
+        <button mat-icon-button matSuffix type="button" (click)="showPassword = !showPassword">
+          <mat-icon>{{ showPassword ? 'visibility_off' : 'visibility' }}</mat-icon>
         </button>
-      </form>
-    </mat-card-content>
-    <mat-card-actions align="end">
-      <button mat-button routerLink="/register">New User? Register</button>
-    </mat-card-actions>
-  </mat-card>
+      </mat-form-field>
+
+      <button mat-raised-button class="submit-btn" type="submit" [disabled]="loading">
+        <mat-icon>{{ loading ? 'hourglass_empty' : 'login' }}</mat-icon>
+        {{ loading ? 'Signing in...' : 'Sign In' }}
+      </button>
+    </form>
+
+    <div class="card-footer">
+      <span>Don't have an account?</span>
+      <a routerLink="/register">Create one</a>
+    </div>
+  </div>
 </div>

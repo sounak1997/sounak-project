@@ -4,13 +4,14 @@ import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatDividerModule } from '@angular/material/divider';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 
 import { Store } from '@ngrx/store';
 import { addUser } from '../../store/user/user.actions';
 import { UserState } from '../../store/user/user.reducer';
-import { CommonModule as NgCommonModule } from '@angular/common';
 
 @Component({
   selector: 'app-add-user',
@@ -21,6 +22,8 @@ import { CommonModule as NgCommonModule } from '@angular/common';
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
+    MatIconModule,
+    MatDividerModule,
     ReactiveFormsModule,
   ],
   templateUrl: './add-user.html',

@@ -1,55 +1,233 @@
-<div class="dashboard-container">
-  @if (userProfile) {
-    <mat-card>
-      <mat-card-header>
-        <mat-card-title>Welcome, {{ userProfile.name }}!</mat-card-title>
-        <mat-card-subtitle>Email: {{ userProfile.email }}</mat-card-subtitle>
-      </mat-card-header>
-      
-      <mat-card-content>
-        <p>This is your personalized dashboard.</p>
-        
-        <div style="margin-bottom: 20px;">
-          <button mat-raised-button color="accent" (click)="fetchUsersFromProtectedApi()">
-            Fetch My Profile (Protected)
-          </button>
-          
-          <button mat-raised-button color="primary" (click)="goToProductList()" style="margin-left: 10px;">
-            View Product List
-          </button>
-        </div>
-        
-        @if (userProfile && userProfile._id) {
-          <p>Your User ID: {{ userProfile._id }}</p>
-        }
+<div class="dashboard-page">
 
-        <h4 style="margin-top: 20px;">General Users List (from API):</h4>
-        @if (usersFromApi.length > 0) {
-          <ul>
-            @for (user of usersFromApi; track user._id) { 
-              <li>{{ user.name }} ({{ user.email }})</li>
-            }
-          </ul>
-        } @else {
-          <p>No general users found or failed to load.</p>
-        }
-      </mat-card-content>
-      
-      <mat-card-actions align="end">
-        <button mat-raised-button color="warn" (click)="logout()">Logout</button>
-      </mat-card-actions>
-    </mat-card>
-  } @else {
-    <mat-card>
-      <mat-card-header>
-        <mat-card-title>Access Denied</mat-card-title>
-      </mat-card-header>
-      <mat-card-content>
-        <p>Please login to view this page.</p>
-      </mat-card-content>
-      <mat-card-actions align="end">
-        <button mat-button routerLink="/login">Go to Login</button>
-      </mat-card-actions>
-    </mat-card>
-  }
+  <!-- Top bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="app-logo"><mat-icon>bolt</mat-icon></div>
+      <div>
+        <span class="app-name">SounakApp</span>
+        <span class="app-sub">Angular 20 · NgRx · Signals · Redis · RabbitMQ</span>
+      </div>
+    </div>
+    <div class="topbar-right">
+      @if (userProfile) {
+        <div class="user-chip">
+          <mat-icon>account_circle</mat-icon>
+          <span>{{ userProfile.name }}</span>
+        </div>
+      }
+      <button mat-stroked-button class="logout-btn" (click)="logout()">
+        <mat-icon>logout</mat-icon> Logout
+      </button>
+    </div>
+  </div>
+
+  <div class="dashboard-body">
+
+    <!-- Welcome banner -->
+    <div class="welcome-banner">
+      <div class="welcome-text">
+        <h1>Welcome back, {{ userProfile?.name || 'User' }} 👋</h1>
+        <p>Explore all implemented features below. Click any card to navigate.</p>
+      </div>
+      @if (userProfile) {
+        <div class="profile-pill">
+          <mat-icon>email</mat-icon>
+          {{ userProfile.email }}
+        </div>
+      }
+    </div>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <mat-icon class="stat-icon" style="color:#667eea">storage</mat-icon>
+        <div class="stat-info">
+          <span class="stat-value">2</span>
+          <span class="stat-label">Databases</span>
+        </div>
+        <span class="stat-sub">MongoDB + PostgreSQL</span>
+      </div>
+      <div class="stat-card">
+        <mat-icon class="stat-icon" style="color:#11998e">speed</mat-icon>
+        <div class="stat-info">
+          <span class="stat-value">Redis</span>
+          <span class="stat-label">Cache layer</span>
+        </div>
+        <span class="stat-sub">5-min TTL on products</span>
+      </div>
+      <div class="stat-card">
+        <mat-icon class="stat-icon" style="color:#f57c00">campaign</mat-icon>
+        <div class="stat-info">
+          <span class="stat-value">MQ</span>
+          <span class="stat-label">RabbitMQ</span>
+        </div>
+        <span class="stat-sub">Async event queue</span>
+      </div>
+      <div class="stat-card">
+        <mat-icon class="stat-icon" style="color:#e91e63">bolt</mat-icon>
+        <div class="stat-info">
+          <span class="stat-value">Signals</span>
+          <span class="stat-label">Angular 20</span>
+        </div>
+        <span class="stat-sub">signal · computed · effect</span>
+      </div>
+    </div>
+
+    <!-- Feature cards -->
+    <h2 class="section-title">New Features</h2>
+    <div class="feature-grid">
+
+      <div class="feature-card purple" (click)="goToSignalProducts()">
+        <div class="feature-icon"><mat-icon>inventory_2</mat-icon></div>
+        <div class="feature-body">
+          <h3>Signal Products</h3>
+          <p>Products loaded via <strong>NgRx Signal Store</strong>. Search and category filters powered by <code>computed()</code>. Cache backed by Redis — second load is instant.</p>
+          <div class="feature-tags">
+            <span class="tag">signalStore()</span>
+            <span class="tag">computed()</span>
+            <span class="tag">Redis cache</span>
+          </div>
+        </div>
+        <mat-icon class="arrow-icon">arrow_forward</mat-icon>
+      </div>
+
+      <div class="feature-card green" (click)="goToSignalDemo()">
+        <div class="feature-icon"><mat-icon>bolt</mat-icon></div>
+        <div class="feature-body">
+          <h3>Angular Signals Demo</h3>
+          <p>Interactive playground showing <code>signal()</code>, <code>computed()</code>, <code>effect()</code>, <code>model()</code> (two-way binding) and <code>input()</code> signal inputs.</p>
+          <div class="feature-tags">
+            <span class="tag">signal()</span>
+            <span class="tag">effect()</span>
+            <span class="tag">model()</span>
+          </div>
+        </div>
+        <mat-icon class="arrow-icon">arrow_forward</mat-icon>
+      </div>
+
+      <div class="feature-card orange" (click)="goToNotifications()">
+        <div class="feature-icon"><mat-icon>wifi</mat-icon></div>
+        <div class="feature-body">
+          <h3>Live Notifications</h3>
+          <p>Real-time events via <strong>SSE</strong>. When you register a user → RabbitMQ queue → consumer → browser. No polling needed.</p>
+          <div class="feature-tags">
+            <span class="tag">SSE</span>
+            <span class="tag">RabbitMQ</span>
+            <span class="tag">EventSource</span>
+          </div>
+        </div>
+        <mat-icon class="arrow-icon">arrow_forward</mat-icon>
+      </div>
+
+      <div class="feature-card teal" (click)="goToChat()">
+        <div class="feature-icon"><mat-icon>chat</mat-icon></div>
+        <div class="feature-body">
+          <h3>Live Chat</h3>
+          <p>Full real-time chat with rooms, typing indicators, online users, and message history. Built with <strong>Socket.IO WebSockets</strong> + Redis persistence.</p>
+          <div class="feature-tags">
+            <span class="tag">WebSocket</span>
+            <span class="tag">Socket.IO</span>
+            <span class="tag">Redis history</span>
+          </div>
+        </div>
+        <mat-icon class="arrow-icon">arrow_forward</mat-icon>
+      </div>
+
+      <div class="feature-card blue" (click)="goToProductList()">
+        <div class="feature-icon"><mat-icon>list_alt</mat-icon></div>
+        <div class="feature-body">
+          <h3>Product List (NgRx)</h3>
+          <p>Classic NgRx implementation with actions, reducers and effects for comparison against the Signal Store approach.</p>
+          <div class="feature-tags">
+            <span class="tag">NgRx Store</span>
+            <span class="tag">Effects</span>
+            <span class="tag">PostgreSQL</span>
+          </div>
+        </div>
+        <mat-icon class="arrow-icon">arrow_forward</mat-icon>
+      </div>
+
+    </div>
+
+    <!-- How notification system works -->
+    <h2 class="section-title">How the Notification System Works</h2>
+    <div class="explainer-card">
+      <div class="flow">
+        <div class="flow-step">
+          <div class="step-bubble purple">1</div>
+          <div class="step-content">
+            <strong>User Registers</strong>
+            <span>POST <code>/api/auth/register</code> — MongoDB saves the user</span>
+          </div>
+        </div>
+        <div class="flow-arrow"><mat-icon>arrow_downward</mat-icon></div>
+
+        <div class="flow-step">
+          <div class="step-bubble orange">2</div>
+          <div class="step-content">
+            <strong>RabbitMQ Publish</strong>
+            <span><code>publishUserRegistered()</code> sends a message to the <code>user_registered</code> queue</span>
+          </div>
+        </div>
+        <div class="flow-arrow"><mat-icon>arrow_downward</mat-icon></div>
+
+        <div class="flow-step">
+          <div class="step-bubble green">3</div>
+          <div class="step-content">
+            <strong>Consumer Processes</strong>
+            <span><code>notificationConsumer.js</code> reads the queue and calls <code>broadcastToAll()</code></span>
+          </div>
+        </div>
+        <div class="flow-arrow"><mat-icon>arrow_downward</mat-icon></div>
+
+        <div class="flow-step">
+          <div class="step-bubble blue">4</div>
+          <div class="step-content">
+            <strong>SSE → Angular Signal</strong>
+            <span>Browser <code>EventSource</code> receives the event → Angular <code>signal()</code> updates → UI re-renders instantly</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="explainer-tip">
+        <mat-icon>tips_and_updates</mat-icon>
+        <span>Try it: open <strong>Live Notifications</strong> in one tab, then <strong>Register</strong> in another — watch the event appear in real time.</span>
+      </div>
+    </div>
+
+    <!-- Users list -->
+    <h2 class="section-title">
+      Users
+      <span class="store-badge">NgRx Store — no repeat API calls</span>
+    </h2>
+    <div class="users-card">
+
+      @if (usersLoading$ | async) {
+        <div class="empty-users"><mat-icon>hourglass_empty</mat-icon><span>Loading from store…</span></div>
+      } @else if ((users$ | async)?.length) {
+        <div class="users-list">
+          @for (user of (users$ | async)!; track user.id) {
+            <div class="user-row">
+              <mat-icon>person</mat-icon>
+              <div class="user-info">
+                <span class="user-name">{{ user.name }}</span>
+                <span class="user-email">{{ user.email }}</span>
+              </div>
+            </div>
+          }
+        </div>
+      } @else {
+        <div class="empty-users">
+          <mat-icon>people_outline</mat-icon>
+          <span>No users in store yet</span>
+        </div>
+      }
+
+      <button mat-stroked-button class="add-user-btn" (click)="goToAddUser()">
+        <mat-icon>person_add</mat-icon> Add User
+      </button>
+    </div>
+
+  </div>
 </div>

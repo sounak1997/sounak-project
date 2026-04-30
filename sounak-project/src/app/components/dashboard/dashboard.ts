@@ -1,14 +1,20 @@
-// my-angular-frontend/src/app/components/dashboard/dashboard.component.ts
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { MatCardModule } from '@angular/material/card';
 import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
+import { MatDividerModule } from '@angular/material/divider';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Router } from '@angular/router';
 
-import { ApiService } from '../../services/api.service';// For fetching users
-import { AuthService } from '../../services/auth.service'; // For logout and user infoo
+import { Store } from '@ngrx/store';
+import { Observable } from 'rxjs';
 
+import { AuthService } from '../../services/auth.service';
+import { loadUsers } from '../../store/user/user.actions';
+import { selectUsers, selectUsersLoading } from '../../store/user/user.selectors';
+import { UserState } from '../../store/user/user.reducer';
+import { User } from '../../models/user.model';
 
 interface UserProfile {
   _id: string;
@@ -22,79 +28,53 @@ interface UserProfile {
   imports: [
     CommonModule,
     MatCardModule,
-    MatButtonModule
+    MatButtonModule,
+    MatIconModule,
+    MatDividerModule,
   ],
   templateUrl: './dashboard.html',
   styleUrls: ['./dashboard.scss']
 })
 export class DashboardComponent implements OnInit {
+  // Profile comes from the already-authenticated user in AuthService — no extra API call needed
   userProfile: UserProfile | null = null;
-  usersFromApi: any[] = []; // To demonstrate fetching protected data
+
+  // Users come from the NgRx store — no direct API call
+  users$: Observable<User[]>;
+  usersLoading$: Observable<boolean>;
 
   constructor(
     private authService: AuthService,
-    private apiService: ApiService, // Assuming ApiService for general API calls
+    private store: Store<UserState>,
     private snackBar: MatSnackBar,
-    private router: Router
-  ) {}
+    public router: Router
+  ) {
+    this.users$ = this.store.select(selectUsers);
+    this.usersLoading$ = this.store.select(selectUsersLoading);
+  }
 
   ngOnInit(): void {
-    // Get user profile data (from token on frontend)
-    if (this.authService.currentUserValue) {
-      this.userProfile = {
-        _id: this.authService.currentUserValue._id,
-        name: this.authService.currentUserValue.name,
-        email: this.authService.currentUserValue.email
-      };
+    // Profile is already stored in AuthService from login — read it directly
+    const current = this.authService.currentUserValue;
+    if (current) {
+      this.userProfile = { _id: current._id, name: current.name, email: current.email };
     }
 
-    // Example of fetching protected data (requires JWT Interceptor)
-    this.fetchUsersFromProtectedApi();
+    // Only dispatch loadUsers if the store is empty (avoids redundant API calls)
+    // If user-list was visited before, data is already in the store — no API call fires
+    this.users$.subscribe(users => {
+      if (users.length === 0) {
+        this.store.dispatch(loadUsers());
+      }
+    }).unsubscribe(); // one-shot check
   }
 
-  fetchUsersFromProtectedApi(): void {
-    // This assumes your /api/users route is protected by JWT.
-    // If not, it will still work, but won't demonstrate protection.
-    // For demonstration, let's call the /api/auth/profile directly
-    // to show protection is working for that specific route.
-    this.apiService.getProfile().subscribe({ // Assuming ApiService has a generic .get method
-      next: (data: UserProfile) => {
-        this.userProfile = data; // Update with data from protected API
-        this.snackBar.open('User profile fetched from protected API!', 'Dismiss', { duration: 3000 });
-      },
-      error: (err: any) => {
-        console.error('Error fetching protected user profile:', err);
-        this.snackBar.open('Failed to fetch protected profile. You might not be authenticated.', 'Dismiss', { duration: 5000 });
-        if (err.status === 401) {
-          this.authService.logout(); // Log out if token is invalid/expired
-        }
-      }
-    });
-
-    // Also fetch general users list (if you want to test the previous /api/users route)
-    this.apiService.getUsers().subscribe({ // Using the original getUsers
-      next: (data: any) => {
-        this.usersFromApi = data;
-        this.snackBar.open('General users list fetched!', 'Dismiss', { duration: 2000 });
-      },
-      error: (err: any) => {
-        console.error('Error fetching general users:', err);
-        // This might fail if /api/users is also protected and no token is sent
-      }
-    });
-
-    this.apiService.getProfileDesc().subscribe({
-      next:(data: any) => {
-        console.log(data);
-      }
-    })
-  }
-
-  goToProductList(): void {
-    // Navigate to the new route, e.g., '/products'
-    console.log('sounak')
-    this.router.navigate(['/products']);
-  }
+  goToProductList():    void { this.router.navigate(['/products']);         }
+  goToSignalProducts(): void { this.router.navigate(['/signal-products']);  }
+  goToSignalDemo():     void { this.router.navigate(['/signal-demo']);       }
+  goToNotifications():  void { this.router.navigate(['/notifications']);     }
+  goToAddUser():        void { this.router.navigate(['/add-user']);          }
+  goToChat():           void { this.router.navigate(['/chat']);              }
 
   logout(): void {
     this.authService.logout();

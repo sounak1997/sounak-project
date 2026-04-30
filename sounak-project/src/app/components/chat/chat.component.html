@@ -1,0 +1,195 @@
+<div class="chat-shell">
+
+  <!-- ── SIDEBAR ──────────────────────────────────────────────────── -->
+  <aside class="sidebar" [class.closed]="!sidebarOpen()">
+
+    <div class="sidebar-header">
+      <div class="app-brand">
+        <mat-icon>chat</mat-icon>
+        <span>LiveChat</span>
+      </div>
+      <button mat-icon-button class="toggle-btn" (click)="sidebarOpen.set(!sidebarOpen())" matTooltip="Toggle sidebar">
+        <mat-icon>{{ sidebarOpen() ? 'chevron_left' : 'chevron_right' }}</mat-icon>
+      </button>
+    </div>
+
+    <!-- Connection status -->
+    <div class="conn-status" [class.connected]="ws.connected()" [class.connecting]="ws.connecting()">
+      <span class="status-dot"></span>
+      <span class="status-text">
+        {{ ws.connected() ? 'Connected' : ws.connecting() ? 'Connecting…' : 'Disconnected' }}
+      </span>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Room list -->
+    <div class="section-label">Channels</div>
+    <nav class="room-list">
+      @for (room of ws.rooms(); track room.id) {
+        <button
+          class="room-btn"
+          [class.active]="ws.currentRoom() === room.id"
+          (click)="joinRoom(room.id)"
+          [matTooltip]="room.description"
+          matTooltipPosition="right"
+        >
+          <mat-icon class="room-icon">tag</mat-icon>
+          <span class="room-name">{{ room.name }}</span>
+        </button>
+      }
+    </nav>
+
+    <mat-divider></mat-divider>
+
+    <!-- Online users -->
+    <div class="section-label">
+      Online
+      <span class="count-badge">{{ ws.onlineCount() }}</span>
+    </div>
+    <div class="online-list">
+      @for (user of ws.onlineUsers(); track user.userId) {
+        <div class="online-user">
+          <span class="online-dot"></span>
+          <span class="online-name">{{ user.username }}</span>
+          @if (user.userId === currentUserId()) {
+            <span class="you-badge">you</span>
+          }
+        </div>
+      }
+      @if (ws.onlineUsers().length === 0) {
+        <span class="empty-hint">No one in this room</span>
+      }
+    </div>
+
+  </aside>
+
+  <!-- ── MAIN CHAT AREA ────────────────────────────────────────────── -->
+  <main class="chat-main">
+
+    <!-- Header bar -->
+    <div class="chat-header">
+      <button mat-icon-button (click)="sidebarOpen.set(!sidebarOpen())" class="menu-btn">
+        <mat-icon>menu</mat-icon>
+      </button>
+      <div class="header-info">
+        <span class="room-title">{{ ws.currentRoom() ? '# ' + ws.currentRoom() : 'Select a channel' }}</span>
+        <span class="header-sub">{{ ws.onlineCount() }} online · WebSocket via Socket.IO</span>
+      </div>
+      <div class="header-tech-tags">
+        <span class="tech-tag">socket.io</span>
+        <span class="tech-tag">signal()</span>
+        <span class="tech-tag">Redis cache</span>
+      </div>
+    </div>
+
+    <!-- Connection error -->
+    @if (ws.connectionError()) {
+      <div class="error-banner">
+        <mat-icon>error_outline</mat-icon>
+        {{ ws.connectionError() }}
+        <button mat-button (click)="ws.connect()">Retry</button>
+      </div>
+    }
+
+    <!-- Connecting state -->
+    @if (ws.connecting()) {
+      <div class="connecting-overlay">
+        <mat-spinner diameter="36"></mat-spinner>
+        <span>Connecting to WebSocket server…</span>
+      </div>
+    }
+
+    <!-- Message feed -->
+    @if (!ws.connecting()) {
+      <div class="message-feed" #messageFeed>
+
+        @if (allMessages().length === 0 && ws.currentRoom()) {
+          <div class="empty-feed">
+            <mat-icon>chat_bubble_outline</mat-icon>
+            <p>No messages yet in <strong>#{{ ws.currentRoom() }}</strong></p>
+            <p class="hint">Be the first to say something!</p>
+          </div>
+        }
+
+        @for (msg of allMessages(); track trackByMsgId($index, msg)) {
+
+          <!-- System message -->
+          @if (msg.type === 'system') {
+            <div class="system-msg">
+              <mat-icon>info</mat-icon>
+              <span>{{ msg.content }}</span>
+              <span class="msg-time">{{ msg.timestamp | date: 'HH:mm' }}</span>
+            </div>
+          }
+
+          <!-- Chat message -->
+          @if (msg.type === 'message') {
+            <div class="message-row" [class.mine]="isMine(msg)">
+              <div class="avatar" [class.mine-avatar]="isMine(msg)">
+                {{ msg.username.charAt(0).toUpperCase() }}
+              </div>
+              <div class="bubble-group">
+                @if (!isMine(msg)) {
+                  <span class="sender-name">{{ msg.username }}</span>
+                }
+                <div class="bubble" [class.mine-bubble]="isMine(msg)">
+                  {{ msg.content }}
+                  <span class="bubble-time">{{ msg.timestamp | date: 'HH:mm' }}</span>
+                </div>
+              </div>
+            </div>
+          }
+        }
+
+        <!-- Typing indicator -->
+        @if (ws.isTyping()) {
+          <div class="typing-row">
+            <div class="typing-indicator">
+              <span></span><span></span><span></span>
+            </div>
+            <span class="typing-label">{{ ws.typingLabel() }}</span>
+          </div>
+        }
+
+      </div>
+    }
+
+    <!-- Message input -->
+    <div class="input-bar">
+      <mat-form-field appearance="outline" class="msg-field">
+        <input
+          matInput
+          [ngModel]="messageText()"
+          (ngModelChange)="messageText.set($event)"
+          (keydown)="onKeyDown($event)"
+          [placeholder]="ws.currentRoom() ? 'Message #' + ws.currentRoom() : 'Join a channel first'"
+          [disabled]="!ws.connected() || !ws.currentRoom()"
+          autocomplete="off"
+        />
+      </mat-form-field>
+      <button
+        mat-fab
+        class="send-btn"
+        (click)="sendMessage()"
+        [disabled]="!messageText().trim() || !ws.connected()"
+        matTooltip="Send (Enter)"
+      >
+        <mat-icon>send</mat-icon>
+      </button>
+    </div>
+
+    <!-- How WebSocket works footer -->
+    <div class="ws-explainer">
+      <mat-icon>info_outline</mat-icon>
+      <span>
+        <strong>How it works:</strong>
+        Browser ↔ Socket.IO (WebSocket) ↔ Express server.
+        Messages persist in <strong>Redis</strong> (50 per room, 24h TTL).
+        Typing indicators, online users, and system messages are all pushed in real-time — zero polling.
+      </span>
+    </div>
+
+  </main>
+
+</div>

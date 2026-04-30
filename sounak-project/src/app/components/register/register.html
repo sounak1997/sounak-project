@@ -1,37 +1,61 @@
-<div class="auth-container">
-  <mat-card>
-    <mat-card-header>
-      <mat-card-title>Register</mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
-      <form (ngSubmit)="onSubmit()">
-        <mat-form-field appearance="fill" class="full-width-input">
-          <mat-label>Name</mat-label>
-          <input matInput [(ngModel)]="name" name="name" required>
-        </mat-form-field>
+<div class="auth-page">
+  <div class="auth-brand">
+    <div class="brand-icon">
+      <mat-icon>bolt</mat-icon>
+    </div>
+    <h2>SounakApp</h2>
+    <p>Angular 20 · Signals · NgRx · Redis · RabbitMQ</p>
+  </div>
 
-        <mat-form-field appearance="fill" class="full-width-input">
-          <mat-label>Email</mat-label>
-          <input matInput type="email" [(ngModel)]="email" name="email" required>
-        </mat-form-field>
+  <div class="auth-card">
+    <div class="card-header">
+      <mat-icon class="header-icon">person_add</mat-icon>
+      <h1>Create account</h1>
+      <p>Join and explore all features</p>
+    </div>
 
-        <mat-form-field appearance="fill" class="full-width-input">
-          <mat-label>Password</mat-label>
-          <input matInput type="password" [(ngModel)]="password" name="password" required>
-        </mat-form-field>
+    <form (ngSubmit)="onSubmit()" class="auth-form">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Full name</mat-label>
+        <mat-icon matPrefix>person</mat-icon>
+        <input matInput [(ngModel)]="name" name="name" required autocomplete="name" />
+      </mat-form-field>
 
-        <mat-form-field appearance="fill" class="full-width-input">
-          <mat-label>Confirm Password</mat-label>
-          <input matInput type="password" [(ngModel)]="confirmPassword" name="confirmPassword" required>
-        </mat-form-field>
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Email address</mat-label>
+        <mat-icon matPrefix>email</mat-icon>
+        <input matInput type="email" [(ngModel)]="email" name="email" required autocomplete="email" />
+      </mat-form-field>
 
-        <button mat-raised-button color="primary" type="submit" [disabled]="loading">
-          {{ loading ? 'Registering...' : 'Register' }}
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Password</mat-label>
+        <mat-icon matPrefix>lock</mat-icon>
+        <input matInput [type]="showPassword ? 'text' : 'password'" [(ngModel)]="password" name="password" required />
+        <button mat-icon-button matSuffix type="button" (click)="showPassword = !showPassword">
+          <mat-icon>{{ showPassword ? 'visibility_off' : 'visibility' }}</mat-icon>
         </button>
-      </form>
-    </mat-card-content>
-    <mat-card-actions align="end">
-      <button mat-button routerLink="/login">Already have an account? Login</button>
-    </mat-card-actions>
-  </mat-card>
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Confirm password</mat-label>
+        <mat-icon matPrefix>lock_outline</mat-icon>
+        <input matInput [type]="showPassword ? 'text' : 'password'" [(ngModel)]="confirmPassword" name="confirmPassword" required />
+      </mat-form-field>
+
+      <button mat-raised-button class="submit-btn" type="submit" [disabled]="loading">
+        <mat-icon>{{ loading ? 'hourglass_empty' : 'how_to_reg' }}</mat-icon>
+        {{ loading ? 'Creating account...' : 'Create Account' }}
+      </button>
+    </form>
+
+    <div class="card-footer">
+      <span>Already have an account?</span>
+      <a routerLink="/login">Sign in</a>
+    </div>
+
+    <div class="rabbitmq-hint">
+      <mat-icon>campaign</mat-icon>
+      Registering triggers a RabbitMQ event — check Live Notifications!
+    </div>
+  </div>
 </div>

@@ -1,0 +1,151 @@
+<div class="signal-counter-page">
+
+  <div class="page-header">
+    <h1><mat-icon>bolt</mat-icon> Angular Signals Demo</h1>
+    <span class="tag">signal · computed · effect · model · input · output</span>
+  </div>
+
+  <div class="demo-grid">
+
+    <!-- Counter Card -->
+    <mat-card class="demo-card counter-card">
+      <mat-card-header>
+        <mat-card-title>Counter — <code>signal()</code></mat-card-title>
+        <mat-card-subtitle>Writable signal with update(), set()</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+
+        <div class="big-counter" [class.positive]="count() > 0" [class.negative]="count() < 0">
+          {{ count() }}
+        </div>
+
+        <div class="progress-track">
+          <div class="progress-fill" [ngStyle]="progressStyle()"></div>
+        </div>
+        <div class="progress-labels">
+          <span>{{ minValue() }}</span>
+          <span>{{ percentage() }}%</span>
+          <span>{{ maxValue() }}</span>
+        </div>
+
+        <div class="status-label">{{ statusLabel() }}</div>
+
+        <!-- model() two-way binding to child component -->
+        <app-step-control [(value)]="step" />
+
+        <div class="counter-actions">
+          <button mat-raised-button color="warn" (click)="decrement()" [disabled]="isAtMin()">
+            <mat-icon>remove</mat-icon> -{{ step() }}
+          </button>
+          <button mat-stroked-button (click)="reset()">Reset</button>
+          <button mat-raised-button color="primary" (click)="increment()" [disabled]="isAtMax()">
+            +{{ step() }} <mat-icon>add</mat-icon>
+          </button>
+        </div>
+
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Computed Values Card -->
+    <mat-card class="demo-card">
+      <mat-card-header>
+        <mat-card-title>Derived State — <code>computed()</code></mat-card-title>
+        <mat-card-subtitle>Cached, lazy, auto-updated when source changes</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="computed-grid">
+          <div class="computed-item">
+            <span class="label">count()</span>
+            <span class="value primary">{{ count() }}</span>
+          </div>
+          <div class="computed-item">
+            <span class="label">doubled()</span>
+            <span class="value">{{ doubled() }}</span>
+          </div>
+          <div class="computed-item">
+            <span class="label">squared()</span>
+            <span class="value">{{ squared() }}</span>
+          </div>
+          <div class="computed-item">
+            <span class="label">isEven()</span>
+            <span class="value" [class.true-val]="isEven()">{{ isEven() }}</span>
+          </div>
+          <div class="computed-item">
+            <span class="label">percentage()</span>
+            <span class="value">{{ percentage() }}%</span>
+          </div>
+          <div class="computed-item">
+            <span class="label">isAtMax()</span>
+            <span class="value" [class.true-val]="isAtMax()">{{ isAtMax() }}</span>
+          </div>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- History Card -->
+    <mat-card class="demo-card">
+      <mat-card-header>
+        <mat-card-title>History — <code>signal&lt;number[]&gt;()</code></mat-card-title>
+        <mat-card-subtitle>Last 10 values tracked via update()</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="history-list">
+          @for (val of history(); track $index) {
+            <span class="history-item" [class.positive]="val > 0" [class.negative]="val < 0">
+              {{ val }}
+            </span>
+          }
+        </div>
+        <p class="hint">Click + / − to see the history update</p>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Signal Input Demo Card -->
+    <mat-card class="demo-card">
+      <mat-card-header>
+        <mat-card-title>Signal Inputs — <code>input()</code></mat-card-title>
+        <mat-card-subtitle>Read-only signals passed from parent</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="input-demo">
+          <div class="input-row">
+            <code>maxValue()</code>
+            <span class="badge">{{ maxValue() }}</span>
+          </div>
+          <div class="input-row">
+            <code>minValue()</code>
+            <span class="badge">{{ minValue() }}</span>
+          </div>
+          <div class="input-row">
+            <code>step (model)</code>
+            <span class="badge purple">{{ step() }}</span>
+          </div>
+        </div>
+        <mat-divider></mat-divider>
+        <div class="code-block">
+          <code>readonly maxValue = input&lt;number&gt;(100);</code><br>
+          <code>readonly step = model(1);&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// two-way</code>
+        </div>
+      </mat-card-content>
+    </mat-card>
+
+    <!-- Effect explanation card -->
+    <mat-card class="demo-card effect-card">
+      <mat-card-header>
+        <mat-card-title>Side Effects — <code>effect()</code></mat-card-title>
+        <mat-card-subtitle>Runs automatically when tracked signals change</mat-card-subtitle>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="code-block">
+          <code>effect(() => &#123;</code><br>
+          <code>&nbsp;&nbsp;const current = this.count();</code><br>
+          <code>&nbsp;&nbsp;console.log('count =', current);</code><br>
+          <code>&nbsp;&nbsp;this.countChanged.emit(current);</code><br>
+          <code>&#125;);</code>
+        </div>
+        <p class="hint">Open DevTools console and click + / − to see effect logs</p>
+      </mat-card-content>
+    </mat-card>
+
+  </div>
+</div>
