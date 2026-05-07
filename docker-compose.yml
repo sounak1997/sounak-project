@@ -1,0 +1,77 @@
+version: '3.9'
+
+services:
+
+  # --- Redis: caching and rate-limit counters ---
+  redis:
+    image: redis:7-alpine
+    container_name: sounak-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- RabbitMQ: async event queue ---
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: sounak-rabbitmq
+    ports:
+      - "5672:5672"    # AMQP protocol
+      - "15672:15672"  # Management UI → http://localhost:15672 (admin/admin)
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+
+  # --- Express Backend ---
+  backend:
+    build:
+      context: ./sounak-backend
+      dockerfile: Dockerfile
+    container_name: sounak-backend
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./sounak-backend/.env
+    environment:
+      NODE_ENV: production
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Nginx: reverse proxy + rate limiting + SPA serving ---
+  nginx:
+    image: nginx:alpine
+    container_name: sounak-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./sounak-project/dist/sounak-project/browser:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  rabbitmq_data:
