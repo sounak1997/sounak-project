@@ -1,81 +1,275 @@
-.user-list-container {
+.page-wrapper {
+  min-height: 100vh;
+  background: #f0f2f8;
+  font-family: 'Roboto', sans-serif;
+  padding: 0 0 48px;
+}
+
+/* ─── PAGE HEADER ───────────────────────────────────────────────── */
+.page-header {
   display: flex;
-  justify-content: center; // Center the card horizontally
-  padding: 24px; // Overall page padding
+  align-items: center;
+  gap: 12px;
+  padding: 16px 28px;
+  background: #1a1a2e;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 
-  mat-card {
-    width: 100%;
-    max-width: 600px; // Set a reasonable max width for the list card
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); // Soft, elevated shadow
-    transition: box-shadow 0.3s ease-in-out;
+  .back-btn {
+    color: rgba(255,255,255,0.7);
+    &:hover { color: #fff; }
+  }
 
-    &:hover {
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15); // Slight lift on hover
-    }
+  .header-text {
+    flex: 1;
+    h1 { margin: 0; font-size: 18px; font-weight: 700; color: #fff; }
+    .header-sub { font-size: 11px; color: rgba(255,255,255,0.45); letter-spacing: 0.4px; }
+  }
 
-    mat-card-header {
-      padding-bottom: 16px; // Add space below the header
-      border-bottom: 1px solid #eee; // Subtle separator
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
 
-      mat-card-title {
-        font-size: 1.5rem;
-        font-weight: 500;
-        color: #3f51b5; // Primary color for the title
-      }
-    }
+  .total-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 20px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    mat-icon { font-size: 16px; width: 16px; height: 16px; }
+  }
 
-    mat-card-content {
-      padding-top: 16px;
-    }
-
-    .loading-spinner {
-      display: flex;
-      justify-content: center;
-      padding: 30px;
-    }
+  .reload-btn {
+    color: rgba(255,255,255,0.8);
+    border-color: rgba(255,255,255,0.25);
+    font-size: 13px;
+    mat-icon { font-size: 16px; width: 16px; height: 16px; margin-right: 4px; }
   }
 }
 
-mat-list {
-  padding: 0; // Remove default mat-list padding
+/* ─── TABLE CARD ────────────────────────────────────────────────── */
+.table-card {
+  max-width: 1000px;
+  margin: 32px auto 0;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
 
-  mat-list-item {
-    height: auto !important; // Allow items to grow based on content
-    padding: 12px 0; // Vertical spacing for list items
-    border-bottom: 1px dashed #f0f0f0; // Subtle separation between users
+/* ─── SEARCH BAR ────────────────────────────────────────────────── */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px 8px;
+  border-bottom: 1px solid #f0f2f8;
 
-    &:last-child {
-      border-bottom: none;
+  .search-field {
+    flex: 1;
+
+    mat-icon[matPrefix] {
+      color: #999;
+      margin-right: 4px;
     }
+  }
 
-    // Custom layout for the list item content
-    ::ng-deep .mat-list-item-content {
-      display: flex;
-      justify-content: space-between; // Distribute space between text and button
-      align-items: center;
-      width: 100%;
-      padding: 0 16px; // Internal padding for the list item content
-    }
-
-    .user-info {
-      display: flex;
-      flex-direction: column;
-
-      div[matListItemTitle] {
-        font-weight: 600;
-        color: #333;
-      }
-      div[matListItemLine] {
-        font-size: 0.85em;
-        color: #777;
-      }
-    }
+  .filter-hint {
+    font-size: 12px;
+    color: #888;
+    white-space: nowrap;
   }
 }
 
-#noUsers,
-.error-message {
-  text-align: center;
-  padding: 20px;
-  color: #a00; // Red for errors
+/* ─── LOADING / ERROR STATES ────────────────────────────────────── */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 48px;
+  color: #888;
+  font-size: 14px;
+}
+
+.error-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 24px;
+  background: #fff3f3;
+  color: #c62828;
+  font-size: 14px;
+  mat-icon { font-size: 20px; }
+  button { color: #1976d2; }
+}
+
+/* ─── TABLE ─────────────────────────────────────────────────────── */
+.table-wrapper {
+  overflow-x: auto;
+  max-height: 520px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar { width: 4px; height: 4px; }
+  &::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  .mat-mdc-header-row {
+    background: #f8f9fc;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  th.mat-mdc-header-cell {
+    font-size: 12px;
+    font-weight: 700;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 16px;
+    border-bottom: 2px solid #f0f2f8;
+  }
+
+  td.mat-mdc-cell {
+    padding: 12px 16px;
+    border-bottom: 1px solid #f5f5f7;
+    font-size: 14px;
+    color: #333;
+    vertical-align: middle;
+  }
+
+  .data-row {
+    transition: background 0.15s;
+    &:hover { background: #f8f9ff; }
+    &:last-child td { border-bottom: none; }
+  }
+}
+
+/* Avatar cell */
+.user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+/* Name cell */
+.user-name {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* Email cell */
+.email-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  .email-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    color: #aaa;
+    flex-shrink: 0;
+  }
+
+  .user-email {
+    color: #555;
+    font-size: 13px;
+  }
+}
+
+/* Password cell */
+.password-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  .password-value {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: #444;
+    letter-spacing: 1px;
+    min-width: 80px;
+  }
+
+  .reveal-btn {
+    color: #bbb;
+    width: 28px; height: 28px;
+    mat-icon { font-size: 16px; width: 16px; height: 16px; }
+    &:hover { color: #667eea; }
+  }
+}
+
+.no-password {
+  font-size: 11px;
+  color: #bbb;
+  font-style: italic;
+}
+
+/* Action button */
+.action-btn {
+  color: #bbb;
+  &:hover { color: #667eea; }
+}
+
+/* ─── EMPTY STATE ───────────────────────────────────────────────── */
+.no-data-row td {
+  padding: 0 !important;
+  border: none !important;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 48px;
+  color: #bbb;
+
+  mat-icon { font-size: 48px; width: 48px; height: 48px; opacity: 0.5; }
+  p { margin: 0; font-size: 14px; }
+}
+
+/* ─── PAGINATOR ─────────────────────────────────────────────────── */
+mat-paginator {
+  border-top: 1px solid #f0f2f8;
+  background: #fafbff;
+  border-radius: 0 0 16px 16px;
+}
+
+/* ─── NGRX INFO BANNER ──────────────────────────────────────────── */
+.ngrx-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 1000px;
+  margin: 20px auto 0;
+  padding: 14px 18px;
+  background: #e8f4fd;
+  border-radius: 12px;
+  font-size: 13px;
+  color: #1565c0;
+
+  mat-icon { font-size: 18px; width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; color: #1976d2; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
 }

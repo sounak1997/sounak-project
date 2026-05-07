@@ -1,6 +1,6 @@
 // src/app/models/user.model.ts
 export interface User {
-  id: number;      // id must exist
+  id: number;
   name: string;
   email: string;
 }

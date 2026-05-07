@@ -19,6 +19,8 @@ import { DatePipe } from '@angular/common';
 import { WebSocketService, ChatMessage } from '../../services/websocket.service';
 import { AuthService } from '../../services/auth.service';
 
+type SidebarTab = 'channels' | 'people';
+
 @Component({
   selector: 'app-chat',
   standalone: true,
@@ -36,32 +38,40 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
   readonly ws = inject(WebSocketService);
   private authService = inject(AuthService);
 
-  // viewChild signal — references the message feed div for auto-scroll
   readonly feedEl = viewChild<ElementRef>('messageFeed');
 
-  // Local component signals
   readonly messageText = signal('');
   readonly sidebarOpen = signal(true);
+  readonly sidebarTab  = signal<SidebarTab>('channels');
   private shouldScroll = false;
 
-  // Current user info
-  readonly currentUserId = computed(() => this.authService.currentUserValue?._id ?? '');
+  readonly currentUserId   = computed(() => this.authService.currentUserValue?._id ?? '');
   readonly currentUsername = computed(() => this.authService.currentUserValue?.name ?? 'You');
 
-  // Computed: separate chat messages from system messages
-  readonly chatMessages = computed(() =>
-    this.ws.messages().filter(m => m.type === 'message')
-  );
   readonly allMessages = computed(() => this.ws.messages());
 
+  readonly inputPlaceholder = computed(() => {
+    const room = this.ws.currentRoom();
+    if (!room) return 'Join a channel first';
+    if (this.ws.isDMRoom()) {
+      return `Message ${this.ws.getRoomLabel(room)}`;
+    }
+    return `Message #${room}`;
+  });
+
+  readonly roomTitle = computed(() => {
+    const room = this.ws.currentRoom();
+    if (!room) return 'Select a channel';
+    if (this.ws.isDMRoom()) return this.ws.getRoomLabel(room);
+    return '# ' + room;
+  });
+
   constructor() {
-    // Auto-scroll whenever messages change
     effect(() => {
       this.allMessages();
       this.shouldScroll = true;
     });
 
-    // Auto-join #general once WebSocket connects (effect() must be in constructor)
     effect(() => {
       if (this.ws.connected() && !this.ws.currentRoom()) {
         this.ws.joinRoom('general');
@@ -84,12 +94,22 @@ export class ChatComponent implements OnInit, OnDestroy, AfterViewChecked {
     this.ws.disconnect();
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
   joinRoom(roomId: string): void {
     if (this.ws.currentRoom() === roomId) return;
     this.ws.joinRoom(roomId);
-    // Close sidebar on mobile after selecting a room
     if (window.innerWidth < 768) this.sidebarOpen.set(false);
+  }
+
+  startDM(userId: string, username: string): void {
+    this.ws.startDM(userId, username);
+    this.sidebarTab.set('channels');
+    if (window.innerWidth < 768) this.sidebarOpen.set(false);
+  }
+
+  openDMRoom(roomId: string): void {
+    if (this.ws.currentRoom() === roomId) return;
+    const dm = this.ws.dmRooms().find(r => r.roomId === roomId);
+    if (dm) this.ws.startDM(dm.partnerId, dm.partnerUsername);
   }
 
   sendMessage(): void {

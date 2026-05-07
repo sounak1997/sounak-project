@@ -1,40 +1,151 @@
-<div class="user-list-container">
-  <mat-card>
-    <mat-card-header>
-      <mat-card-title>All Users</mat-card-title>
-    </mat-card-header>
-    <mat-card-content>
+<div class="page-wrapper">
 
-      <div *ngIf="loading$ | async" class="loading-spinner">
+  <!-- ── PAGE HEADER ──────────────────────────────────────────────── -->
+  <div class="page-header">
+    <button mat-icon-button class="back-btn" (click)="goBack()" matTooltip="Back to Dashboard">
+      <mat-icon>arrow_back</mat-icon>
+    </button>
+    <div class="header-text">
+      <h1>User Directory</h1>
+      <span class="header-sub">Managed via NgRx Store — no repeat API calls</span>
+    </div>
+    <div class="header-actions">
+      <span class="total-badge">
+        <mat-icon>people</mat-icon>
+        {{ totalUsers() }} users
+      </span>
+      <button mat-stroked-button class="reload-btn" (click)="reload()">
+        <mat-icon>refresh</mat-icon> Reload
+      </button>
+    </div>
+  </div>
+
+  <!-- ── MAIN CARD ────────────────────────────────────────────────── -->
+  <div class="table-card">
+
+    <!-- Search bar -->
+    <div class="search-bar">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          matInput
+          [ngModel]="searchText()"
+          (ngModelChange)="applyFilter($event)"
+          placeholder="Search by name or email…"
+        />
+        @if (searchText()) {
+          <button matSuffix mat-icon-button (click)="clearSearch()" matTooltip="Clear">
+            <mat-icon>close</mat-icon>
+          </button>
+        }
+      </mat-form-field>
+
+      @if (searchText()) {
+        <span class="filter-hint">
+          Showing {{ dataSource.filteredData.length }} of {{ totalUsers() }} users
+        </span>
+      }
+    </div>
+
+    <!-- Loading -->
+    @if (loading$ | async) {
+      <div class="loading-state">
         <mat-spinner diameter="40"></mat-spinner>
+        <span>Loading users from store…</span>
+      </div>
+    }
+
+    <!-- Error -->
+    @if (error$ | async) {
+      <div class="error-state">
+        <mat-icon>error_outline</mat-icon>
+        <span>Failed to load users.</span>
+        <button mat-button (click)="reload()">Retry</button>
+      </div>
+    }
+
+    <!-- Table -->
+    @if (!(loading$ | async)) {
+      <div class="table-wrapper">
+        <table mat-table [dataSource]="dataSource" matSort class="users-table">
+
+          <!-- Avatar column -->
+          <ng-container matColumnDef="avatar">
+            <th mat-header-cell *matHeaderCellDef></th>
+            <td mat-cell *matCellDef="let user">
+              <div class="user-avatar" [style.background]="getAvatarColor(user.name)">
+                {{ getInitial(user.name) }}
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Name column -->
+          <ng-container matColumnDef="name">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
+            <td mat-cell *matCellDef="let user">
+              <span class="user-name">{{ user.name | capitalizeWord }}</span>
+            </td>
+          </ng-container>
+
+          <!-- Email column -->
+          <ng-container matColumnDef="email">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header>Email</th>
+            <td mat-cell *matCellDef="let user">
+              <div class="email-cell">
+                <mat-icon class="email-icon">mail_outline</mat-icon>
+                <span class="user-email">{{ user.email }}</span>
+              </div>
+            </td>
+          </ng-container>
+
+          <!-- Actions column -->
+          <ng-container matColumnDef="actions">
+            <th mat-header-cell *matHeaderCellDef></th>
+            <td mat-cell *matCellDef="let user">
+              <button
+                mat-icon-button
+                class="action-btn"
+                matTooltip="View profile"
+                (click)="showProfile(user)"
+              >
+                <mat-icon>person_outline</mat-icon>
+              </button>
+            </td>
+          </ng-container>
+
+          <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="data-row"></tr>
+
+          <!-- No data row -->
+          <tr class="mat-row no-data-row" *matNoDataRow>
+            <td class="mat-cell" [attr.colspan]="displayedColumns.length">
+              <div class="empty-state">
+                <mat-icon>people_outline</mat-icon>
+                <p>{{ searchText() ? 'No users match "' + searchText() + '"' : 'No users found' }}</p>
+              </div>
+            </td>
+          </tr>
+        </table>
       </div>
 
-      <mat-list *ngIf="(users$ | async) as users">
-        <div *ngIf="users.length > 0; else noUsers">
-          <mat-list-item *ngFor="let user of users; trackBy: trackById">
+      <!-- Paginator -->
+      <mat-paginator
+        [pageSizeOptions]="[10, 20, 50]"
+        pageSize="10"
+        showFirstLastButtons
+        aria-label="Select page"
+      ></mat-paginator>
+    }
 
-            <div class="user-info">
-              <div matListItemTitle>{{ user.name | capitalizeWord }}</div>
-              <div matListItemLine>{{ user.email }}</div>
-            </div>
+  </div>
 
-            <button mat-icon-button color="primary" (click)="showProfile(user)"
-              [attr.aria-label]="'Show profile information for ' + user.name">
-              <mat-icon>info</mat-icon>
-            </button>
+  <!-- NgRx info banner -->
+  <div class="ngrx-banner">
+    <mat-icon>info_outline</mat-icon>
+    <span>
+      <strong>NgRx Store:</strong> Users are fetched once and cached in the store.
+      Navigating away and back does <em>not</em> trigger another API call — the store serves the data instantly.
+    </span>
+  </div>
 
-          </mat-list-item>
-        </div>
-
-        <ng-template #noUsers>
-          <p id="noUsers">No users found.</p>
-        </ng-template>
-      </mat-list>
-
-      <div *ngIf="error$ | async" class="error-message">
-        <p>Failed to load users. Please try again later.</p>
-      </div>
-
-    </mat-card-content>
-  </mat-card>
 </div>

