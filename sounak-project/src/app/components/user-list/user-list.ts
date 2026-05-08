@@ -1,6 +1,4 @@
-import { Component, OnInit, ViewChild, AfterViewInit, signal } from '@angular/core';
-import { Store, select } from '@ngrx/store';
-import { Observable } from 'rxjs';
+import { Component, OnInit, ViewChild, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -13,13 +11,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MatChipsModule } from '@angular/material/chips';
-
-import { User } from '../../models/user.model';
-import { loadUsers } from '../../store/user/user.actions';
-import { selectUsers, selectUsersLoading, selectUsersError } from '../../store/user/user.selectors';
-import { CapitalizeWordPipe } from '../../pipes/capitalize-word-pipe';
 import { Router } from '@angular/router';
+
+import { ApiService } from '../../services/api.service';
+import { CapitalizeWordPipe } from '../../pipes/capitalize-word-pipe';
 
 @Component({
   selector: 'app-user-list',
@@ -32,64 +27,55 @@ import { Router } from '@angular/router';
     MatCardModule, MatProgressSpinnerModule,
     MatButtonModule, MatIconModule,
     MatInputModule, MatFormFieldModule,
-    MatTooltipModule, MatChipsModule,
+    MatTooltipModule,
     CapitalizeWordPipe,
   ],
 })
-export class UserListComponent implements OnInit, AfterViewInit {
+export class UserListComponent implements OnInit {
 
-  // Use setters so the paginator/sort connect the moment Angular renders them
-  private _paginator!: MatPaginator;
+  private api    = inject(ApiService);
+  private router = inject(Router);
+
+  // Paginator/sort setters — connect the moment Angular renders them
   @ViewChild(MatPaginator) set paginator(p: MatPaginator) {
-    if (p) {
-      this._paginator = p;
-      this.dataSource.paginator = p;
-    }
+    if (p) this.dataSource.paginator = p;
   }
-
-  private _sort!: MatSort;
   @ViewChild(MatSort) set sort(s: MatSort) {
-    if (s) {
-      this._sort = s;
-      this.dataSource.sort = s;
-    }
+    if (s) this.dataSource.sort = s;
   }
 
-  loading$: Observable<boolean>;
-  error$: Observable<any>;
-
-  readonly dataSource = new MatTableDataSource<User>([]);
+  readonly dataSource      = new MatTableDataSource<any>([]);
   readonly displayedColumns = ['avatar', 'name', 'email', 'actions'];
-  readonly searchText = signal('');
-  readonly totalUsers = signal(0);
-
-  constructor(private store: Store, private router: Router) {
-    this.loading$ = this.store.pipe(select(selectUsersLoading));
-    this.error$   = this.store.pipe(select(selectUsersError));
-  }
+  readonly searchText      = signal('');
+  readonly totalUsers      = signal(0);
+  readonly loading         = signal(false);
+  readonly errorMsg        = signal<string | null>(null);
 
   ngOnInit(): void {
-    // Always reload to get the latest list — don't rely on cache
-    this.store.dispatch(loadUsers());
-
-    this.store.pipe(select(selectUsers)).subscribe(users => {
-      this.dataSource.data = users;
-      this.totalUsers.set(users.length);
-      // Re-attach paginator after data arrives in case it rendered late
-      if (this._paginator) this.dataSource.paginator = this._paginator;
-      if (this._sort)      this.dataSource.sort      = this._sort;
-    });
-
-    this.dataSource.filterPredicate = (user: User, filter: string) => {
-      const term = filter.toLowerCase();
-      return user.name.toLowerCase().includes(term) ||
-             user.email.toLowerCase().includes(term);
+    this.dataSource.filterPredicate = (user: any, filter: string) => {
+      const t = filter.toLowerCase();
+      return (user.name ?? '').toLowerCase().includes(t) ||
+             (user.email ?? '').toLowerCase().includes(t);
     };
+    this.fetchUsers();
   }
 
-  ngAfterViewInit(): void {
-    if (this._paginator) this.dataSource.paginator = this._paginator;
-    if (this._sort)      this.dataSource.sort      = this._sort;
+  fetchUsers(): void {
+    this.loading.set(true);
+    this.errorMsg.set(null);
+    this.api.getUsers().subscribe({
+      next: (data: any) => {
+        // API returns a plain array [{_id, name, email}, ...]
+        const users = Array.isArray(data) ? data : (data.users ?? data.data ?? []);
+        this.dataSource.data = users;
+        this.totalUsers.set(users.length);
+        this.loading.set(false);
+      },
+      error: () => {
+        this.errorMsg.set('Could not load users. Is the backend running?');
+        this.loading.set(false);
+      },
+    });
   }
 
   applyFilter(value: string): void {
@@ -100,17 +86,15 @@ export class UserListComponent implements OnInit, AfterViewInit {
 
   clearSearch(): void { this.applyFilter(''); }
 
-  getInitial(name: string): string { return name ? name.charAt(0).toUpperCase() : '?'; }
+  getInitial(name: string): string { return (name ?? '?').charAt(0).toUpperCase(); }
 
   getAvatarColor(name: string): string {
     const colors = ['#667eea', '#11998e', '#f57c00', '#e91e63', '#1976d2', '#7c3aed', '#00897b'];
-    return colors[name.charCodeAt(0) % colors.length];
+    return colors[(name?.charCodeAt(0) ?? 0) % colors.length];
   }
 
-  showProfile(user: User): void { console.log('Profile:', user); }
+  goBack():  void { this.router.navigate(['/dashboard']); }
+  reload():  void { this.fetchUsers(); }
 
-  goBack(): void  { this.router.navigate(['/dashboard']); }
-  reload(): void  { this.store.dispatch(loadUsers()); }
-
-  trackById(_: number, user: User): any { return (user as any)._id ?? user.id; }
+  trackById(_: number, user: any): string { return user._id ?? user.id; }
 }

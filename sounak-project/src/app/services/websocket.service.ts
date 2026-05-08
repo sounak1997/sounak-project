@@ -87,11 +87,15 @@ export class WebSocketService implements OnDestroy {
     if (this.socket?.connected) return;
     this.connecting.set(true);
 
-    this.socket = io('http://localhost:3000', {
-      transports: ['websocket'],
+    const serverUrl = typeof window !== 'undefined'
+      ? window.location.origin
+      : 'http://localhost:3000';
+
+    this.socket = io(serverUrl, {
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
     });
 
     this.socket.on('connect', () => {
