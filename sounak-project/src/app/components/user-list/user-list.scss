@@ -90,14 +90,15 @@
 }
 
 /* ─── LOADING / ERROR STATES ────────────────────────────────────── */
-.loading-state {
+.loading-overlay {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
-  padding: 48px;
-  color: #888;
-  font-size: 14px;
+  gap: 12px;
+  padding: 12px 24px;
+  background: #f0f4ff;
+  border-bottom: 1px solid #e0e8ff;
+  font-size: 13px;
+  color: #667eea;
 }
 
 .error-state {
@@ -115,8 +116,11 @@
 /* ─── TABLE ─────────────────────────────────────────────────────── */
 .table-wrapper {
   overflow-x: auto;
-  max-height: 520px;
+  max-height: 560px;
   overflow-y: auto;
+  transition: opacity 0.2s;
+
+  &.dimmed { opacity: 0.4; pointer-events: none; }
 
   &::-webkit-scrollbar { width: 4px; height: 4px; }
   &::-webkit-scrollbar-thumb { background: #e0e0e0; border-radius: 2px; }

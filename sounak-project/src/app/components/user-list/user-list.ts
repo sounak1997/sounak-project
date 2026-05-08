@@ -1,6 +1,6 @@
 import { Component, OnInit, ViewChild, AfterViewInit, signal } from '@angular/core';
 import { Store, select } from '@ngrx/store';
-import { Observable, take } from 'rxjs';
+import { Observable } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatTableModule, MatTableDataSource } from '@angular/material/table';
@@ -37,8 +37,23 @@ import { Router } from '@angular/router';
   ],
 })
 export class UserListComponent implements OnInit, AfterViewInit {
-  @ViewChild(MatPaginator) paginator!: MatPaginator;
-  @ViewChild(MatSort) sort!: MatSort;
+
+  // Use setters so the paginator/sort connect the moment Angular renders them
+  private _paginator!: MatPaginator;
+  @ViewChild(MatPaginator) set paginator(p: MatPaginator) {
+    if (p) {
+      this._paginator = p;
+      this.dataSource.paginator = p;
+    }
+  }
+
+  private _sort!: MatSort;
+  @ViewChild(MatSort) set sort(s: MatSort) {
+    if (s) {
+      this._sort = s;
+      this.dataSource.sort = s;
+    }
+  }
 
   loading$: Observable<boolean>;
   error$: Observable<any>;
@@ -54,23 +69,17 @@ export class UserListComponent implements OnInit, AfterViewInit {
   }
 
   ngOnInit(): void {
-    this.store.pipe(select(selectUsers), take(1)).subscribe(users => {
-      if (!users || users.length === 0) {
-        this.store.dispatch(loadUsers());
-      }
-    });
+    // Always reload to get the latest list — don't rely on cache
+    this.store.dispatch(loadUsers());
 
-    // Keep dataSource in sync with the store
     this.store.pipe(select(selectUsers)).subscribe(users => {
       this.dataSource.data = users;
       this.totalUsers.set(users.length);
+      // Re-attach paginator after data arrives in case it rendered late
+      if (this._paginator) this.dataSource.paginator = this._paginator;
+      if (this._sort)      this.dataSource.sort      = this._sort;
     });
-  }
 
-  ngAfterViewInit(): void {
-    this.dataSource.paginator = this.paginator;
-    this.dataSource.sort      = this.sort;
-    // Custom filter predicate: search across name and email
     this.dataSource.filterPredicate = (user: User, filter: string) => {
       const term = filter.toLowerCase();
       return user.name.toLowerCase().includes(term) ||
@@ -78,41 +87,30 @@ export class UserListComponent implements OnInit, AfterViewInit {
     };
   }
 
+  ngAfterViewInit(): void {
+    if (this._paginator) this.dataSource.paginator = this._paginator;
+    if (this._sort)      this.dataSource.sort      = this._sort;
+  }
+
   applyFilter(value: string): void {
     this.searchText.set(value);
     this.dataSource.filter = value.trim().toLowerCase();
-    if (this.dataSource.paginator) {
-      this.dataSource.paginator.firstPage();
-    }
+    if (this.dataSource.paginator) this.dataSource.paginator.firstPage();
   }
 
-  clearSearch(): void {
-    this.applyFilter('');
-  }
+  clearSearch(): void { this.applyFilter(''); }
 
-  getInitial(name: string): string {
-    return name ? name.charAt(0).toUpperCase() : '?';
-  }
+  getInitial(name: string): string { return name ? name.charAt(0).toUpperCase() : '?'; }
 
   getAvatarColor(name: string): string {
     const colors = ['#667eea', '#11998e', '#f57c00', '#e91e63', '#1976d2', '#7c3aed', '#00897b'];
-    const idx = name.charCodeAt(0) % colors.length;
-    return colors[idx];
+    return colors[name.charCodeAt(0) % colors.length];
   }
 
-  showProfile(user: User): void {
-    console.log('Profile:', user);
-  }
+  showProfile(user: User): void { console.log('Profile:', user); }
 
-  goBack(): void {
-    this.router.navigate(['/dashboard']);
-  }
+  goBack(): void  { this.router.navigate(['/dashboard']); }
+  reload(): void  { this.store.dispatch(loadUsers()); }
 
-  reload(): void {
-    this.store.dispatch(loadUsers());
-  }
-
-  trackById(_: number, user: User): number {
-    return user.id;
-  }
+  trackById(_: number, user: User): any { return (user as any)._id ?? user.id; }
 }

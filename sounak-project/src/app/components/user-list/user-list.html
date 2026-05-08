@@ -47,11 +47,11 @@
       }
     </div>
 
-    <!-- Loading -->
+    <!-- Loading overlay (sits on top of table, does NOT remove it from DOM) -->
     @if (loading$ | async) {
-      <div class="loading-state">
+      <div class="loading-overlay">
         <mat-spinner diameter="40"></mat-spinner>
-        <span>Loading users from store…</span>
+        <span>Loading users…</span>
       </div>
     }
 
@@ -64,78 +64,71 @@
       </div>
     }
 
-    <!-- Table -->
-    @if (!(loading$ | async)) {
-      <div class="table-wrapper">
-        <table mat-table [dataSource]="dataSource" matSort class="users-table">
+    <!-- Table — always in DOM so @ViewChild paginator/sort resolve correctly -->
+    <div class="table-wrapper" [class.dimmed]="loading$ | async">
+      <table mat-table [dataSource]="dataSource" matSort class="users-table">
 
-          <!-- Avatar column -->
-          <ng-container matColumnDef="avatar">
-            <th mat-header-cell *matHeaderCellDef></th>
-            <td mat-cell *matCellDef="let user">
-              <div class="user-avatar" [style.background]="getAvatarColor(user.name)">
-                {{ getInitial(user.name) }}
-              </div>
-            </td>
-          </ng-container>
+        <!-- Avatar -->
+        <ng-container matColumnDef="avatar">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let user">
+            <div class="user-avatar" [style.background]="getAvatarColor(user.name)">
+              {{ getInitial(user.name) }}
+            </div>
+          </td>
+        </ng-container>
 
-          <!-- Name column -->
-          <ng-container matColumnDef="name">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
-            <td mat-cell *matCellDef="let user">
-              <span class="user-name">{{ user.name | capitalizeWord }}</span>
-            </td>
-          </ng-container>
+        <!-- Name -->
+        <ng-container matColumnDef="name">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Name</th>
+          <td mat-cell *matCellDef="let user">
+            <span class="user-name">{{ user.name | capitalizeWord }}</span>
+          </td>
+        </ng-container>
 
-          <!-- Email column -->
-          <ng-container matColumnDef="email">
-            <th mat-header-cell *matHeaderCellDef mat-sort-header>Email</th>
-            <td mat-cell *matCellDef="let user">
-              <div class="email-cell">
-                <mat-icon class="email-icon">mail_outline</mat-icon>
-                <span class="user-email">{{ user.email }}</span>
-              </div>
-            </td>
-          </ng-container>
+        <!-- Email -->
+        <ng-container matColumnDef="email">
+          <th mat-header-cell *matHeaderCellDef mat-sort-header>Email</th>
+          <td mat-cell *matCellDef="let user">
+            <div class="email-cell">
+              <mat-icon class="email-icon">mail_outline</mat-icon>
+              <span class="user-email">{{ user.email }}</span>
+            </div>
+          </td>
+        </ng-container>
 
-          <!-- Actions column -->
-          <ng-container matColumnDef="actions">
-            <th mat-header-cell *matHeaderCellDef></th>
-            <td mat-cell *matCellDef="let user">
-              <button
-                mat-icon-button
-                class="action-btn"
-                matTooltip="View profile"
-                (click)="showProfile(user)"
-              >
-                <mat-icon>person_outline</mat-icon>
-              </button>
-            </td>
-          </ng-container>
+        <!-- Actions -->
+        <ng-container matColumnDef="actions">
+          <th mat-header-cell *matHeaderCellDef></th>
+          <td mat-cell *matCellDef="let user">
+            <button mat-icon-button class="action-btn" matTooltip="View profile" (click)="showProfile(user)">
+              <mat-icon>person_outline</mat-icon>
+            </button>
+          </td>
+        </ng-container>
 
-          <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
-          <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="data-row"></tr>
+        <tr mat-header-row *matHeaderRowDef="displayedColumns; sticky: true"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;" class="data-row"></tr>
 
-          <!-- No data row -->
-          <tr class="mat-row no-data-row" *matNoDataRow>
-            <td class="mat-cell" [attr.colspan]="displayedColumns.length">
-              <div class="empty-state">
-                <mat-icon>people_outline</mat-icon>
-                <p>{{ searchText() ? 'No users match "' + searchText() + '"' : 'No users found' }}</p>
-              </div>
-            </td>
-          </tr>
-        </table>
-      </div>
+        <!-- No data row -->
+        <tr class="mat-row no-data-row" *matNoDataRow>
+          <td class="mat-cell" [attr.colspan]="displayedColumns.length">
+            <div class="empty-state">
+              <mat-icon>people_outline</mat-icon>
+              <p>{{ searchText() ? 'No users match "' + searchText() + '"' : 'No users yet' }}</p>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
 
-      <!-- Paginator -->
-      <mat-paginator
-        [pageSizeOptions]="[10, 20, 50]"
-        pageSize="10"
-        showFirstLastButtons
-        aria-label="Select page"
-      ></mat-paginator>
-    }
+    <!-- Paginator — always in DOM -->
+    <mat-paginator
+      [pageSizeOptions]="[10, 20, 50]"
+      pageSize="10"
+      showFirstLastButtons
+      aria-label="Select page"
+    ></mat-paginator>
 
   </div>
 

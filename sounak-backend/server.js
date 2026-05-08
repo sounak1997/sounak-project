@@ -94,15 +94,11 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.get('/', (req, res) => {
-  res.send('Node.js Backend — Redis | RabbitMQ | Rate Limiting | SSE | WebSocket (Socket.IO)');
-});
-
 // --- Serve Angular in Production ---
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../my-angular-frontend/dist/my-angular-frontend')));
+  app.use(express.static(path.join(__dirname, '../sounak-project/dist/sounak-project')));
   app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../my-angular-frontend/dist/my-angular-frontend', 'index.html'));
+    res.sendFile(path.resolve(__dirname, '../sounak-project/dist/sounak-project', 'index.html'));
   });
 }
 
