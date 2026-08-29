@@ -21,3 +21,8 @@ node_modules/
 npm-debug.log*
 yarn-error.log*
 .eslintcache
+# Local deploy script (contains EC2 host, CloudFront distribution ID, PEM key path)
+/deploy.sh
+
+# Claude Code settings (machine-local paths and permissions)
+.claude/
