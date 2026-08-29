@@ -69,6 +69,14 @@ export const routes: Routes = [
     title: 'Live Chat — WebSocket',
   },
 
+  {
+    path: 'ai',
+    loadComponent: () =>
+      import('./components/ai-chat/ai-chat.component').then(m => m.AiChatComponent),
+    canActivate: [authGuard],
+    title: 'AI Assistant — Gemini + RAG',
+  },
+
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },
   { path: '**', redirectTo: '/dashboard' },
 ];

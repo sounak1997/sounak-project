@@ -75,6 +75,7 @@ export class DashboardComponent implements OnInit {
   goToNotifications():  void { this.router.navigate(['/notifications']);     }
   goToAddUser():        void { this.router.navigate(['/add-user']);          }
   goToChat():           void { this.router.navigate(['/chat']);              }
+  goToAi():             void { this.router.navigate(['/ai']);                }
 
   logout(): void {
     this.authService.logout();

@@ -1,0 +1,147 @@
+<div class="ai-shell">
+
+  <!-- Header -->
+  <div class="ai-header">
+    <div class="header-info">
+      <mat-icon class="header-icon">auto_awesome</mat-icon>
+      <div>
+        <span class="header-title">AI Assistant</span>
+        <span class="header-sub">Gemini · streamed via SSE · RAG over your documents</span>
+      </div>
+    </div>
+
+    <mat-button-toggle-group
+      class="mode-toggle"
+      [value]="mode()"
+      (change)="setMode($event.value)"
+    >
+      <mat-button-toggle value="chat" matTooltip="Plain chat — general knowledge, streamed live">
+        <mat-icon>chat_bubble_outline</mat-icon> Chat
+      </mat-button-toggle>
+      <mat-button-toggle value="ask" matTooltip="RAG — grounded only in documents you ingested">
+        <mat-icon>manage_search</mat-icon> Search my docs
+      </mat-button-toggle>
+    </mat-button-toggle-group>
+
+    <button mat-icon-button (click)="clear()" matTooltip="Clear conversation" [disabled]="!hasMessages()">
+      <mat-icon>delete_outline</mat-icon>
+    </button>
+  </div>
+
+  <!-- Mode explainer -->
+  <div class="mode-banner" [class.ask-mode]="mode() === 'ask'">
+    @if (mode() === 'chat') {
+      <mat-icon>info_outline</mat-icon>
+      <span>Plain chat — answers from Gemini's general knowledge. Tokens stream in live as they're generated.</span>
+    } @else {
+      <mat-icon>menu_book</mat-icon>
+      <span>RAG mode — answers <strong>only</strong> from documents ingested into the vector store. It will say "I don't know" if the answer isn't in your docs.</span>
+    }
+  </div>
+
+  <!-- Message feed -->
+  <div class="ai-feed" #feed>
+
+    @if (!hasMessages()) {
+      <div class="empty-feed">
+        <mat-icon>{{ mode() === 'chat' ? 'chat_bubble_outline' : 'manage_search' }}</mat-icon>
+        @if (mode() === 'chat') {
+          <p>Ask anything — the reply streams in token by token.</p>
+        } @else {
+          <p>Ask a question about the documents in <code>data/</code>.</p>
+          <p class="hint">Try: "What message queue does the app use?"</p>
+        }
+      </div>
+    }
+
+    @for (bubble of bubbles(); track $index) {
+      <div class="message-row" [class.mine]="bubble.role === 'user'">
+        <div class="avatar" [class.mine-avatar]="bubble.role === 'user'">
+          <mat-icon>{{ bubble.role === 'user' ? 'person' : 'auto_awesome' }}</mat-icon>
+        </div>
+
+        <div class="bubble-group">
+          <div
+            class="bubble"
+            [class.mine-bubble]="bubble.role === 'user'"
+            [class.error-bubble]="bubble.error"
+          >
+            @if (bubble.streaming && !bubble.text) {
+              <span class="thinking-dots"><span></span><span></span><span></span></span>
+            } @else {
+              <span class="bubble-text">{{ bubble.text }}</span>
+              @if (bubble.streaming) {
+                <span class="cursor">▍</span>
+              }
+            }
+          </div>
+
+          <!-- Sources (ask mode only) -->
+          @if (bubble.sources && bubble.sources.length > 0) {
+            <div class="sources-box">
+              <div class="sources-label">
+                <mat-icon>description</mat-icon> Grounded in {{ bubble.sources.length }} source(s)
+              </div>
+              @for (src of bubble.sources; track $index) {
+                <div class="source-chip" [matTooltip]="src.preview">
+                  <span class="source-name">{{ src.source }} #{{ src.chunk_index }}</span>
+                  <span class="source-score">{{ (src.score * 100).toFixed(0) }}% match</span>
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Token usage -->
+          @if (bubble.usage) {
+            <div class="usage-row" matTooltip="Watch this: thinking_tokens are billed but invisible in the reply">
+              <span class="usage-chip">in: {{ bubble.usage.input }}</span>
+              <span class="usage-chip">out: {{ bubble.usage.output }}</span>
+              @if (bubble.usage.thinking > 0) {
+                <span class="usage-chip thinking">thinking: {{ bubble.usage.thinking }}</span>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Input bar -->
+  <div class="input-bar">
+    <mat-form-field appearance="outline" class="msg-field">
+      <input
+        matInput
+        [ngModel]="inputText()"
+        (ngModelChange)="inputText.set($event)"
+        (keydown)="onKeyDown($event)"
+        [placeholder]="placeholder()"
+        [disabled]="loading()"
+        autocomplete="off"
+      />
+    </mat-form-field>
+    <button
+      mat-fab
+      class="send-btn"
+      (click)="send()"
+      [disabled]="!inputText().trim() || loading()"
+      matTooltip="Send (Enter)"
+    >
+      @if (loading()) {
+        <mat-spinner diameter="24"></mat-spinner>
+      } @else {
+        <mat-icon>send</mat-icon>
+      }
+    </button>
+  </div>
+
+  <!-- Footer explainer -->
+  <div class="ai-explainer">
+    <mat-icon>info_outline</mat-icon>
+    <span>
+      <strong>How it works:</strong>
+      Angular → Express (<code>/api/ai</code>, JWT-protected) → Python FastAPI → Gemini.
+      Chat streams as <strong>Server-Sent Events</strong>; Search retrieves chunks from a <strong>Chroma</strong> vector store before generating.
+    </span>
+  </div>
+
+</div>
