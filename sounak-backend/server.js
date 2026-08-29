@@ -60,11 +60,13 @@ app.use('/api/', apiLimiter);
 const authRoutes = require('./src/routes/authRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const productRoutes = require('./src/routes/productRoutes');
+const aiRoutes = require('./src/routes/aiRoutes');
 
 app.use('/api/auth/register', registerLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/ai', aiRoutes);
 
 // --- SSE: Live Notifications Stream ---
 app.get('/api/notifications/stream', (req, res) => {
