@@ -1,0 +1,186 @@
+"""
+FastAPI entrypoint — the equivalent of your Express server.js.
+
+Run it in dev with:
+    uvicorn app.main:app --reload --port 8000
+
+Endpoints:
+    GET  /health      liveness
+    POST /chat        plain, ungrounded answer
+    GET  /rag/status  how many chunks are indexed
+    POST /ask         RAG: grounded answer + the sources it used
+
+Open http://localhost:8000/docs for interactive, auto-generated API docs.
+"""
+import json
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+
+from google.genai import errors as genai_errors
+
+from app.config import settings
+from app.schemas import (
+    ChatRequest,
+    ChatResponse,
+    AskRequest,
+    AskResponse,
+    SourceChunk,
+)
+from app.gemini_client import GeminiClient
+from app.rag import RagStore
+
+app = FastAPI(title="Sounak AI Service", version="0.2.0")
+
+# CORS — "*" is fine for local dev; lock it down before public exposure.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Built once at startup and reused. Neither needs an API key to construct, so
+# the app still boots and /health still works before you've added a key.
+llm = GeminiClient()
+store = RagStore()
+
+
+def _require_key() -> None:
+    if not settings.gemini_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.",
+        )
+
+
+def _map_gemini_error(e: genai_errors.APIError) -> HTTPException:
+    # ClientError (4xx) and ServerError (5xx) both subclass APIError. Surface the
+    # real status when we have one, otherwise treat it as a bad upstream (502).
+    code = getattr(e, "code", None)
+    status = code if isinstance(code, int) and 400 <= code < 600 else 502
+    return HTTPException(status_code=status, detail=getattr(e, "message", str(e)))
+
+
+@app.get("/health")
+def health():
+    """Liveness check. Does NOT call Gemini — safe to hit without a valid key."""
+    return {
+        "status": "ok",
+        "service": "sounak-ai-service",
+        "model": settings.model,
+        "api_key_configured": bool(settings.gemini_api_key),
+    }
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest):
+    _require_key()
+    try:
+        return llm.chat(message=req.message, system=req.system)
+    except genai_errors.APIError as e:
+        raise _map_gemini_error(e)
+
+
+@app.post("/chat/stream")
+def chat_stream(req: ChatRequest):
+    """
+    Streaming version of /chat as Server-Sent Events (SSE) — same wire format
+    as the notification stream in the Node server. The browser (or Node proxy)
+    receives a series of `data: {...}` lines as the model generates:
+        data: {"delta": "Hello"}
+        data: {"delta": " world"}
+        data: {"done": true, "input_tokens": 12, "output_tokens": 34}
+    """
+    _require_key()
+
+    def event_stream():
+        try:
+            for event in llm.stream_chat(req.message, req.system):
+                yield f"data: {json.dumps(event)}\n\n"
+        except genai_errors.APIError as e:
+            mapped = _map_gemini_error(e)
+            # Errors can happen mid-stream (after headers are sent), so we can't
+            # change the HTTP status — we emit an error event instead.
+            yield f"data: {json.dumps({'error': mapped.detail, 'status': mapped.status_code})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # stop nginx/proxies from buffering the stream
+        },
+    )
+
+
+@app.get("/rag/status")
+def rag_status():
+    """How many chunks are indexed. 0 means you still need to run `python ingest.py`."""
+    return {
+        "indexed_chunks": store.count(),
+        "embedding_model": settings.embedding_model,
+    }
+
+
+@app.post("/ask", response_model=AskResponse)
+def ask(req: AskRequest):
+    _require_key()
+    k = req.k or settings.retrieval_k
+    try:
+        # 1. RETRIEVE — find the chunks whose meaning is closest to the question.
+        chunks = store.retrieve(req.question, k=k)
+        # 2. GENERATE — hand those chunks to Gemini as the only allowed context.
+        result = llm.answer_with_context(req.question, chunks)
+    except genai_errors.APIError as e:
+        raise _map_gemini_error(e)
+
+    # 3. Return the answer AND the sources, so the answer is inspectable.
+    return AskResponse(
+        answer=result.reply,
+        model=result.model,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        thinking_tokens=result.thinking_tokens,
+        sources=[
+            SourceChunk(
+                source=c["source"],
+                chunk_index=c["chunk_index"],
+                score=c["score"],
+                preview=c["text"][:160],
+            )
+            for c in chunks
+        ],
+    )
+
+
+@app.post("/ask/langchain", response_model=AskResponse)
+def ask_langchain(req: AskRequest):
+    """
+    Same thing as /ask, but built with LangChain instead of by hand. Queries the
+    SAME chroma_db/ index. Run both on one question and compare — the answers
+    should match; the interesting difference is in the code (app/rag.py +
+    gemini_client.py vs app/langchain_rag.py).
+    """
+    _require_key()
+    # Imported lazily so LangChain's heavy import cost is only paid if/when you
+    # actually call this endpoint — the rest of the service stays snappy.
+    from app import langchain_rag
+
+    k = req.k or settings.retrieval_k
+    try:
+        result = langchain_rag.answer(req.question, k=k)
+    except genai_errors.APIError as e:
+        raise _map_gemini_error(e)
+    except Exception as e:  # LangChain may wrap upstream errors in its own types
+        raise HTTPException(status_code=502, detail=f"LangChain pipeline error: {e}")
+
+    return AskResponse(
+        answer=result["answer"],
+        model=result["model"],
+        input_tokens=result["input_tokens"],
+        output_tokens=result["output_tokens"],
+        thinking_tokens=result["thinking_tokens"],
+        sources=[SourceChunk(**s) for s in result["sources"]],
+    )

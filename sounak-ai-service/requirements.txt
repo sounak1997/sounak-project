@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+google-genai
+pydantic-settings
+chromadb
+pypdf
+
+# Week 2 finale — for the LangChain comparison endpoint (/ask/langchain).
+# Everything else runs without these.
+langchain-google-genai
+langchain-chroma

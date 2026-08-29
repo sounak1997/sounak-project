@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Vector store (rebuild it from data/ with `python ingest.py`)
+chroma_db/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
