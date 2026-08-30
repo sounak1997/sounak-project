@@ -51,6 +51,28 @@ class RagStore:
             ],
         )
 
+    def list_sources(self) -> list[dict]:
+        """Return [{"source", "chunk_count"}] for every document currently indexed."""
+        if self._collection.count() == 0:
+            return []
+        records = self._collection.get(include=["metadatas"])
+        counts: dict[str, int] = {}
+        for meta in records["metadatas"]:
+            source = meta.get("source", "?")
+            counts[source] = counts.get(source, 0) + 1
+        return [
+            {"source": source, "chunk_count": count}
+            for source, count in sorted(counts.items())
+        ]
+
+    def delete_source(self, source: str) -> int:
+        """Remove every chunk belonging to one document. Returns how many were removed."""
+        existing = self._collection.get(where={"source": source}, include=[])
+        removed = len(existing["ids"])
+        if removed:
+            self._collection.delete(where={"source": source})
+        return removed
+
     def retrieve(self, query: str, k: int) -> list[dict]:
         """Return the k chunks whose meaning is closest to the query."""
         n = self._collection.count()

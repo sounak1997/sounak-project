@@ -13,8 +13,9 @@ Endpoints:
 Open http://localhost:8000/docs for interactive, auto-generated API docs.
 """
 import json
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -27,9 +28,15 @@ from app.schemas import (
     AskRequest,
     AskResponse,
     SourceChunk,
+    DocumentListResponse,
+    DocumentInfo,
+    UploadResponse,
+    DeleteResponse,
 )
 from app.gemini_client import GeminiClient
 from app.rag import RagStore
+from app.loaders import load_document, SUPPORTED as SUPPORTED_EXTENSIONS
+from app.ingest_service import ingest_one
 
 app = FastAPI(title="Sounak AI Service", version="0.2.0")
 
@@ -122,6 +129,72 @@ def rag_status():
         "indexed_chunks": store.count(),
         "embedding_model": settings.embedding_model,
     }
+
+
+@app.get("/documents", response_model=DocumentListResponse)
+def list_documents():
+    """Every document currently indexed, with how many chunks each contributed."""
+    return DocumentListResponse(
+        documents=[DocumentInfo(**d) for d in store.list_sources()]
+    )
+
+
+@app.post("/documents", response_model=UploadResponse)
+async def upload_document(file: UploadFile = File(...)):
+    """
+    Save an uploaded file into data/ and index it immediately — this is the
+    "share a doc" step. Re-uploading the same filename replaces its chunks
+    rather than duplicating them (see ingest_service.ingest_one).
+    """
+    _require_key()
+
+    # Path(...).name strips any directory components the client might send,
+    # so a crafted filename like "../../etc/passwd" can't escape data/.
+    safe_name = Path(file.filename or "").name
+    suffix = Path(safe_name).suffix.lower()
+    if not safe_name or suffix not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(sorted(SUPPORTED_EXTENSIONS))}",
+        )
+
+    content = await file.read()
+    max_bytes = settings.max_upload_mb * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(
+            status_code=413, detail=f"File exceeds the {settings.max_upload_mb}MB limit."
+        )
+
+    data_dir = Path(settings.data_dir)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    dest = data_dir / safe_name
+    dest.write_bytes(content)
+
+    doc = load_document(dest)
+    if doc is None:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="File has no extractable text.")
+
+    try:
+        chunks_indexed = ingest_one(store, doc, settings.chunk_size, settings.chunk_overlap)
+    except genai_errors.APIError as e:
+        dest.unlink(missing_ok=True)
+        raise _map_gemini_error(e)
+
+    return UploadResponse(source=safe_name, chunks_indexed=chunks_indexed)
+
+
+@app.delete("/documents/{source}", response_model=DeleteResponse)
+def delete_document(source: str):
+    """Remove a document's chunks from the index and delete its file from data/."""
+    removed = store.delete_source(source)
+    if removed == 0:
+        raise HTTPException(status_code=404, detail=f"No indexed document named '{source}'.")
+
+    file_path = Path(settings.data_dir) / Path(source).name
+    file_path.unlink(missing_ok=True)
+
+    return DeleteResponse(source=source, chunks_removed=removed)
 
 
 @app.post("/ask", response_model=AskResponse)

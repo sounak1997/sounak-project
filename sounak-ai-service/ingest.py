@@ -6,10 +6,14 @@ Build (or rebuild) the vector index from the files in data/.
 Reads every supported file in data/, splits each into overlapping chunks,
 embeds them with Gemini, and stores them in Chroma (chroma_db/). Safe to re-run
 any time you add or change documents — it clears the old index first.
+
+(Uploading a single file through the running service, via POST /documents,
+uses the same chunking logic but adds it without wiping the rest — see
+app/ingest_service.py.)
 """
 from app.config import settings
 from app.loaders import load_documents
-from app.chunking import chunk_text
+from app.ingest_service import ingest_all
 from app.rag import RagStore
 
 
@@ -23,25 +27,9 @@ def main() -> None:
         print(f"No documents in {settings.data_dir}/. Add .md/.txt/.pdf files and re-run.")
         return
 
-    # Flatten every document into id'd chunks.
-    chunks: list[dict] = []
-    for doc in docs:
-        for i, piece in enumerate(
-            chunk_text(doc["text"], settings.chunk_size, settings.chunk_overlap)
-        ):
-            chunks.append(
-                {
-                    "id": f"{doc['source']}::{i}",
-                    "text": piece,
-                    "source": doc["source"],
-                    "chunk_index": i,
-                }
-            )
-
-    print(f"Loaded {len(docs)} document(s) -> {len(chunks)} chunk(s). Embedding + indexing...")
+    print(f"Loaded {len(docs)} document(s). Embedding + indexing...")
     store = RagStore()
-    store.reset()
-    store.add(chunks)
+    chunks = ingest_all(store, docs, settings.chunk_size, settings.chunk_overlap)
 
     print(f"Done. {store.count()} chunks indexed in '{settings.chroma_dir}/'.")
     for doc in docs:

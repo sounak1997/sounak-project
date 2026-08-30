@@ -51,3 +51,23 @@ class AskResponse(BaseModel):
     output_tokens: int          # visible answer tokens
     thinking_tokens: int = 0    # hidden "thinking" tokens — billed but not shown
     sources: list[SourceChunk]
+
+
+# --- Document management (/documents) ---
+class DocumentInfo(BaseModel):
+    source: str
+    chunk_count: int
+
+
+class DocumentListResponse(BaseModel):
+    documents: list[DocumentInfo]
+
+
+class UploadResponse(BaseModel):
+    source: str
+    chunks_indexed: int
+
+
+class DeleteResponse(BaseModel):
+    source: str
+    chunks_removed: int

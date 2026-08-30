@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     embedding_dim: int = 768        # smaller = faster/smaller store; must be consistent
     chroma_dir: str = "chroma_db"   # where the vector store persists on disk
     data_dir: str = "data"          # where your source documents live
+    max_upload_mb: int = 10         # reject uploads larger than this
     retrieval_k: int = 4            # how many chunks to pull per question
     chunk_size: int = 1000          # characters per chunk
     chunk_overlap: int = 150        # characters shared between neighboring chunks

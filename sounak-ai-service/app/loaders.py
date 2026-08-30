@@ -11,6 +11,21 @@ from pypdf import PdfReader
 SUPPORTED = {".md", ".txt", ".pdf"}
 
 
+def load_document(path: Path) -> dict | None:
+    """Read one file. Returns None if it's unsupported or has no extractable text."""
+    if path.suffix.lower() not in SUPPORTED:
+        return None
+
+    if path.suffix.lower() == ".pdf":
+        text = _read_pdf(path)
+    else:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+
+    if not text.strip():
+        return None
+    return {"source": path.name, "text": text}
+
+
 def load_documents(data_dir: str) -> list[dict]:
     """Return [{"source": <filename>, "text": <full text>}] for every readable file."""
     docs: list[dict] = []
@@ -19,16 +34,11 @@ def load_documents(data_dir: str) -> list[dict]:
         return docs
 
     for path in sorted(base.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in SUPPORTED:
+        if not path.is_file():
             continue
-
-        if path.suffix.lower() == ".pdf":
-            text = _read_pdf(path)
-        else:
-            text = path.read_text(encoding="utf-8", errors="ignore")
-
-        if text.strip():
-            docs.append({"source": path.name, "text": text})
+        doc = load_document(path)
+        if doc:
+            docs.append(doc)
 
     return docs
 

@@ -4,6 +4,7 @@ google-genai
 pydantic-settings
 chromadb
 pypdf
+python-multipart
 
 # Week 2 finale — for the LangChain comparison endpoint (/ask/langchain).
 # Everything else runs without these.
