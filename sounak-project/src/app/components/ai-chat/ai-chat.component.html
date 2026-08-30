@@ -23,10 +23,67 @@
       </mat-button-toggle>
     </mat-button-toggle-group>
 
+    <button mat-icon-button (click)="toggleDocs()" [matTooltip]="showDocs() ? 'Hide documents' : 'My documents'">
+      <mat-icon [matBadge]="documents().length" matBadgeSize="small"
+                [matBadgeHidden]="documents().length === 0" matBadgeColor="accent">folder_open</mat-icon>
+    </button>
+
     <button mat-icon-button (click)="clear()" matTooltip="Clear conversation" [disabled]="!hasMessages()">
       <mat-icon>delete_outline</mat-icon>
     </button>
   </div>
+
+  <!-- Document library -->
+  @if (showDocs()) {
+    <div class="docs-panel">
+      <div class="docs-head">
+        <span class="docs-title">
+          <mat-icon>library_books</mat-icon>
+          My documents
+          @if (documents().length > 0) {
+            <span class="docs-count">{{ documents().length }} file(s) · {{ totalChunks() }} chunks</span>
+          }
+        </span>
+
+        <button mat-stroked-button class="upload-btn" (click)="fileInput.click()" [disabled]="uploading()">
+          @if (uploading()) {
+            <mat-spinner diameter="16"></mat-spinner> Uploading…
+          } @else {
+            <mat-icon>upload_file</mat-icon> Upload
+          }
+        </button>
+        <input #fileInput type="file" accept=".md,.txt,.pdf" hidden (change)="onFileSelected($event)" />
+      </div>
+
+      @if (docError()) {
+        <div class="docs-error">
+          <mat-icon>error_outline</mat-icon> {{ docError() }}
+        </div>
+      }
+
+      @if (docsLoading()) {
+        <div class="docs-empty">Loading…</div>
+      } @else if (documents().length === 0) {
+        <div class="docs-empty">
+          No documents yet. Upload a <strong>.md</strong>, <strong>.txt</strong> or <strong>.pdf</strong> to search it in "Search my docs" mode.
+        </div>
+      } @else {
+        <div class="docs-list">
+          @for (doc of documents(); track doc.source) {
+            <div class="doc-row">
+              <mat-icon class="doc-icon">description</mat-icon>
+              <span class="doc-name">{{ doc.source }}</span>
+              <span class="doc-chunks">{{ doc.chunk_count }} chunk(s)</span>
+              <button mat-icon-button class="doc-remove" (click)="removeDocument(doc.source)"
+                      matTooltip="Remove from index">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
 
   <!-- Mode explainer -->
   <div class="mode-banner" [class.ask-mode]="mode() === 'ask'">

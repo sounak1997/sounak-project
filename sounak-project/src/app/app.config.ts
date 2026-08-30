@@ -13,6 +13,7 @@ import { MatNativeDateModule } from '@angular/material/core';
 import { provideHttpClient, withFetch, withInterceptorsFromDi } from '@angular/common/http';
 import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { JwtInterceptor } from './interceptors/jwt.interceptor';
+import { AuthErrorInterceptor } from './interceptors/auth-error.interceptor';
 
 import { provideStore } from '@ngrx/store';
 import { EffectsModule, provideEffects } from '@ngrx/effects';
@@ -27,6 +28,7 @@ export const appConfig: ApplicationConfig = {
     // --- HttpClient & interceptors ---
     provideHttpClient(withFetch(), withInterceptorsFromDi()),
     { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true },
+    { provide: HTTP_INTERCEPTORS, useClass: AuthErrorInterceptor, multi: true },
 
     // --- Angular Router ---
     provideRouter(routes),

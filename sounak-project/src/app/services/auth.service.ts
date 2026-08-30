@@ -76,10 +76,33 @@ export class AuthService {
     this.router.navigate(['/login']); // Redirect to login page
   }
 
-  // Check if user is logged in (based on presence of token)
+  /**
+   * True only if a token exists AND has not expired.
+   *
+   * Tokens are signed with `expiresIn: '1h'` (see backend generateToken.js).
+   * Checking only for the token's *presence* left the app in a "zombie" state:
+   * the guard let you into protected pages with a long-dead token, and every
+   * API call then failed with a 401 that looked like a feature bug.
+   */
   isLoggedIn(): boolean {
-    // Accessing currentUserValue is fine as it's updated by BehaviorSubject
-    return !!this.currentUserValue?.token;
+    const token = this.currentUserValue?.token;
+    return !!token && !this.isTokenExpired(token);
+  }
+
+  /** Decode the JWT payload and compare its `exp` claim against now. */
+  private isTokenExpired(token: string): boolean {
+    try {
+      // JWTs are base64url-encoded; convert to standard base64 before decoding.
+      const payloadSegment = token.split('.')[1];
+      const base64 = payloadSegment.replace(/-/g, '+').replace(/_/g, '/');
+      const payload = JSON.parse(atob(base64));
+
+      if (!payload.exp) return false; // no expiry claim — treat as valid
+      return Date.now() >= payload.exp * 1000;
+    } catch {
+      // Malformed token — safest to treat it as unusable.
+      return true;
+    }
   }
 
   // Get token (for interceptor)

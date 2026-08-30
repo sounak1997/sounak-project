@@ -49,6 +49,21 @@ export interface StreamUsage {
   thinking_tokens: number;
 }
 
+export interface DocumentInfo {
+  source: string;
+  chunk_count: number;
+}
+
+export interface UploadResult {
+  source: string;
+  chunks_indexed: number;
+}
+
+export interface DeleteResult {
+  source: string;
+  chunks_removed: number;
+}
+
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -68,6 +83,31 @@ export class AiService {
   /** RAG — answers grounded in the documents ingested by the Python service. */
   ask(question: string, k?: number): Observable<ApiEnvelope<AskResult>> {
     return this.http.post<ApiEnvelope<AskResult>>(`${this.backendUrl}/ask`, { question, k });
+  }
+
+  /** List the documents currently indexed for RAG. */
+  listDocuments(): Observable<ApiEnvelope<{ documents: DocumentInfo[] }>> {
+    return this.http.get<ApiEnvelope<{ documents: DocumentInfo[] }>>(
+      `${this.backendUrl}/documents`
+    );
+  }
+
+  /**
+   * Upload a document so it can be searched in "Search my docs" mode.
+   * Sent as multipart/form-data — we deliberately do NOT set a Content-Type
+   * header, so the browser adds it along with the required multipart boundary.
+   */
+  uploadDocument(file: File): Observable<ApiEnvelope<UploadResult>> {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<ApiEnvelope<UploadResult>>(`${this.backendUrl}/documents`, form);
+  }
+
+  /** Remove a document from the RAG index. */
+  deleteDocument(source: string): Observable<ApiEnvelope<DeleteResult>> {
+    return this.http.delete<ApiEnvelope<DeleteResult>>(
+      `${this.backendUrl}/documents/${encodeURIComponent(source)}`
+    );
   }
 
   /**
@@ -99,6 +139,15 @@ export class AiService {
     }
 
     if (!response.ok || !response.body) {
+      // Passport replies to an expired/invalid JWT with plain text, not JSON,
+      // so check the status before trying to read a message out of the body.
+      // This request goes through fetch(), so it bypasses AuthErrorInterceptor —
+      // we have to end the dead session here ourselves.
+      if (response.status === 401) {
+        onError('Your session expired. Redirecting you to log in again…');
+        this.authService.logout();
+        return;
+      }
       const data = await response.json().catch(() => ({} as any));
       onError(data.detail || data.message || `Request failed (${response.status})`);
       return;
