@@ -79,3 +79,59 @@ exports.openChatStream = ({ message, system }) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, system }),
   });
+
+/**
+ * Shared handler for non-POST-JSON calls to the AI service (GET/DELETE, and
+ * multipart upload). Same timeout + error-status mapping as callAiService.
+ */
+async function requestAiService(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${AI_SERVICE_URL}${path}`, {
+      ...options,
+      signal: controller.signal,
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const err = new Error(data.detail || `AI service responded ${response.status}`);
+      err.status = response.status;
+      throw err;
+    }
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      const err = new Error('AI service timed out.');
+      err.status = 504;
+      throw err;
+    }
+    if (!error.status) {
+      const err = new Error(`Could not reach AI service: ${error.message}`);
+      err.status = 502;
+      throw err;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** List the documents currently indexed for RAG. */
+exports.listDocuments = () => requestAiService('/documents', { method: 'GET' });
+
+/**
+ * Forward an uploaded file to the AI service for indexing. Multer gives us the
+ * file in memory (buffer); we rebuild it as multipart form-data using the
+ * runtime's built-in FormData/Blob (Node >= 18) rather than adding a dependency.
+ */
+exports.uploadDocument = ({ buffer, originalname, mimetype }) => {
+  const form = new FormData();
+  form.append('file', new Blob([buffer], { type: mimetype }), originalname);
+  return requestAiService('/documents', { method: 'POST', body: form });
+};
+
+/** Remove a document from the RAG index. */
+exports.deleteDocument = (source) =>
+  requestAiService(`/documents/${encodeURIComponent(source)}`, { method: 'DELETE' });

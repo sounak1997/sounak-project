@@ -78,6 +78,68 @@ exports.ask = async (req, res) => {
 };
 
 /**
+ * GET /api/ai/documents
+ * Lists the documents currently indexed for RAG.
+ */
+exports.listDocuments = async (req, res) => {
+  try {
+    const result = await aiService.listDocuments();
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Controller Error (AI listDocuments):', error.message);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: 'Could not load the document list.',
+      detail: error.message,
+    });
+  }
+};
+
+/**
+ * POST /api/ai/documents
+ * Uploads a document and indexes it for RAG. Expects multipart/form-data with
+ * a "file" field — multer parses it into req.file (see aiRoutes).
+ */
+exports.uploadDocument = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({
+      success: false,
+      message: 'No file was uploaded. Attach a file in the "file" field.',
+    });
+  }
+
+  try {
+    const result = await aiService.uploadDocument(req.file);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Controller Error (AI uploadDocument):', error.message);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: 'The document could not be indexed.',
+      detail: error.message,
+    });
+  }
+};
+
+/**
+ * DELETE /api/ai/documents/:source
+ * Removes a document from the RAG index.
+ */
+exports.deleteDocument = async (req, res) => {
+  try {
+    const result = await aiService.deleteDocument(req.params.source);
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Controller Error (AI deleteDocument):', error.message);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: 'The document could not be removed.',
+      detail: error.message,
+    });
+  }
+};
+
+/**
  * POST /api/ai/chat/stream
  * Streams the reply to the client as Server-Sent Events by piping the Python
  * service's SSE stream straight through. Protected — see aiRoutes.
