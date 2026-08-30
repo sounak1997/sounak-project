@@ -11,3 +11,6 @@ __pycache__/
 venv/
 *.egg-info/
 .pytest_cache/
+
+# Uploaded/source documents are runtime data, not code.
+data/
