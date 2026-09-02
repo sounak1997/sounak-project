@@ -192,3 +192,84 @@ exports.chatStream = async (req, res) => {
   req.on('close', () => nodeStream.destroy());
   nodeStream.on('error', () => res.end());
 };
+
+/**
+ * POST /api/ai/agent
+ * Body: { message: string, history?: [{ role, text }] }
+ *
+ * The in-app assistant. Protected — passport has already validated the JWT and
+ * set req.user by the time we get here, so forwarding the raw header on to the
+ * Python service is safe: it's a token we just verified, not one we trust
+ * blindly.
+ *
+ * Stateless by design: the client replays the conversation each turn, exactly
+ * like the JWT itself carries the session. Nothing to expire server-side.
+ */
+exports.agent = async (req, res) => {
+  const { message, history } = req.body;
+
+  if (!message || typeof message !== 'string' || !message.trim()) {
+    return res.status(400).json({
+      success: false,
+      message: 'A non-empty "message" string is required.',
+    });
+  }
+
+  // Cap the replayed history. An unbounded client-supplied array is both a
+  // token-cost problem and a cheap way for a caller to blow past the model's
+  // context window.
+  const turns = Array.isArray(history) ? history.slice(-20) : [];
+
+  try {
+    const result = await aiService.agent({
+      message,
+      history: turns,
+      authToken: req.headers.authorization,
+    });
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Controller Error (AI agent):', error.message);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: 'The assistant could not complete your request.',
+      detail: error.message,
+    });
+  }
+};
+
+/**
+ * POST /api/ai/agent/confirm
+ * Body: { tool: string, args: object }
+ *
+ * Runs a write the user explicitly approved. The Python side re-checks that the
+ * named tool is on its confirmable allowlist, so a crafted body can't turn this
+ * into a general-purpose "run any tool" endpoint.
+ */
+exports.agentConfirm = async (req, res) => {
+  const { tool, args } = req.body;
+
+  if (!tool || typeof tool !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: 'A "tool" name is required.',
+    });
+  }
+
+  try {
+    const result = await aiService.confirmAction({
+      tool,
+      args: args && typeof args === 'object' ? args : {},
+      authToken: req.headers.authorization,
+    });
+
+    return res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Controller Error (AI confirm):', error.message);
+    return res.status(error.status || 500).json({
+      success: false,
+      message: 'That action could not be completed.',
+      detail: error.message,
+    });
+  }
+};

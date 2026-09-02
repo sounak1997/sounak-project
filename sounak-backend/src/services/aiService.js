@@ -17,13 +17,18 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 // tie up this backend's connections indefinitely.
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 30000;
 
+// The agent loop is several sequential Gemini calls plus HTTP hops back into
+// this very server, so it needs a much longer leash than a single /chat. Using
+// the 30s chat timeout here would abort perfectly healthy multi-tool runs.
+const AI_AGENT_TIMEOUT_MS = Number(process.env.AI_AGENT_TIMEOUT_MS) || 90000;
+
 /**
  * POST some JSON to the Python service and return its parsed body, mapping
  * failures to errors tagged with an HTTP .status for the controller to use.
  */
-async function callAiService(path, body) {
+async function callAiService(path, body, timeoutMs = AI_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(`${AI_SERVICE_URL}${path}`, {
@@ -67,6 +72,26 @@ exports.chat = ({ message, system }) => callAiService('/chat', { message, system
 
 /** RAG: grounded answer over the ingested documents. */
 exports.ask = ({ question, k }) => callAiService('/ask', { question, k });
+
+/**
+ * The tool-calling agent.
+ *
+ * `authToken` is the caller's own Authorization header, forwarded so the Python
+ * service's server-side tools can call back into THIS api as that user. That
+ * round trip (Node -> Python -> Node) is deliberate: the credential and the
+ * data stay on our side of the fence, and the agent inherits exactly the
+ * caller's permissions rather than some all-powerful service account.
+ */
+exports.agent = ({ message, history, authToken }) =>
+  callAiService(
+    '/agent',
+    { message, history, auth_token: authToken },
+    AI_AGENT_TIMEOUT_MS,
+  );
+
+/** Execute a write the user approved in the UI. */
+exports.confirmAction = ({ tool, args, authToken }) =>
+  callAiService('/agent/confirm', { tool, args, auth_token: authToken });
 
 /**
  * Open the streaming (SSE) endpoint and return the raw fetch Response, so the

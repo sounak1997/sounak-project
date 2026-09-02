@@ -27,6 +27,12 @@ router.post('/chat/stream', requireAuth, aiController.chatStream);
 // POST /api/ai/ask — RAG: grounded answer over ingested documents.
 router.post('/ask', requireAuth, aiController.ask);
 
+// --- Agent: tool calling ---
+// POST /api/ai/agent — the assistant that can read live data and drive the UI.
+router.post('/agent', requireAuth, aiController.agent);
+// POST /api/ai/agent/confirm — execute a write the user approved.
+router.post('/agent/confirm', requireAuth, aiController.agentConfirm);
+
 // --- Document management for RAG ---
 router.get('/documents', requireAuth, aiController.listDocuments);
 router.post('/documents', requireAuth, upload.single('file'), aiController.uploadDocument);
