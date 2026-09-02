@@ -6,6 +6,9 @@ chromadb
 pypdf
 python-multipart
 
+# Agent tools call back into the Node API over HTTP.
+httpx
+
 # Week 2 finale — for the LangChain comparison endpoint (/ask/langchain).
 # Everything else runs without these.
 langchain-google-genai

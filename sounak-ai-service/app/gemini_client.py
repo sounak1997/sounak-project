@@ -45,6 +45,18 @@ class GeminiClient:
             else None
         )
 
+    @property
+    def raw(self):
+        """
+        The underlying genai.Client.
+
+        chat()/answer_with_context() are one-shot helpers: they build the whole
+        prompt and hand back text. The agent loop can't use them — it owns a
+        growing `contents` list and needs the low-level generate_content. Rather
+        than duplicate client construction, it borrows this.
+        """
+        return self._client
+
     def _generate(self, contents: str, system: str) -> ChatResponse:
         # The ONE place we call the model. Nothing hidden:
         #   contents           → the conversation / prompt text

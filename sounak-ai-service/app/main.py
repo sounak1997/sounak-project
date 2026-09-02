@@ -9,6 +9,8 @@ Endpoints:
     POST /chat        plain, ungrounded answer
     GET  /rag/status  how many chunks are indexed
     POST /ask         RAG: grounded answer + the sources it used
+    POST /agent       tool-calling agent: reads live app data, drives the UI
+    POST /agent/confirm  execute a write the user approved
 
 Open http://localhost:8000/docs for interactive, auto-generated API docs.
 """
@@ -32,11 +34,17 @@ from app.schemas import (
     DocumentInfo,
     UploadResponse,
     DeleteResponse,
+    AgentRequest,
+    AgentResponse,
+    ConfirmRequest,
+    ConfirmResponse,
 )
 from app.gemini_client import GeminiClient
 from app.rag import RagStore
 from app.loaders import load_document, SUPPORTED as SUPPORTED_EXTENSIONS
 from app.ingest_service import ingest_one
+from app.retries import suggested_delay
+from app import agent as agent_loop
 
 app = FastAPI(title="Sounak AI Service", version="0.2.0")
 
@@ -67,7 +75,25 @@ def _map_gemini_error(e: genai_errors.APIError) -> HTTPException:
     # real status when we have one, otherwise treat it as a bad upstream (502).
     code = getattr(e, "code", None)
     status = code if isinstance(code, int) and 400 <= code < 600 else 502
-    return HTTPException(status_code=status, detail=getattr(e, "message", str(e)))
+    message = getattr(e, "message", str(e))
+
+    # Google's 429 body is three paragraphs of billing links and metric names.
+    # Dumping that into a chat bubble tells the user nothing they can act on, so
+    # rewrite it as the two facts that matter: you're rate limited, wait N
+    # seconds. The raw text stays in the server log for debugging.
+    if status == 429:
+        wait = suggested_delay(e)
+        when = f"about {round(wait)}s" if wait else "a minute"
+        return HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit reached on the free tier — try again in {when}. "
+                "(One assistant turn costs several model calls, so it hits the "
+                "per-minute cap faster than plain chat does.)"
+            ),
+        )
+
+    return HTTPException(status_code=status, detail=message)
 
 
 @app.get("/health")
@@ -257,3 +283,59 @@ def ask_langchain(req: AskRequest):
         thinking_tokens=result["thinking_tokens"],
         sources=[SourceChunk(**s) for s in result["sources"]],
     )
+
+
+# --- Agent: tool calling ---------------------------------------------------
+
+@app.post("/agent", response_model=AgentResponse)
+def agent(req: AgentRequest):
+    """
+    The in-app assistant. Unlike /chat and /ask, this one can DO things:
+    look up live data through the Node API, and ask the browser to navigate
+    or highlight something.
+
+    `auth_token` is the end user's own JWT, forwarded by the Node backend.
+    Server-side tools present it on every call back into the API, so the agent
+    can only ever see what the caller can.
+    """
+    _require_key()
+    try:
+        return agent_loop.run_agent(llm.raw, req, store)
+    except genai_errors.APIError as e:
+        raise _map_gemini_error(e)
+
+
+@app.post("/agent/confirm", response_model=ConfirmResponse)
+def agent_confirm(req: ConfirmRequest):
+    """
+    Execute a write the user explicitly approved in the UI.
+
+    Only tools declared with kind="confirm" in the registry are reachable here —
+    that allowlist, not the model's good behaviour, is what stops the assistant
+    from writing to your database on its own.
+    """
+    ok, message, actions, trace = agent_loop.run_confirmed(req, store)
+    return ConfirmResponse(reply=message, ok=ok, actions=actions, trace=trace)
+
+
+@app.get("/agent/tools")
+def agent_tools():
+    """
+    Introspection: what the assistant can currently do. Handy for debugging
+    "why didn't it call that?" — if a tool isn't listed here, the model never
+    saw it.
+    """
+    from app.tools import registry as _registry
+
+    return {
+        "tools": [
+            {
+                "name": t.name,
+                "kind": t.kind,
+                "description": t.declaration.description,
+            }
+            for t in _registry.TOOLS
+        ],
+        "max_iterations": settings.agent_max_iterations,
+        "backend_url": settings.backend_url,
+    }
