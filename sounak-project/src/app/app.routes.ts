@@ -17,12 +17,15 @@ export const routes: Routes = [
   { path: 'dashboard', component: DashboardComponent, canActivate: [authGuard] },
   { path: 'add-user', component: AddUserComponent, canActivate: [authGuard] },
 
-  // Lazy-loaded UserList with NgRx feature
+  // Lazy-loaded UserList with NgRx feature.
+  // authGuard added alongside the JWT guard now protecting GET /api/users —
+  // without it the page loads and then 401s on every request.
   {
     path: 'user-list',
     loadComponent: () =>
       import('./components/user-list/user-list').then((m) => m.UserListComponent),
     providers: [importProvidersFrom(EffectsModule.forFeature([UserEffects]))],
+    canActivate: [authGuard],
   },
 
   {
@@ -75,6 +78,16 @@ export const routes: Routes = [
       import('./components/ai-chat/ai-chat.component').then(m => m.AiChatComponent),
     canActivate: [authGuard],
     title: 'AI Assistant — Gemini + RAG',
+  },
+
+  {
+    path: 'assistant',
+    loadComponent: () =>
+      import('./components/app-assistant/app-assistant.component').then(
+        (m) => m.AppAssistantComponent
+      ),
+    canActivate: [authGuard],
+    title: 'App Assistant — Gemini tool calling',
   },
 
   { path: '', redirectTo: '/dashboard', pathMatch: 'full' },

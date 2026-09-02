@@ -17,7 +17,7 @@
         <button mat-button (click)="fetchProducts()">Retry Load</button>
       } 
       @else {
-        <table mat-table [dataSource]="products" class="mat-elevation-z8">
+        <table mat-table [dataSource]="products" class="mat-elevation-z8" data-ai-id="product-list-table">
 
           <ng-container matColumnDef="id">
             <th mat-header-cell *matHeaderCellDef> ID </th>

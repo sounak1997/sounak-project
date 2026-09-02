@@ -1,0 +1,170 @@
+<div class="assistant-shell">
+
+  <!-- Header -->
+  <div class="assistant-header">
+    <div class="header-info">
+      <mat-icon class="header-icon">smart_toy</mat-icon>
+      <div>
+        <span class="header-title">App Assistant</span>
+        <span class="header-sub">Asks your API for real data · drives the UI for you</span>
+      </div>
+    </div>
+
+    <button mat-icon-button (click)="clear()" matTooltip="Clear conversation" [disabled]="!hasMessages()">
+      <mat-icon>delete_outline</mat-icon>
+    </button>
+  </div>
+
+  <div class="mode-banner">
+    <mat-icon>bolt</mat-icon>
+    <span>
+      This assistant uses <strong>tool calling</strong>. It can read live data through the backend API
+      and navigate or highlight things on screen. Anything that <strong>changes</strong> data needs your confirmation first.
+    </span>
+  </div>
+
+  <!-- Message feed -->
+  <div class="assistant-feed" #feed>
+
+    @if (!hasMessages()) {
+      <div class="empty-feed">
+        <mat-icon>smart_toy</mat-icon>
+        <p>Ask me about your app — or tell me where you want to go.</p>
+        <div class="suggestions">
+          @for (s of suggestions; track s) {
+            <button mat-stroked-button class="suggestion" (click)="useSuggestion(s)">{{ s }}</button>
+          }
+        </div>
+      </div>
+    }
+
+    @for (bubble of bubbles(); track $index; let bubbleIndex = $index) {
+      <div class="message-row" [class.mine]="bubble.role === 'user'">
+        <div class="avatar" [class.mine-avatar]="bubble.role === 'user'">
+          <mat-icon>{{ bubble.role === 'user' ? 'person' : 'smart_toy' }}</mat-icon>
+        </div>
+
+        <div class="bubble-group">
+          <div class="bubble" [class.mine-bubble]="bubble.role === 'user'" [class.error-bubble]="bubble.error">
+            @if (bubble.working) {
+              <span class="thinking-dots"><span></span><span></span><span></span></span>
+            } @else {
+              <span class="bubble-text">{{ bubble.text }}</span>
+            }
+          </div>
+
+          <!-- What the browser actually did -->
+          @if (bubble.actionLog && bubble.actionLog.length > 0) {
+            <div class="action-log">
+              @for (entry of bubble.actionLog; track $index) {
+                <span class="action-chip">
+                  <mat-icon>ads_click</mat-icon> {{ entry }}
+                </span>
+              }
+            </div>
+          }
+
+          <!-- Confirmation gate: nothing is written until this is clicked -->
+          @if (bubble.pending && bubble.pending.length > 0 && !bubble.pendingDone) {
+            @for (action of bubble.pending; track action.tool) {
+              <div class="confirm-card">
+                <div class="confirm-head">
+                  <mat-icon>gpp_maybe</mat-icon>
+                  <span>Needs your confirmation</span>
+                </div>
+                <p class="confirm-summary">{{ action.summary }}</p>
+                <div class="confirm-actions">
+                  <button mat-flat-button color="primary"
+                          (click)="confirm(bubbleIndex, action)"
+                          [disabled]="bubble.confirming">
+                    @if (bubble.confirming) {
+                      <mat-spinner diameter="16"></mat-spinner>
+                    } @else {
+                      {{ action.label }}
+                    }
+                  </button>
+                  <button mat-button (click)="dismiss(bubbleIndex)" [disabled]="bubble.confirming">Cancel</button>
+                </div>
+              </div>
+            }
+          }
+
+          @if (bubble.pendingDone === 'done') {
+            <div class="confirm-resolved"><mat-icon>check_circle</mat-icon> Confirmed</div>
+          } @else if (bubble.pendingDone === 'dismissed') {
+            <div class="confirm-resolved cancelled"><mat-icon>cancel</mat-icon> Cancelled</div>
+          }
+
+          <!-- Tool trace: which tools ran, with what arguments -->
+          @if (bubble.trace && bubble.trace.length > 0) {
+            <button class="trace-toggle" (click)="toggleTrace(bubbleIndex)">
+              <mat-icon>{{ bubble.showTrace ? 'expand_less' : 'expand_more' }}</mat-icon>
+              {{ bubble.trace.length }} tool call{{ bubble.trace.length === 1 ? '' : 's' }}
+            </button>
+
+            @if (bubble.showTrace) {
+              <div class="trace-box">
+                @for (t of bubble.trace; track $index) {
+                  <div class="trace-row" [class.failed]="!t.ok">
+                    <mat-icon class="trace-icon">{{ toolIcon(t.kind) }}</mat-icon>
+                    <div class="trace-body">
+                      <span class="trace-name">{{ t.tool }}<span class="trace-kind">{{ t.kind }}</span></span>
+                      <code class="trace-args">{{ traceArgs(t) }}</code>
+                      <span class="trace-detail">{{ t.detail }}</span>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          }
+
+          <!-- Token usage -->
+          @if (bubble.usage) {
+            <div class="usage-row" matTooltip="An agent turn costs one model call per loop iteration">
+              <span class="usage-chip">in: {{ bubble.usage.input }}</span>
+              <span class="usage-chip">out: {{ bubble.usage.output }}</span>
+              @if (bubble.usage.thinking > 0) {
+                <span class="usage-chip thinking">thinking: {{ bubble.usage.thinking }}</span>
+              }
+              <span class="usage-chip loops">{{ bubble.usage.iterations }} loop(s)</span>
+            </div>
+          }
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- Input bar -->
+  <div class="input-bar">
+    <mat-form-field appearance="outline" class="msg-field">
+      <input
+        matInput
+        [ngModel]="inputText()"
+        (ngModelChange)="inputText.set($event)"
+        (keydown)="onKeyDown($event)"
+        placeholder="Ask for data, or tell me where to take you…"
+        [disabled]="loading()"
+        autocomplete="off"
+      />
+    </mat-form-field>
+    <button mat-fab class="send-btn" (click)="send()"
+            [disabled]="!inputText().trim() || loading()" matTooltip="Send (Enter)">
+      @if (loading()) {
+        <mat-spinner diameter="24"></mat-spinner>
+      } @else {
+        <mat-icon>send</mat-icon>
+      }
+    </button>
+  </div>
+
+  <!-- Footer explainer -->
+  <div class="assistant-explainer">
+    <mat-icon>info_outline</mat-icon>
+    <span>
+      <strong>How it works:</strong>
+      Gemini picks a tool → <strong>server tools</strong> call <code>/api/*</code> with your own JWT →
+      <strong>UI tools</strong> come back as actions this browser runs. Writes wait for your click.
+    </span>
+  </div>
+
+</div>

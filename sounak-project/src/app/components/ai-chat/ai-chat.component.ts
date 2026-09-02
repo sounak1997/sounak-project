@@ -1,7 +1,9 @@
 import {
   Component, signal, computed, inject, OnInit,
   ChangeDetectionStrategy, viewChild, ElementRef, AfterViewChecked,
+  DestroyRef,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatCardModule } from '@angular/material/card';
@@ -16,6 +18,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatBadgeModule } from '@angular/material/badge';
 
 import { AiService, AskSource, DocumentInfo } from '../../services/ai.service';
+import { UiActionService, PANEL_REQUEST_TTL_MS } from '../../services/ui-action.service';
 
 type Mode = 'chat' | 'ask';
 
@@ -44,6 +47,8 @@ interface Bubble {
 })
 export class AiChatComponent implements OnInit, AfterViewChecked {
   private ai = inject(AiService);
+  private uiActions = inject(UiActionService);
+  private destroyRef = inject(DestroyRef);
 
   readonly feedEl = viewChild<ElementRef>('feed');
 
@@ -73,6 +78,21 @@ export class AiChatComponent implements OnInit, AfterViewChecked {
 
   ngOnInit(): void {
     this.loadDocuments();
+
+    // The App Assistant can open this panel for you: when it decides you need
+    // the document library, it calls the open_panel tool, which arrives here as
+    // a request rather than as a direct call. The TTL check stops a request
+    // from an old visit re-opening the panel when this screen remounts.
+    this.uiActions.panelRequests$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ panel, at }) => {
+        if (panel !== 'documents') return;
+        if (Date.now() - at > PANEL_REQUEST_TTL_MS) return;
+        if (!this.showDocs()) {
+          this.showDocs.set(true);
+          this.loadDocuments();
+        }
+      });
   }
 
   /**

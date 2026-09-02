@@ -64,6 +64,56 @@ export interface DeleteResult {
   chunks_removed: number;
 }
 
+// --- Agent (tool calling) ---
+
+/** One past turn, replayed to the service so the model has conversation context. */
+export interface AgentTurn {
+  role: 'user' | 'assistant';
+  text: string;
+}
+
+/** Something for the BROWSER to do — run by UiActionService, not by the server. */
+export interface AgentAction {
+  type: string;
+  params: Record<string, any>;
+}
+
+/** A write the model proposed. Nothing happens until the user clicks Confirm. */
+export interface PendingAction {
+  tool: string;
+  args: Record<string, any>;
+  label: string;
+  summary: string;
+}
+
+/** One tool invocation, shown in the collapsible trace so a run is inspectable. */
+export interface ToolTrace {
+  tool: string;
+  kind: string;
+  args: Record<string, any>;
+  ok: boolean;
+  detail: string;
+}
+
+export interface AgentResult {
+  reply: string;
+  actions: AgentAction[];
+  pending: PendingAction[];
+  trace: ToolTrace[];
+  iterations: number;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  thinking_tokens: number;
+}
+
+export interface ConfirmResult {
+  reply: string;
+  ok: boolean;
+  actions: AgentAction[];
+  trace: ToolTrace[];
+}
+
 interface ApiEnvelope<T> {
   success: boolean;
   data: T;
@@ -83,6 +133,29 @@ export class AiService {
   /** RAG — answers grounded in the documents ingested by the Python service. */
   ask(question: string, k?: number): Observable<ApiEnvelope<AskResult>> {
     return this.http.post<ApiEnvelope<AskResult>>(`${this.backendUrl}/ask`, { question, k });
+  }
+
+  /**
+   * The in-app assistant: it can look up live data through the backend API and
+   * ask the browser to navigate or highlight something.
+   *
+   * History is sent from the client every turn — the service keeps no session.
+   * We cap it here as well as on the server, because replaying a long chat is
+   * what makes token cost creep up unnoticed.
+   */
+  agent(message: string, history: AgentTurn[] = []): Observable<ApiEnvelope<AgentResult>> {
+    return this.http.post<ApiEnvelope<AgentResult>>(`${this.backendUrl}/agent`, {
+      message,
+      history: history.slice(-20),
+    });
+  }
+
+  /** Execute a write the user approved in the confirmation card. */
+  confirmAction(tool: string, args: Record<string, any>): Observable<ApiEnvelope<ConfirmResult>> {
+    return this.http.post<ApiEnvelope<ConfirmResult>>(`${this.backendUrl}/agent/confirm`, {
+      tool,
+      args,
+    });
   }
 
   /** List the documents currently indexed for RAG. */

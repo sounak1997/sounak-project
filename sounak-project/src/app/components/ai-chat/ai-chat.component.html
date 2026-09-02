@@ -11,6 +11,7 @@
     </div>
 
     <mat-button-toggle-group
+      data-ai-id="ai-mode-toggle"
       class="mode-toggle"
       [value]="mode()"
       (change)="setMode($event.value)"
@@ -23,7 +24,7 @@
       </mat-button-toggle>
     </mat-button-toggle-group>
 
-    <button mat-icon-button (click)="toggleDocs()" [matTooltip]="showDocs() ? 'Hide documents' : 'My documents'">
+    <button mat-icon-button data-ai-id="ai-docs-toggle" (click)="toggleDocs()" [matTooltip]="showDocs() ? 'Hide documents' : 'My documents'">
       <mat-icon [matBadge]="documents().length" matBadgeSize="small"
                 [matBadgeHidden]="documents().length === 0" matBadgeColor="accent">folder_open</mat-icon>
     </button>

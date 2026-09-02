@@ -1,0 +1,334 @@
+// Deliberately close to ai-chat.component.scss so the two assistants feel like
+// one product; the purple accent marks "this one can act" versus the indigo
+// "this one only talks".
+.assistant-shell {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+}
+
+.assistant-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+
+  .header-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+
+    .header-icon { color: #7c4dff; }
+
+    div { display: flex; flex-direction: column; }
+    .header-title { font-weight: 600; font-size: 16px; }
+    .header-sub { font-size: 12px; color: #6b7280; }
+  }
+}
+
+.mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 13px;
+  color: #5b21b6;
+  background: #f5f3ff;
+
+  mat-icon { font-size: 18px; height: 18px; width: 18px; flex-shrink: 0; }
+}
+
+.assistant-feed {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.empty-feed {
+  margin: auto;
+  text-align: center;
+  color: #9ca3af;
+
+  mat-icon { font-size: 40px; height: 40px; width: 40px; margin-bottom: 8px; color: #c4b5fd; }
+  p { margin: 4px 0 14px; }
+}
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 460px;
+
+  .suggestion {
+    font-size: 12.5px;
+    color: #5b21b6;
+    border-color: #ddd6fe;
+    &:hover { background: #f5f3ff; }
+  }
+}
+
+.message-row {
+  display: flex;
+  gap: 10px;
+  max-width: 84%;
+
+  &.mine {
+    flex-direction: row-reverse;
+    margin-left: auto;
+  }
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #f5f3ff;
+  color: #7c4dff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  mat-icon { font-size: 18px; height: 18px; width: 18px; }
+
+  &.mine-avatar { background: #7c4dff; color: #fff; }
+}
+
+.bubble-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.bubble {
+  background: #f3f4f6;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+
+  &.mine-bubble { background: #7c4dff; color: #fff; }
+  &.error-bubble { background: #fef2f2; color: #b91c1c; }
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+  span {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #9ca3af;
+    animation: bounce 1.2s infinite ease-in-out;
+    &:nth-child(2) { animation-delay: 0.15s; }
+    &:nth-child(3) { animation-delay: 0.3s; }
+  }
+}
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+// --- What the browser actually did ---
+.action-log {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.action-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: #5b21b6;
+  background: #f5f3ff;
+  border: 1px solid #ede9fe;
+  border-radius: 999px;
+  padding: 3px 9px;
+
+  mat-icon { font-size: 13px; height: 13px; width: 13px; }
+}
+
+// --- Confirmation gate ---
+.confirm-card {
+  width: 100%;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  border-radius: 12px;
+  padding: 12px 14px;
+
+  .confirm-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #92400e;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+
+    mat-icon { font-size: 16px; height: 16px; width: 16px; }
+  }
+
+  .confirm-summary {
+    margin: 8px 0 12px;
+    font-size: 13.5px;
+    color: #422006;
+  }
+
+  .confirm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.confirm-resolved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #047857;
+
+  mat-icon { font-size: 15px; height: 15px; width: 15px; }
+
+  &.cancelled { color: #6b7280; }
+}
+
+// --- Tool trace ---
+.trace-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0;
+  font: 500 11.5px/1 Roboto, system-ui, sans-serif;
+  color: #6b7280;
+
+  &:hover { color: #7c4dff; }
+  mat-icon { font-size: 15px; height: 15px; width: 15px; }
+}
+
+.trace-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  background: #fafafa;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+
+.trace-row {
+  display: flex;
+  gap: 7px;
+
+  .trace-icon { font-size: 15px; height: 15px; width: 15px; color: #7c4dff; margin-top: 2px; }
+
+  .trace-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .trace-name {
+    font: 600 12px/1.3 'Roboto Mono', monospace;
+    color: #1f2937;
+  }
+
+  .trace-kind {
+    margin-left: 6px;
+    font: 500 10px/1 Roboto, system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    background: #f3f4f6;
+    border-radius: 4px;
+    padding: 2px 5px;
+  }
+
+  .trace-args {
+    font: 11.5px/1.4 'Roboto Mono', monospace;
+    color: #4b5563;
+    word-break: break-all;
+  }
+
+  .trace-detail { font-size: 11.5px; color: #6b7280; }
+
+  &.failed {
+    .trace-icon { color: #dc2626; }
+    .trace-detail { color: #b91c1c; }
+  }
+}
+
+// --- Token usage ---
+.usage-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.usage-chip {
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 2px 6px;
+
+  &.thinking { color: #b45309; background: #fef3c7; }
+  &.loops { color: #5b21b6; background: #f5f3ff; }
+}
+
+// --- Input bar ---
+.input-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+
+  .msg-field {
+    flex: 1;
+    margin-bottom: -1.25em; // absorb the mat-form-field hint gutter
+  }
+
+  .send-btn {
+    background: #7c4dff;
+    color: #fff;
+    flex-shrink: 0;
+  }
+}
+
+.assistant-explainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 20px 16px;
+  font-size: 12px;
+  color: #6b7280;
+
+  mat-icon { font-size: 16px; height: 16px; width: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  code {
+    background: #f3f4f6;
+    border-radius: 4px;
+    padding: 1px 4px;
+    font-family: 'Roboto Mono', monospace;
+  }
+}
