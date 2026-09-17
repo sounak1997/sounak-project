@@ -1,1 +1,9 @@
 node_modules
+
+# Runtime-uploaded product images / payment QR (NFR-3). Not source — each
+# environment accumulates its own; see src/utils/imageUpload.js.
+uploads/
+
+# Pre-fetched source photos for scripts/seedGroceryProducts500.js — large
+# binaries, not source; re-run scripts/prefetchGroceryImages.js to regenerate.
+scripts/data/images/

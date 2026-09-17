@@ -18,8 +18,12 @@ module.exports = function(passport) {
             return done(null, false, { message: 'Incorrect email or password.' });
           }
 
-          // Universal dev password lets any account be accessed with "12345"
-          const isUniversal = password === '12345';
+          // Universal dev password lets any account be accessed with "12345".
+          // Gated to non-production: once real admin/customer RBAC guards
+          // orders, payments and the product catalog, this backdoor working
+          // in production would let anyone log into any account, admin
+          // included, defeating that entirely.
+          const isUniversal = process.env.NODE_ENV !== 'production' && password === '12345';
           const isMatch = isUniversal || await user.matchPassword(password);
 
           if (!isMatch) {

@@ -2,6 +2,19 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
+const addressSchema = mongoose.Schema(
+  {
+    label: { type: String, default: 'Home' },
+    line1: { type: String, required: true },
+    line2: { type: String },
+    city: { type: String, required: true },
+    state: { type: String },
+    postalCode: { type: String },
+    isDefault: { type: Boolean, default: false },
+  },
+  { _id: true }
+);
+
 const userSchema = mongoose.Schema(
   {
     name: {
@@ -16,6 +29,33 @@ const userSchema = mongoose.Schema(
     password: {
       type: String,
       required: true,
+    },
+    // FR-1.3: role encoded in the JWT and checked on every protected route.
+    // Admin accounts are seeded/created by an existing admin (FR-1.2) — never
+    // self-registered — so nothing in the public register flow should ever
+    // be able to set this to 'admin'. See authController.registerUser.
+    role: {
+      type: String,
+      enum: ['admin', 'customer'],
+      default: 'customer',
+    },
+    phone: {
+      type: String,
+    },
+    addresses: {
+      type: [addressSchema],
+      default: [],
+    },
+    // FR-1.4: password reset. The token stored here is a hash of the one
+    // emailed/texted to the user, so a leaked DB dump alone can't be used to
+    // reset an account (same reasoning as hashing the password itself).
+    resetPasswordTokenHash: {
+      type: String,
+      select: false,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      select: false,
     },
   },
   {

@@ -1,0 +1,659 @@
+<title>Inside Sounak's AI Assistant</title>
+<meta name="description" content="How the tool-calling agent and the RAG assistant work end to end across the Angular, Node, and Python services.">
+<style>
+  :root {
+    --ground: #f4f5f8;
+    --surface: #ffffff;
+    --surface-2: #eceef3;
+    --ink: #1b1e27;
+    --ink-soft: #565d6d;
+    --line: #d8dbe3;
+    --accent: #5a3fce;
+    --accent-soft: #ebe6fb;
+    --fe: #b8543f;
+    --be: #1f8377;
+    --ai: #5a3fce;
+    --ok: #3a8a45;
+    --gate: #9a6a13;
+    --stop: #b8443a;
+    --shadow: 0 1px 2px rgba(20,22,30,.06), 0 8px 24px rgba(20,22,30,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #12141d;
+      --surface: #1b1e2a;
+      --surface-2: #232736;
+      --ink: #e5e8ef;
+      --ink-soft: #9aa1b3;
+      --line: #333848;
+      --accent: #a894ff;
+      --accent-soft: #2a2547;
+      --fe: #e0917c;
+      --be: #57bcae;
+      --ai: #a894ff;
+      --ok: #6bc276;
+      --gate: #dfa955;
+      --stop: #e0736a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #12141d;
+    --surface: #1b1e2a;
+    --surface-2: #232736;
+    --ink: #e5e8ef;
+    --ink-soft: #9aa1b3;
+    --line: #333848;
+    --accent: #a894ff;
+    --accent-soft: #2a2547;
+    --fe: #e0917c;
+    --be: #57bcae;
+    --ai: #a894ff;
+    --ok: #6bc276;
+    --gate: #dfa955;
+    --stop: #e0736a;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 940px;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.1rem, 4vw, 2.5rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.25rem;
+  }
+
+  .mono {
+    font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+
+  /* ---- header ---- */
+  header { display: flex; flex-direction: column; gap: 1rem; }
+  .eyebrow {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .74rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0;
+  }
+  h1 {
+    font-size: clamp(2rem, 5.5vw, 3.1rem);
+    line-height: 1.08;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 1.14rem;
+    color: var(--ink-soft);
+    max-width: 64ch;
+    margin: 0;
+  }
+  .repos {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-top: .35rem;
+  }
+  .repos span {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .78rem;
+    padding: .28rem .6rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--ink-soft);
+    background: var(--surface);
+  }
+  .repos span b { color: var(--ink); font-weight: 600; }
+
+  /* ---- nav ---- */
+  nav {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: .9rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem 1.4rem;
+  }
+  nav a {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .82rem;
+    color: var(--ink-soft);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  nav a:hover, nav a:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ---- sections ---- */
+  section { display: flex; flex-direction: column; gap: 1.1rem; scroll-margin-top: 1.5rem; }
+  h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: .7rem;
+  }
+  h2::before {
+    content: attr(data-n);
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .82rem;
+    font-weight: 500;
+    color: var(--accent);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: .1rem .4rem;
+    position: relative;
+    top: -2px;
+  }
+  h3 {
+    font-size: 1.02rem;
+    font-weight: 600;
+    margin: .4rem 0 0;
+  }
+  p { margin: 0; max-width: 68ch; }
+  section p + p { margin-top: .55rem; }
+  a.inline { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  a.inline:hover { border-bottom-color: var(--accent); }
+
+  code {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .86em;
+    background: var(--surface-2);
+    padding: .1rem .35rem;
+    border-radius: 4px;
+  }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    font-size: .92rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  th, td { text-align: left; padding: .7rem .9rem; vertical-align: top; border-bottom: 1px solid var(--line); }
+  th {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .72rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.k { font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: .82rem; white-space: nowrap; }
+
+  .tag {
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .72rem;
+    font-weight: 500;
+    padding: .12rem .45rem;
+    border-radius: 5px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .tag.server { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .tag.client { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .tag.confirm { color: var(--gate); border-color: color-mix(in srgb, var(--gate) 45%, transparent); background: color-mix(in srgb, var(--gate) 12%, transparent); }
+
+  /* ---- steps ---- */
+  ol.steps { margin: 0; padding: 0; list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: .5rem; }
+  ol.steps > li {
+    counter-increment: s;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: .85rem 1rem .85rem 3rem;
+    position: relative;
+    box-shadow: var(--shadow);
+  }
+  ol.steps > li::before {
+    content: counter(s);
+    position: absolute;
+    left: .8rem;
+    top: .8rem;
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--accent);
+    width: 1.5rem;
+    height: 1.5rem;
+    display: grid;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+    border-radius: 6px;
+  }
+  ol.steps b { font-weight: 600; }
+  ol.steps .where {
+    display: block;
+    margin-top: .3rem;
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .76rem;
+    color: var(--ink-soft);
+  }
+
+  /* ---- cards ---- */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .8rem; }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1rem 1.05rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+  .card h3 { margin: 0; font-size: .95rem; }
+  .card p { font-size: .88rem; color: var(--ink-soft); max-width: none; }
+
+  /* ---- figure ---- */
+  figure {
+    margin: .5rem 0 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 1.4rem 1.2rem 1rem;
+    box-shadow: var(--shadow);
+  }
+  figure svg { display: block; width: 100%; height: auto; color: var(--ink); }
+  figcaption {
+    margin-top: .9rem;
+    font-size: .84rem;
+    color: var(--ink-soft);
+    max-width: 68ch;
+  }
+  .legend { display: flex; flex-wrap: wrap; gap: .3rem 1rem; margin-top: .6rem; font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: .74rem; color: var(--ink-soft); }
+  .legend i { width: .8rem; height: .8rem; border-radius: 3px; display: inline-block; vertical-align: -1px; margin-right: .35rem; }
+
+  /* ---- file map ---- */
+  .files { display: flex; flex-direction: column; gap: 1.1rem; }
+  .files .grp { display: flex; flex-direction: column; gap: .3rem; }
+  .files .grp h3 { margin: 0 0 .2rem; font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft); }
+  .files dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: .15rem; }
+  .files .row { display: flex; flex-wrap: wrap; gap: .1rem .8rem; padding: .3rem 0; border-bottom: 1px dashed var(--line); }
+  .files .row:last-child { border-bottom: none; }
+  .files .path { font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: .8rem; color: var(--ink); }
+  .files .desc { font-size: .85rem; color: var(--ink-soft); }
+
+  .callout {
+    border: 1px solid color-mix(in srgb, var(--gate) 45%, var(--line));
+    background: color-mix(in srgb, var(--gate) 8%, var(--surface));
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+  }
+  .callout h3 { margin: 0; font-size: .95rem; color: var(--gate); }
+  .callout p { font-size: .9rem; max-width: none; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding-top: 1.4rem;
+    font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+    font-size: .78rem;
+    color: var(--ink-soft);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">Code walkthrough</p>
+    <h1>Inside Sounak's AI Assistant</h1>
+    <p class="lede">The feature spans three services. A browser chat UI, a Node backend that only authenticates and proxies, and a Python service that does everything LLM &mdash; chat, retrieval, and a tool-calling agent that reads live data and drives the UI.</p>
+    <div class="repos">
+      <span><b>sounak-project</b> &nbsp;Angular 20</span>
+      <span><b>sounak-backend</b> &nbsp;Node / Express</span>
+      <span><b>sounak-ai-service</b> &nbsp;Python / FastAPI + Gemini</span>
+    </div>
+  </header>
+
+  <nav>
+    <a href="#surfaces">two&nbsp;assistants</a>
+    <a href="#system">the&nbsp;system</a>
+    <a href="#turn">one&nbsp;agent&nbsp;turn</a>
+    <a href="#loop">the&nbsp;loop</a>
+    <a href="#tools">the&nbsp;tool&nbsp;menu</a>
+    <a href="#confirm">writes</a>
+    <a href="#rag">RAG&nbsp;&amp;&nbsp;docs</a>
+    <a href="#why">why&nbsp;it&nbsp;looks&nbsp;like&nbsp;this</a>
+    <a href="#files">file&nbsp;map</a>
+  </nav>
+
+  <section id="surfaces">
+    <h2 data-n="A">Two assistants, one backend</h2>
+    <p>There are two separate AI screens. They share the Node proxy and the Python service but are different features &mdash; don't conflate them.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Screen</th><th>Component</th><th>What it does</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="k">/ai</td>
+            <td class="k">AiChatComponent</td>
+            <td><b>AI Assistant (Gemini + RAG).</b> Plain streamed chat, a &ldquo;search my docs&rdquo; mode that answers only from uploaded files, and a document library to upload / list / delete those files.</td>
+          </tr>
+          <tr>
+            <td class="k">/assistant</td>
+            <td class="k">AppAssistantComponent</td>
+            <td><b>App Assistant.</b> The tool-calling agent. It looks up real numbers through the backend API and steers the browser &mdash; navigating, highlighting a button, opening a panel. This is the flow the rest of this page follows.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="system">
+    <h2 data-n="B">The system, one request deep</h2>
+    <p>The backend holds no LLM logic. It checks the JWT, forwards to Python, and maps failures to clean HTTP statuses. The one path worth internalising is the <b>callback</b>: when the agent needs app data, the Python service calls straight back into the Node API carrying <em>the end user's own token</em>.</p>
+
+    <figure>
+      <svg viewBox="0 0 900 300" role="img" aria-label="Request flows from the browser to the Node backend to the Python AI service. The Python service calls Gemini, and calls back into the Node API with the same forwarded JWT to read app data. The response returns an object of reply, actions, pending and trace.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="aha" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- gemini -->
+        <rect x="670" y="18" width="200" height="30" rx="6" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3"/>
+        <text x="770" y="37" text-anchor="middle" font-size="12" class="mono" fill="currentColor">Gemini API</text>
+        <line x1="770" y1="72" x2="770" y2="50" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
+        <text x="782" y="64" font-size="10.5" class="mono" fill="currentColor">chat · embeddings</text>
+
+        <!-- tiers -->
+        <rect x="30" y="74" width="210" height="58" rx="9" fill="none" stroke="var(--fe)" stroke-width="2"/>
+        <text x="135" y="99" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">AppAssistant</text>
+        <text x="135" y="116" text-anchor="middle" font-size="11" class="mono" fill="currentColor">Angular · browser</text>
+
+        <rect x="345" y="74" width="210" height="58" rx="9" fill="none" stroke="var(--be)" stroke-width="2"/>
+        <text x="450" y="99" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">aiController → aiService</text>
+        <text x="450" y="116" text-anchor="middle" font-size="11" class="mono" fill="currentColor">Node · verify + proxy</text>
+
+        <rect x="660" y="74" width="210" height="58" rx="9" fill="none" stroke="var(--ai)" stroke-width="2"/>
+        <text x="765" y="99" text-anchor="middle" font-size="13" font-weight="600" fill="currentColor">run_agent()</text>
+        <text x="765" y="116" text-anchor="middle" font-size="11" class="mono" fill="currentColor">Python · the loop</text>
+
+        <!-- request arrows -->
+        <line x1="240" y1="92" x2="345" y2="92" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
+        <text x="292" y="84" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">POST /api/ai/agent</text>
+        <text x="292" y="106" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">+ Bearer JWT</text>
+
+        <line x1="555" y1="92" x2="660" y2="92" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
+        <text x="607" y="84" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">POST /agent</text>
+        <text x="607" y="106" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">JWT → auth_token</text>
+
+        <!-- response -->
+        <line x1="660" y1="156" x2="240" y2="156" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah)"/>
+        <text x="450" y="174" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">response: &#123; reply, actions[ ], pending[ ], trace[ ] &#125;</text>
+
+        <!-- callback -->
+        <path d="M 760 132 L 760 210 L 450 210 L 450 132" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#aha)"/>
+        <text x="605" y="230" text-anchor="middle" font-size="10.5" class="mono" fill="var(--accent)">server tools call back — GET /api/users · /api/products/list  (same JWT, fixed paths)</text>
+
+        <!-- browser action note -->
+        <text x="135" y="160" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">then: UiActionService</text>
+        <text x="135" y="175" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">replays actions[ ]</text>
+        <text x="135" y="196" text-anchor="middle" font-size="10" class="mono" fill="currentColor">navigate · highlight · panel</text>
+      </svg>
+      <div class="legend">
+        <span><i style="background:var(--fe)"></i>Angular</span>
+        <span><i style="background:var(--be)"></i>Node</span>
+        <span><i style="background:var(--ai)"></i>Python</span>
+        <span><i style="background:var(--accent)"></i>trust boundary &mdash; the only path to app data</span>
+      </div>
+      <figcaption>The round trip is deliberate: the credential and the data never leave &ldquo;our&rdquo; side of the fence, and the agent inherits exactly the caller's permissions rather than a service account's. Paths in <code>backend_api.py</code> are hardcoded literals &mdash; a prompt injection inside an uploaded PDF cannot make it call an arbitrary URL.</figcaption>
+    </figure>
+  </section>
+
+  <section id="turn">
+    <h2 data-n="C">One agent turn, step by step</h2>
+    <ol class="steps">
+      <li><b>The browser sends the turn.</b> <code>send()</code> snapshots the conversation &mdash; clean turns only, no errors or placeholders &mdash; adds a user bubble and a &ldquo;working&hellip;&rdquo; bubble, and calls <code>ai.agent(text, history)</code>. The JWT interceptor attaches the bearer token.
+        <span class="where">sounak-project/src/app/components/app-assistant/app-assistant.component.ts</span></li>
+      <li><b>Node authenticates and caps.</b> Passport validates the JWT (<code>session: false</code>), the controller rejects an empty message and trims history to the last 20 turns.
+        <span class="where">sounak-backend/src/controllers/aiController.js · routes/aiRoutes.js</span></li>
+      <li><b>Node forwards to Python</b> with <code>auth_token</code> = the raw <code>Authorization</code> header and a 90&nbsp;second timeout &mdash; longer than plain chat, because one agent turn is several model calls.
+        <span class="where">sounak-backend/src/services/aiService.js</span></li>
+      <li><b>Python builds the prompt.</b> <code>contents</code> = replayed history + new message. The system instruction = the agent rulebook + a rendered <b>UI manifest</b> (every screen, and every element the assistant may point at).
+        <span class="where">sounak-ai-service/app/agent.py · app/tools/manifest.py</span></li>
+      <li><b>The loop runs</b> &mdash; call the model, look at what it asked for, act, feed results back, repeat. Up to 8 iterations. Automatic function calling is <em>disabled</em> so Python owns every step. (Detailed below.)</li>
+      <li><b>Tool calls are dispatched by kind.</b> <span class="tag server">server</span> runs now and returns real data; <span class="tag client">client</span> is only validated and recorded; <span class="tag confirm">confirm</span> is held back as a proposal.</li>
+      <li><b>The model stops calling tools.</b> That response is the answer. A guard catches degenerate one-character replies and asks once more with the tool menu withheld.</li>
+      <li><b>Python returns</b> <code>{ reply, actions, pending, trace, iterations, tokens }</code>; Node wraps it as <code>{ success, data }</code>.</li>
+      <li><b>The browser finishes the job.</b> It paints the reply, the collapsible tool trace and any confirm card, then <code>UiActionService.run(actions)</code> executes the UI steps <em>in sequence</em> &mdash; navigate, wait a frame, then scroll-to and ring each <code>data-ai-id</code> element with a pinned note.
+        <span class="where">sounak-project/src/app/services/ui-action.service.ts</span></li>
+    </ol>
+  </section>
+
+  <section id="loop">
+    <h2 data-n="D">The loop itself</h2>
+    <p>This is the whole idea in one picture. The registry, the manifest and the HTTP client are supporting cast; <code>run_agent()</code> is the feature.</p>
+
+    <figure>
+      <svg viewBox="0 0 820 566" role="img" aria-label="The agent loop. Contents plus a system prompt go into a Gemini call with the nine-tool menu. If the model returns no function calls, its text is the final reply and the response returns. Otherwise each call is dispatched by kind: server tools run in Python and return real data, client tools are validated against the manifest and recorded as browser actions, confirm tools are recorded as pending writes. Tool results are appended to contents and the loop repeats, up to eight times.">
+        <defs>
+          <marker id="lah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="laha" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- contents -->
+        <rect x="250" y="14" width="320" height="52" rx="9" fill="var(--surface-2)" stroke="currentColor" stroke-width="1"/>
+        <text x="410" y="35" text-anchor="middle" font-size="12" class="mono" fill="currentColor">contents = history + user message</text>
+        <text x="410" y="52" text-anchor="middle" font-size="11" class="mono" fill="currentColor">system = agent rules + UI manifest</text>
+
+        <line x1="410" y1="66" x2="410" y2="94" stroke="currentColor" stroke-width="1.4" marker-end="url(#lah)"/>
+
+        <!-- model call -->
+        <rect x="278" y="94" width="264" height="50" rx="9" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <text x="410" y="114" text-anchor="middle" font-size="12.5" font-weight="600" fill="currentColor">call Gemini · agent_model</text>
+        <text x="410" y="131" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">tools = the 9-function menu</text>
+
+        <line x1="410" y1="144" x2="410" y2="172" stroke="currentColor" stroke-width="1.4" marker-end="url(#lah)"/>
+
+        <!-- diamond -->
+        <polygon points="410,172 476,214 410,256 344,214" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="410" y="210" text-anchor="middle" font-size="11.5" fill="currentColor">function</text>
+        <text x="410" y="224" text-anchor="middle" font-size="11.5" fill="currentColor">calls?</text>
+
+        <!-- none -> right -->
+        <line x1="476" y1="214" x2="590" y2="214" stroke="currentColor" stroke-width="1.4" marker-end="url(#lah)"/>
+        <text x="533" y="206" text-anchor="middle" font-size="10.5" class="mono" fill="currentColor">none</text>
+        <rect x="590" y="192" width="210" height="44" rx="9" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <text x="695" y="219" text-anchor="middle" font-size="12" fill="currentColor">the text is the answer</text>
+        <line x1="695" y1="236" x2="695" y2="262" stroke="currentColor" stroke-width="1.4" marker-end="url(#lah)"/>
+        <rect x="588" y="262" width="214" height="44" rx="9" fill="var(--surface-2)" stroke="currentColor" stroke-width="1"/>
+        <text x="695" y="282" text-anchor="middle" font-size="11" class="mono" fill="currentColor">return AgentResponse</text>
+        <text x="695" y="297" text-anchor="middle" font-size="11" class="mono" fill="currentColor">→ Node → browser</text>
+
+        <!-- has calls -> down -->
+        <line x1="410" y1="256" x2="410" y2="292" stroke="currentColor" stroke-width="1.4" marker-end="url(#lah)"/>
+        <text x="422" y="278" font-size="10.5" class="mono" fill="currentColor">has calls</text>
+
+        <!-- dispatch container -->
+        <rect x="52" y="292" width="716" height="182" rx="10" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 4"/>
+        <text x="410" y="311" text-anchor="middle" font-size="11.5" class="mono" fill="currentColor">for each call — dispatch by kind</text>
+
+        <!-- server -->
+        <rect x="68" y="322" width="222" height="106" rx="9" fill="none" stroke="var(--ok)" stroke-width="2"/>
+        <text x="79" y="341" font-size="12.5" font-weight="600" fill="currentColor">server</text>
+        <text x="79" y="360" font-size="10" class="mono" fill="currentColor">runs now, in Python</text>
+        <text x="79" y="374" font-size="10" class="mono" fill="currentColor">read-only; calls the Node API</text>
+        <text x="79" y="388" font-size="10" class="mono" fill="currentColor">count_users, list_products,</text>
+        <text x="79" y="402" font-size="10" class="mono" fill="currentColor">get_product, search_docs …</text>
+        <text x="79" y="420" font-size="10" font-style="italic" fill="currentColor">→ model gets real data</text>
+
+        <!-- client -->
+        <rect x="299" y="322" width="222" height="106" rx="9" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <text x="310" y="341" font-size="12.5" font-weight="600" fill="currentColor">client</text>
+        <text x="310" y="360" font-size="10" class="mono" fill="currentColor">not run here</text>
+        <text x="310" y="374" font-size="10" class="mono" fill="currentColor">validated vs the manifest,</text>
+        <text x="310" y="388" font-size="10" class="mono" fill="currentColor">recorded as an AgentAction</text>
+        <text x="310" y="402" font-size="10" class="mono" fill="currentColor">navigate_to, highlight_element…</text>
+        <text x="310" y="420" font-size="10" font-style="italic" fill="currentColor">→ browser runs it after the turn</text>
+
+        <!-- confirm -->
+        <rect x="530" y="322" width="222" height="106" rx="9" fill="none" stroke="var(--gate)" stroke-width="2"/>
+        <text x="541" y="341" font-size="12.5" font-weight="600" fill="currentColor">confirm</text>
+        <text x="541" y="360" font-size="10" class="mono" fill="currentColor">not run</text>
+        <text x="541" y="374" font-size="10" class="mono" fill="currentColor">recorded as a PendingAction</text>
+        <text x="541" y="388" font-size="10" class="mono" fill="currentColor">(label + summary)</text>
+        <text x="541" y="402" font-size="10" class="mono" fill="currentColor">create_user</text>
+        <text x="541" y="420" font-size="10" font-style="italic" fill="currentColor">→ user must click Confirm</text>
+
+        <!-- append + loop -->
+        <line x1="410" y1="474" x2="410" y2="496" stroke="currentColor" stroke-width="1.4" marker-end="url(#lah)"/>
+        <rect x="270" y="496" width="280" height="40" rx="9" fill="var(--surface-2)" stroke="currentColor" stroke-width="1"/>
+        <text x="410" y="521" text-anchor="middle" font-size="11" class="mono" fill="currentColor">append tool results → contents</text>
+
+        <path d="M 270 516 L 24 516 L 24 119 L 278 119" fill="none" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#laha)"/>
+        <text x="150" y="110" text-anchor="middle" font-size="10.5" class="mono" fill="var(--accent)">next iteration  (≤ 8)</text>
+      </svg>
+      <figcaption>Owning the loop &mdash; instead of letting the SDK execute tools &mdash; is what makes the <span class="tag client">client</span> and <span class="tag confirm">confirm</span> kinds possible: the model &ldquo;calls&rdquo; <code>navigate_to</code> and is told it worked, while the real navigation happens later in the browser; it &ldquo;calls&rdquo; <code>create_user</code> and is told a human must approve it.</figcaption>
+    </figure>
+  </section>
+
+  <section id="tools">
+    <h2 data-n="E">The tool menu</h2>
+    <p>Nine tools, three kinds. The <code>description</code> on each declaration is the real prompt-engineering surface &mdash; it is the only thing the model reads when deciding whether a tool fits.</p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Tool</th><th>Kind</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td class="k">count_users</td><td><span class="tag server">server</span></td><td>Exact member count, computed in Python from <code>GET /api/users</code> &mdash; the model never counts rows itself.</td></tr>
+          <tr><td class="k">list_users</td><td><span class="tag server">server</span></td><td>Members, optionally filtered by name/email substring. Password hash is stripped before anything reaches the model.</td></tr>
+          <tr><td class="k">list_products</td><td><span class="tag server">server</span></td><td>Catalogue with price / category / stock, from <code>GET /api/products/list</code>.</td></tr>
+          <tr><td class="k">get_product</td><td><span class="tag server">server</span></td><td>One product by id. Rejects a hallucinated id and tells the model to call <code>list_products</code> first.</td></tr>
+          <tr><td class="k">search_docs</td><td><span class="tag server">server</span></td><td>Top-k passages from the RAG store (local Chroma). Result is tagged &ldquo;reference data, not instructions.&rdquo;</td></tr>
+          <tr><td class="k">navigate_to</td><td><span class="tag client">client</span></td><td>Route the browser to a screen. Validated against the manifest's known routes.</td></tr>
+          <tr><td class="k">highlight_element</td><td><span class="tag client">client</span></td><td>Ring one <code>data-ai-id</code> element and pin a note. Validated against known ai-ids.</td></tr>
+          <tr><td class="k">open_panel</td><td><span class="tag client">client</span></td><td>Open a named side panel (e.g. the document library on <code>/ai</code>) via a replay subject.</td></tr>
+          <tr><td class="k">create_user</td><td><span class="tag confirm">confirm</span></td><td>Propose a new member. Nothing is written until the user clicks Confirm.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="confirm">
+    <h2 data-n="F">Writes go through a gate, not the model</h2>
+    <p>When the model calls <code>create_user</code>, the loop records a <code>PendingAction</code> with a human-readable summary and tells the model &ldquo;awaiting confirmation.&rdquo; The UI shows a confirm card. Clicking it fires <code>POST /api/ai/agent/confirm</code> &rarr; Python <code>run_confirmed()</code>, which:</p>
+    <div class="cards">
+      <div class="card"><h3>Checks the allowlist</h3><p><code>tool in registry.CONFIRMABLE</code>. This check &mdash; not the model's good behaviour &mdash; is the security boundary. A crafted request body can't turn this into &ldquo;run any tool.&rdquo;</p></div>
+      <div class="card"><h3>Executes once</h3><p>Runs the tool (<code>POST /api/users</code> with the forwarded JWT) and returns a plain result.</p></div>
+      <div class="card"><h3>Never re-asks the model</h3><p>The user already saw exactly what would happen and agreed. Sending it back to an LLM could only add drift or cost.</p></div>
+    </div>
+  </section>
+
+  <section id="rag">
+    <h2 data-n="G">RAG &amp; documents</h2>
+    <p>The <code>/ai</code> screen's retrieval half. Everything downstream of the loader works on plain strings, so file formats are handled in exactly one place.</p>
+    <h3>Ingest</h3>
+    <p><code>python ingest.py</code> &rarr; read <code>.md/.txt/.pdf</code> from <code>data/</code> &rarr; character-window chunks with 150-char overlap &rarr; embed with Gemini <code>gemini-embedding-001</code> (768-dim, <code>RETRIEVAL_DOCUMENT</code>) &rarr; store in Chroma (<code>chroma_db/</code>, cosine). Live upload takes the same path for one file &mdash; old chunks for that filename are deleted first, so re-upload means update.</p>
+    <h3>Ask</h3>
+    <p><code>POST /api/ai/ask</code> &rarr; embed the question (<code>RETRIEVAL_QUERY</code>), pull the top 4 chunks, hand them to Gemini as the <em>only</em> allowed context with a strict &ldquo;say you don't know&rdquo; system prompt. The response carries the source chunks, so an answer is always traceable. <code>/ask/langchain</code> is the same pipeline rebuilt with LangChain over the same index &mdash; there purely for comparison.</p>
+    <h3>Plain chat</h3>
+    <p><code>/chat</code> is one shot; <code>/chat/stream</code> is Server-Sent Events piped Python &rarr; Node &rarr; browser, read as a <code>fetch</code> stream on both hops.</p>
+  </section>
+
+  <section id="why">
+    <h2 data-n="H">Why the code looks like this</h2>
+    <div class="cards">
+      <div class="card"><h3>Stateless everywhere</h3><p>The client replays the conversation each turn, mirroring how the JWT carries the session. No server-side session store to expire or scale.</p></div>
+      <div class="card"><h3>One trust boundary</h3><p><code>backend_api.py</code> is the only place the AI service touches app data, always with the caller's JWT. That's why <code>userRoutes</code> and <code>productRoutes</code> gained <code>requireAuth</code>.</p></div>
+      <div class="card"><h3>Own the loop</h3><p>Automatic function calling is off on purpose &mdash; the only way to intercept a UI tool or hold a write for confirmation.</p></div>
+      <div class="card"><h3>Its own model</h3><p>The agent runs on a separate <code>agent_model</code> so its bursty multi-call turns draw from a different free-tier quota bucket than <code>/chat</code>.</p></div>
+      <div class="card"><h3>A retry budget</h3><p>Backoff reads Google's <code>retryDelay</code> hint and caps total sleep, so a rate-limited agent surfaces &ldquo;wait ~30s&rdquo; instead of a confusing 504.</p></div>
+      <div class="card"><h3>The UI manifest</h3><p>A hand-kept map of screens and elements in the system prompt &mdash; cheaper and fresher than RAG for &ldquo;where's the button.&rdquo; Its ai-ids must match <code>data-ai-id</code> in the templates.</p></div>
+      <div class="card"><h3>Inspectable by design</h3><p>The tool trace (with passwords masked) and the confirm card are visible in the UI, not hidden &mdash; when an answer looks wrong you see which tool ran with which args.</p></div>
+      <div class="card"><h3>Whitelisted fields</h3><p><code>_user_fields()</code> picks id / name / email. A password hash can never reach the model even if the backend returns one.</p></div>
+    </div>
+  </section>
+
+  <section id="files">
+    <h2 data-n="I">Where to look</h2>
+    <div class="files">
+      <div class="grp">
+        <h3>sounak-ai-service — the brain</h3>
+        <dl>
+          <div class="row"><span class="path">app/agent.py</span><span class="desc">the loop, the degenerate-reply guard, run_confirmed()</span></div>
+          <div class="row"><span class="path">app/tools/registry.py</span><span class="desc">the 9 tools, their kinds and descriptions</span></div>
+          <div class="row"><span class="path">app/tools/manifest.py</span><span class="desc">the UI map injected into the system prompt</span></div>
+          <div class="row"><span class="path">app/tools/backend_api.py</span><span class="desc">the trust-boundary HTTP client</span></div>
+          <div class="row"><span class="path">app/main.py</span><span class="desc">FastAPI routes; /agent, /agent/confirm, /ask, /chat</span></div>
+          <div class="row"><span class="path">app/rag.py · embeddings.py · chunking.py</span><span class="desc">the retrieval half</span></div>
+          <div class="row"><span class="path">app/config.py</span><span class="desc">every knob — models, timeouts, iteration cap, k</span></div>
+        </dl>
+      </div>
+      <div class="grp">
+        <h3>sounak-backend — the gate</h3>
+        <dl>
+          <div class="row"><span class="path">src/routes/aiRoutes.js</span><span class="desc">auth + multipart, all /api/ai/* endpoints</span></div>
+          <div class="row"><span class="path">src/controllers/aiController.js</span><span class="desc">validation, history cap, error-status mapping</span></div>
+          <div class="row"><span class="path">src/services/aiService.js</span><span class="desc">the fetch calls to Python, timeouts</span></div>
+          <div class="row"><span class="path">src/routes/userRoutes.js · productRoutes.js</span><span class="desc">the endpoints the agent calls back into</span></div>
+        </dl>
+      </div>
+      <div class="grp">
+        <h3>sounak-project — the hands</h3>
+        <dl>
+          <div class="row"><span class="path">components/app-assistant/</span><span class="desc">the agent chat UI, confirm card, trace panel</span></div>
+          <div class="row"><span class="path">components/ai-chat/</span><span class="desc">streamed chat + RAG search + document library</span></div>
+          <div class="row"><span class="path">services/ai.service.ts</span><span class="desc">HttpClient + fetch-stream calls to the backend</span></div>
+          <div class="row"><span class="path">services/ui-action.service.ts</span><span class="desc">navigate / highlight / open-panel, run in sequence</span></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="caveat">
+    <h2 data-n="!">One caveat in the config</h2>
+    <div class="callout">
+      <h3>agent_model may need changing</h3>
+      <p><code>app/config.py</code> pins <code>agent_model = "gemini-3.5-flash-lite"</code>, and its own comment notes that <code>flash-lite</code> is retired for new API keys. If the agent starts 404-ing on the model, that's the line &mdash; set <code>AGENT_MODEL=gemini-2.5-flash</code> in the service's <code>.env</code>, or run <code>client.models.list()</code> to see what the key can actually reach.</p>
+    </div>
+  </section>
+
+  <footer>
+    sounak-project · sounak-backend · sounak-ai-service &nbsp;·&nbsp; walkthrough generated from a read of the working tree
+  </footer>
+
+</div>

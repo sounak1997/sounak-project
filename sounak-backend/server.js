@@ -42,8 +42,14 @@ connectDB();
 // --- Core Middleware ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Comma-separated list so both frontends (sounak-project's web app and
+// sounak-android's Ionic dev server, on different local ports) can be
+// allowed without loosening this back to '*'.
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
+  : '*';
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: corsOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
@@ -61,12 +67,39 @@ const authRoutes = require('./src/routes/authRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const productRoutes = require('./src/routes/productRoutes');
 const aiRoutes = require('./src/routes/aiRoutes');
+// Shopping Cart App (Grocery portal) — see docs/shopping-cart-app-requirements.md
+const customerRoutes = require('./src/routes/customerRoutes');
+const couponRoutes = require('./src/routes/couponRoutes');
+const cartRoutes = require('./src/routes/cartRoutes');
+const orderRoutes = require('./src/routes/orderRoutes');
+const paymentConfigRoutes = require('./src/routes/paymentConfigRoutes');
+const serviceRequestRoutes = require('./src/routes/serviceRequestRoutes');
+// Doctors & Test Booking portal — see docs/doctors-test-booking-and-helper-portal-requirements.md
+const medicalCenterRoutes = require('./src/routes/medicalCenterRoutes');
+const doctorRoutes = require('./src/routes/doctorRoutes');
+const labRoutes = require('./src/routes/labRoutes');
+const testRoutes = require('./src/routes/testRoutes');
 
 app.use('/api/auth/register', registerLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/payment-config', paymentConfigRoutes);
+app.use('/api/assistance', serviceRequestRoutes);
+app.use('/api/medical-centers', medicalCenterRoutes);
+app.use('/api/doctors', doctorRoutes);
+app.use('/api/labs', labRoutes);
+app.use('/api/tests', testRoutes);
+
+// Uploaded product images and the payment QR (NFR-3). Registered before the
+// production catch-all below so it isn't swallowed by the Angular SPA route.
+const { UPLOADS_DIR } = require('./src/utils/imageUpload');
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 // --- SSE: Live Notifications Stream ---
 app.get('/api/notifications/stream', (req, res) => {

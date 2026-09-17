@@ -15,7 +15,13 @@ const getUsers = async (req, res) => {
 
 const createUser = async (req, res) => {
   try {
-    const newUser = await User.create(req.body);
+    // Whitelist fields explicitly rather than passing req.body straight
+    // through: now that User has a `role` field, an unfiltered create would
+    // let any authenticated caller (this is the endpoint the AI agent's
+    // create_user tool calls, on the caller's own behalf) self-promote to
+    // admin by slipping `role: "admin"` into the request body.
+    const { name, email, password } = req.body;
+    const newUser = await User.create({ name, email, password });
     res.status(201).json({ message: 'User created successfully', user: newUser });
   } catch (err) {
     console.error('Error creating user:', err);
