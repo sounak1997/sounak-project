@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 9 (API 28) blocks cleartext HTTP by default. Without this file the
+  app fails EVERY request to an http:// backend, and the WebView reports it as
+  a generic network error rather than a policy block — easy to misdiagnose.
+
+  This narrowly permits cleartext to ONE host. It is a stopgap for an IP-only
+  server. Once the backend has HTTPS (a domain + certbot, or Cloudflare in
+  front), delete the <domain-config> block and the android:networkSecurityConfig
+  attribute in AndroidManifest.xml — cleartext should not ship to real users.
+-->
+<network-security-config>
+    <!-- TODO: replace with your Oracle VM IP, matching environment.prod.ts -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">REPLACE_WITH_ORACLE_IP</domain>
+    </domain-config>
+
+    <!-- Everything else stays HTTPS-only. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

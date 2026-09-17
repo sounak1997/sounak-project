@@ -1,0 +1,57 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Sohay</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="login-content">
+  <div class="brand">
+    <div class="brand-mark">S</div>
+    <h1>Sohay</h1>
+    <p>Groceries, doctor bookings, and a helping hand — in one place.</p>
+  </div>
+
+  <form (ngSubmit)="submit()">
+    <ion-list lines="full" class="form-list">
+      <ion-item>
+        <ion-label position="stacked">Email</ion-label>
+        <ion-input
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          [(ngModel)]="email"
+          name="email"
+          placeholder="you@example.com"
+          required
+        ></ion-input>
+      </ion-item>
+      <ion-item>
+        <ion-label position="stacked">Password</ion-label>
+        <ion-input
+          type="password"
+          autocomplete="current-password"
+          [(ngModel)]="password"
+          name="password"
+          placeholder="••••••••"
+          required
+        ></ion-input>
+      </ion-item>
+    </ion-list>
+
+    @if (error()) {
+      <ion-text color="danger" class="error-text">{{ error() }}</ion-text>
+    }
+
+    <ion-button type="submit" expand="block" class="submit-btn" [disabled]="loading()">
+      @if (loading()) {
+        <ion-spinner name="dots"></ion-spinner>
+      } @else {
+        Log in
+      }
+    </ion-button>
+  </form>
+
+  <div class="login-links">
+    <a routerLink="/register">New here? Create an account</a>
+  </div>
+</ion-content>

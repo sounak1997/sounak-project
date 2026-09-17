@@ -1,0 +1,13 @@
+<div class="helper-contact">
+  <p class="message">{{ message }}</p>
+  <div class="buttons">
+    <ion-button size="small" fill="outline" color="success" [href]="contact.callHref">
+      <ion-icon slot="start" name="call-outline"></ion-icon>
+      Call
+    </ion-button>
+    <ion-button size="small" fill="outline" color="tertiary" [href]="contact.whatsappHref" target="_blank" rel="noopener">
+      <ion-icon slot="start" name="logo-whatsapp"></ion-icon>
+      WhatsApp
+    </ion-button>
+  </div>
+</div>

@@ -1,0 +1,24 @@
+.helper-contact {
+  background: var(--ion-color-light);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin: 16px 0;
+}
+
+.message {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--ion-color-medium-shade);
+  line-height: 1.4;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  ion-button {
+    margin: 0;
+    --border-radius: 8px;
+  }
+}

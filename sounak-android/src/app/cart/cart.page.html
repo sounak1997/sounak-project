@@ -1,0 +1,99 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/grocery"></ion-back-button>
+    </ion-buttons>
+    <ion-title>My Cart</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding cart-content">
+  @if (loading()) {
+    <div class="state-row">
+      <ion-spinner name="dots"></ion-spinner>
+    </div>
+  } @else if (error()) {
+    <div class="state-row">
+      <p>{{ error() }}</p>
+    </div>
+  } @else if (placedOrder(); as order) {
+    <div class="success-state">
+      <div class="success-title">Order placed!</div>
+      <p>Order {{ order.id }} — total ₹{{ order.total }}</p>
+      <p class="success-sub">We've opened WhatsApp with your order details — just hit send.</p>
+      @if (whatsappOrderHref(); as href) {
+        <ion-button expand="block" color="success" [href]="href" target="_blank" rel="noopener">
+          <ion-icon slot="start" name="logo-whatsapp"></ion-icon>
+          Send order on WhatsApp
+        </ion-button>
+      }
+      <ion-button expand="block" fill="outline" (click)="goToGrocery()">Continue shopping</ion-button>
+    </div>
+  } @else if (!cart() || cart()!.items.length === 0) {
+    <div class="state-row">
+      <p>Your cart is empty.</p>
+    </div>
+  } @else {
+    <ion-list lines="none" class="cart-list">
+      @for (item of cart()!.items; track item.product_id) {
+        <ion-item class="cart-item">
+          <div class="item-thumb" slot="start">
+            @if (imageFor(item); as img) {
+              <img [src]="img" [alt]="item.name" />
+            }
+          </div>
+          <div class="item-body">
+            <div class="item-name">{{ item.name }}</div>
+            <div class="item-price">₹{{ item.price }} each</div>
+            <div class="item-row">
+              <div class="qty-stepper">
+                <ion-button fill="clear" size="small" [disabled]="isBusy(item.product_id)" (click)="decrementQty(item)">−</ion-button>
+                <span class="qty-value">{{ item.quantity }}</span>
+                <ion-button
+                  fill="clear" size="small"
+                  [disabled]="isBusy(item.product_id) || item.quantity >= item.stock"
+                  (click)="incrementQty(item)"
+                >+</ion-button>
+              </div>
+              <span class="line-total">₹{{ item.line_total }}</span>
+              <ion-button fill="clear" size="small" color="danger" [disabled]="isBusy(item.product_id)" (click)="removeItem(item)">
+                Remove
+              </ion-button>
+            </div>
+          </div>
+        </ion-item>
+      }
+    </ion-list>
+
+    <div class="subtotal-row">
+      <span>Subtotal</span>
+      <span>₹{{ cart()!.subtotal }}</span>
+    </div>
+
+    <div class="checkout-section">
+      <div class="checkout-title">Delivery details</div>
+      <ion-list lines="full">
+        <ion-item>
+          <ion-label position="stacked">Name</ion-label>
+          <ion-input [(ngModel)]="name" name="name" placeholder="Your name"></ion-input>
+        </ion-item>
+        <ion-item>
+          <ion-label position="stacked">Phone</ion-label>
+          <ion-input type="tel" [(ngModel)]="phone" name="phone" placeholder="Contact number"></ion-input>
+        </ion-item>
+        <ion-item>
+          <ion-label position="stacked">Address</ion-label>
+          <ion-textarea [(ngModel)]="address" name="address" placeholder="Delivery address" autoGrow="true"></ion-textarea>
+        </ion-item>
+      </ion-list>
+
+      <ion-button expand="block" class="place-order-btn" [disabled]="placingOrder()" (click)="placeOrder()">
+        @if (placingOrder()) {
+          <ion-spinner name="dots"></ion-spinner>
+        } @else {
+          Place order (Cash on delivery)
+        }
+      </ion-button>
+    </div>
+  }
+</ion-content>

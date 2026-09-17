@@ -1,0 +1,89 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/home"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Grocery</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="goToCart()" aria-label="View cart">
+        <ion-icon slot="icon-only" name="cart-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      placeholder="Search for items"
+      [debounce]="400"
+      (ionInput)="onSearch($any($event.target).value)"
+    ></ion-searchbar>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding grocery-content">
+  @if (loading()) {
+    <div class="state-row">
+      <ion-spinner name="dots"></ion-spinner>
+    </div>
+  } @else if (error()) {
+    <div class="state-row">
+      <p>{{ error() }}</p>
+    </div>
+  } @else if (products().length === 0) {
+    <div class="state-row">
+      <p>No products found.</p>
+    </div>
+  } @else {
+    <div class="product-grid">
+      @for (product of products(); track product.id) {
+        <div class="product-card">
+          <div class="product-thumb">
+            @if (imageFor(product); as img) {
+              <img [src]="img" [alt]="product.name" />
+            } @else {
+              <span>{{ product.name }}</span>
+            }
+          </div>
+          <div class="product-name">{{ product.name }}</div>
+          <div class="product-meta">
+            <span class="product-price">₹{{ product.price }}</span>
+            <ion-chip [color]="product.in_stock ? 'success' : 'medium'" class="stock-chip">
+              {{ product.in_stock ? 'In stock' : 'Out of stock' }}
+            </ion-chip>
+          </div>
+          @if (product.in_stock) {
+            <div class="cart-controls">
+              <div class="qty-stepper">
+                <ion-button
+                  fill="clear" size="small"
+                  [disabled]="qtyFor(product.id) <= 1"
+                  (click)="decrementQty(product)"
+                >−</ion-button>
+                <span class="qty-value">{{ qtyFor(product.id) }}</span>
+                <ion-button
+                  fill="clear" size="small"
+                  [disabled]="qtyFor(product.id) >= product.stock"
+                  (click)="incrementQty(product)"
+                >+</ion-button>
+              </div>
+              <ion-button
+                class="add-btn" size="small"
+                [disabled]="isAdding(product.id)"
+                (click)="addToCart(product)"
+              >
+                @if (isAdding(product.id)) {
+                  <ion-spinner name="dots"></ion-spinner>
+                } @else {
+                  Add
+                }
+              </ion-button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <app-helper-contact
+    message="Can't find an item, or want to place your order over the phone instead? We'll take it that way too."
+  ></app-helper-contact>
+</ion-content>

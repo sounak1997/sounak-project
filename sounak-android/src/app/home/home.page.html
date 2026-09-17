@@ -1,0 +1,32 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Sohay</ion-title>
+    <ion-button slot="end" fill="clear" (click)="logout()" aria-label="Log out">
+      <ion-icon slot="icon-only" name="log-out-outline"></ion-icon>
+    </ion-button>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="home-content">
+  <div class="topbar">
+    <div class="greet">Hello, {{ auth.user()?.name }}</div>
+    <div class="role-badge">{{ auth.user()?.role }}</div>
+  </div>
+
+  <div class="options">
+    <button class="option-card opt-grocery" (click)="goTo('grocery')">
+      <div class="opt-title">Grocery</div>
+      <div class="opt-sub">Order daily essentials</div>
+    </button>
+
+    <button class="option-card opt-booking" (click)="goTo('booking')">
+      <div class="opt-title">Doctors &amp; Tests</div>
+      <div class="opt-sub">Book a doctor or a test</div>
+    </button>
+
+    <button class="option-card opt-helper" (click)="goTo('helper')">
+      <div class="opt-title">Helper</div>
+      <div class="opt-sub">Call someone to help</div>
+    </button>
+  </div>
+</ion-content>

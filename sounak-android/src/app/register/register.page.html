@@ -1,0 +1,54 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/login"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Create account</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="register-content">
+  <form (ngSubmit)="submit()">
+    <ion-list lines="full">
+      <ion-item>
+        <ion-label position="stacked">Name</ion-label>
+        <ion-input [(ngModel)]="name" name="name" placeholder="Your name" required></ion-input>
+      </ion-item>
+      <ion-item>
+        <ion-label position="stacked">Email</ion-label>
+        <ion-input
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          [(ngModel)]="email"
+          name="email"
+          placeholder="you@example.com"
+          required
+        ></ion-input>
+      </ion-item>
+      <ion-item>
+        <ion-label position="stacked">Password</ion-label>
+        <ion-input
+          type="password"
+          autocomplete="new-password"
+          [(ngModel)]="password"
+          name="password"
+          placeholder="At least 8 characters"
+          required
+        ></ion-input>
+      </ion-item>
+    </ion-list>
+
+    @if (error()) {
+      <ion-text color="danger" class="error-text">{{ error() }}</ion-text>
+    }
+
+    <ion-button type="submit" expand="block" class="submit-btn" [disabled]="loading()">
+      @if (loading()) {
+        <ion-spinner name="dots"></ion-spinner>
+      } @else {
+        Create account
+      }
+    </ion-button>
+  </form>
+</ion-content>

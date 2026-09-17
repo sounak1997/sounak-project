@@ -1,0 +1,16 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/home"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Helper</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <p>Need a hand with something — placing an order verbally, general help, or a delivery issue? Reach the assistant directly:</p>
+
+  <app-helper-contact message="Call or WhatsApp us and we'll take it from there."></app-helper-contact>
+
+  <p class="ion-margin-top">The in-app "request a callback" form (queued to staff automatically) isn't built yet, but the backend behind it already is — <code>POST /api/assistance</code> on sounak-backend.</p>
+</ion-content>

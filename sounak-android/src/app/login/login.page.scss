@@ -1,0 +1,64 @@
+.login-content {
+  --padding-start: 24px;
+  --padding-end: 24px;
+  --padding-top: 48px;
+}
+
+.brand {
+  text-align: center;
+  margin-bottom: 32px;
+
+  .brand-mark {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 12px;
+    border-radius: 16px;
+    background: #E3A32E;
+    color: #3A2A05;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 26px;
+    font-weight: 700;
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: 24px;
+    font-weight: 700;
+  }
+
+  p {
+    margin: 0 auto;
+    max-width: 32ch;
+    color: var(--ion-color-medium);
+    font-size: 13.5px;
+    line-height: 1.5;
+  }
+}
+
+.form-list {
+  background: transparent;
+  margin-bottom: 8px;
+}
+
+.error-text {
+  display: block;
+  font-size: 13px;
+  margin: 8px 4px 0;
+}
+
+.submit-btn {
+  margin-top: 20px;
+}
+
+.login-links {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13.5px;
+
+  a {
+    color: #8A5E10;
+    text-decoration: none;
+  }
+}
