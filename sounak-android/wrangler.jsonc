@@ -1,0 +1,12 @@
+{
+  "name": "suvidhaa",
+  "compatibility_date": "2026-09-17",
+  "observability": { "enabled": true },
+  "assets": {
+    // Capacitor's webDir — the same bundle that ships inside the APK, so what
+    // you see here is exactly what the app renders.
+    "directory": "www",
+    // Ionic routes on the client; any unmatched path must serve index.html.
+    "not_found_handling": "single-page-application"
+  }
+}

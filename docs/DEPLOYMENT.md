@@ -94,7 +94,7 @@ blueprint-create command**, so this step is the dashboard.
    JWT_SECRET
    AI_SERVICE_URL     https://sounak-ai-service.onrender.com
    AI_INTERNAL_KEY    <shared secret>
-   CORS_ORIGIN        https://sounak-project.sounak-project.workers.dev
+   CORS_ORIGIN        https://sounak-project.sounak-project.workers.dev,https://suvidhaa.sounak-project.workers.dev,https://localhost,capacitor://localhost
    ```
 
    **sounak-ai-service**
@@ -169,14 +169,28 @@ AMI — an x86 image cannot boot on ARM.
 (`appId: com.sounak.android`). It is a **native app, not a page served by your
 backend**, which changes three things that are already fixed in the repo:
 
-| Problem | Why it breaks | Fix (done) |
+| Problem | Why it breaks | Status |
 |---|---|---|
-| `apiUrl: ''` | Relative URLs resolve to the *phone*, not your server. Every call fails. | `environment.prod.ts` now takes an absolute URL |
-| Cleartext blocked | Android 9+ refuses `http://` by default; shows a generic network error | `res/xml/network_security_config.xml`, wired into the manifest |
-| Mixed content | Capacitor's default `androidScheme: 'https'` makes the origin `https://localhost`; calling `http://` is blocked *separately* | `androidScheme: 'http'` in `capacitor.config.ts` |
+| `apiUrl: ''` | Relative URLs resolve to the *phone*, not your server. Every call fails. | fixed — `environment.prod.ts` holds `https://sounak-backend.onrender.com` |
+| Cleartext blocked | Android 9+ refuses `http://` by default | **moot** — the backend is HTTPS. The cleartext exception was removed |
+| Mixed content | `androidScheme: 'https'` makes the origin `https://localhost`; calling `http://` is blocked separately | **moot** — `androidScheme` is back to the default `https` |
 
-CORS is already fine — the backend runs `CORS_ORIGIN=*`. Tighten it later to
-`http://localhost,http://<oracle-ip>`.
+Both workarounds existed only while the backend was an IP-only HTTP host. They
+were deleted once Render provided HTTPS — shipping a cleartext exception that
+is not needed would weaken the release for nothing.
+
+You can preview the exact APK bundle in a browser at
+<https://suvidhaa.sounak-project.workers.dev> — same code, minus native
+plugins (camera, geolocation, push), which need a real device.
+
+CORS is handled: `CORS_ORIGIN` on the backend lists both Cloudflare origins
+plus `https://localhost` and `capacitor://localhost`, which are what a real
+Capacitor WebView sends on Android and iOS. The APK therefore needs no further
+backend change.
+
+⚠️ Changing an env var on Render requires a **full redeploy**, not a restart.
+`render restart` leaves the old value in the running process. Use
+`render deploys create <srv-id> --confirm --wait`.
 
 > The CapacitorHttp plugin would bypass CORS and mixed content in one move, but
 > it **cannot stream responses** — it would break the SSE chat at
