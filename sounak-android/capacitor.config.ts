@@ -5,20 +5,10 @@ const config: CapacitorConfig = {
   appName: 'sounak-android',
   webDir: 'www',
 
-  android: {
-    // Capacitor defaults this to 'https', which makes the WebView origin
-    // https://localhost. That origin calling an http:// backend is blocked as
-    // MIXED CONTENT — a second, separate failure from the Android cleartext
-    // policy, and it looks identical (generic network error).
-    //
-    // 'http' makes the origin http://localhost, so http:// API calls are
-    // same-scheme and go through. localhost is still treated as a secure
-    // context, so camera/geolocation keep working.
-    //
-    // Once the backend is HTTPS, set this back to 'https' and delete the
-    // cleartext exception in res/xml/network_security_config.xml.
-    androidScheme: 'http',
-  },
+  // androidScheme stays at Capacitor's default 'https', giving the WebView an
+  // https://localhost origin. That matched the backend being HTTPS on Render,
+  // so there is no mixed-content problem and no need for the 'http' override
+  // this file carried while the backend was an IP-only HTTP host.
 
   // NOTE: deliberately NOT enabling the CapacitorHttp plugin. It would bypass
   // CORS neatly, but it does not support streaming responses — it would break
