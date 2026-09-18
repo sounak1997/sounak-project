@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sounak-project",
+  "compatibility_date": "2026-09-17",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "dist/sounak-project",
+    // Angular routes on the client, so any path without a matching file must
+    // serve index.html with a 200. This replaces the classic Pages
+    // `_redirects` rule `/* /index.html 200`, which Cloudflare's validator now
+    // rejects as a redirect loop (it normalises /index.html back to /).
+    "not_found_handling": "single-page-application"
+  }
+}
