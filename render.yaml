@@ -1,30 +1,23 @@
 # ============================================================
-# FALLBACK ONLY — the active plan is Zeabur (backend + AI) plus Cloudflare
-# Pages (frontend). Keep this in case Zeabur's undocumented runtime limits
-# turn out to be too tight; Render publishes 512MB/750h so you know what you
-# get, at the cost of ~50s cold starts.
+# Render blueprint — the Express backend ONLY.
 #
-# Render blueprint - the whole stack, free tier, no card needed.
+# Render grants 750 free instance-hours per WORKSPACE per month. A month is
+# ~730 hours, so exactly one always-available service fits; two would not.
+# That is why the AI service lives on Hugging Face Spaces instead (which also
+# gives it 16GB RAM instead of 512MB) and the frontend on Cloudflare Pages.
 #
-#   sounak-frontend  (static)  Angular, always on, free CDN + HTTPS
-#   sounak-backend   (node)    Express, sleeps after 15min idle
-#   sounak-ai-service(python)  FastAPI, sleeps after 15min idle
+# Free services spin down after 15 minutes idle and take ~1 minute to wake.
+# Do NOT add a keep-alive pinger: staying awake 24/7 would burn the 750 hours.
 #
-# Replaces the AWS/Oracle VM plan. Every service gets HTTPS free, which
-# removes the cleartext + mixed-content workarounds the Android app needed
-# for an IP-only HTTP backend.
-#
-# Deploy: Render dashboard → New → Blueprint → point at this repo.
-# Secrets marked `sync: false` are NOT in git — set them in the dashboard.
+# Deploy: Render dashboard -> New -> Blueprint -> select this repo.
+# Values marked `sync: false` are secrets and are set in the dashboard.
 # ============================================================
 services:
-
-  # ---------- Express API ----------
   - type: web
     name: sounak-backend
     runtime: node
     plan: free
-    region: singapore            # closest free region to India
+    region: singapore
     rootDir: sounak-backend
     buildCommand: npm ci
     startCommand: node server.js
@@ -32,60 +25,22 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # PORT is injected by Render; server.js already reads process.env.PORT
+      # PORT is injected by Render. server.js already reads process.env.PORT
       # and listens on all interfaces, so no code change is needed.
       - key: MONGO_URI
-        sync: false             # Atlas connection string
+        sync: false          # MongoDB Atlas
+      - key: POSTGRES_URL
+        sync: false          # Neon
       - key: JWT_SECRET
         sync: false
-      - key: CORS_ORIGIN
-        sync: false             # https://sounak-frontend.onrender.com,http://localhost
       - key: AI_SERVICE_URL
-        sync: false             # https://sounak-ai-service.onrender.com
+        sync: false          # https://<user>-sounak-ai-service.hf.space
+      - key: AI_INTERNAL_KEY
+        sync: false          # must match INTERNAL_API_KEY on the AI service
       - key: AI_TIMEOUT_MS
-        value: "60000"          # raised: the AI service may be cold-starting
-      # Redis / RabbitMQ / Postgres are intentionally unset. Both degrade
-      # gracefully (redis.config.js disables caching; rabbitmq.config.js
-      # retries without crashing), exactly as on the old EC2 box where
-      # neither was running.
-
-  # ---------- FastAPI AI service ----------
-  - type: web
-    name: sounak-ai-service
-    runtime: python
-    plan: free
-    region: singapore
-    rootDir: sounak-ai-service
-    buildCommand: pip install -r requirements.txt
-    # Must bind 0.0.0.0 and Render's $PORT. Under PM2 this ran on
-    # 127.0.0.1:8000, which would be unreachable here.
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /health
-    envVars:
-      - key: PYTHON_VERSION
-        value: "3.11.9"         # 3.9 cannot parse `str | None` annotations
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: MODEL
-        value: gemini-2.5-flash
-      - key: MAX_TOKENS
-        value: "1024"
-      # ⚠️  Chroma persists to disk, and the free plan's filesystem is
-      # EPHEMERAL — the vector store is wiped on every restart/redeploy.
-      # Documents must be re-ingested after each cold start.
-      - key: CHROMA_DIR
-        value: /tmp/chroma_db
-
-  # ---------- Angular frontend ----------
-  - type: web
-    name: sounak-frontend
-    runtime: static
-    rootDir: sounak-project
-    buildCommand: npm ci && npx ng build --configuration production
-    # Legacy :browser builder → flat output, no browser/ subdirectory.
-    staticPublishPath: dist/sounak-project
-    routes:
-      # SPA fallback: without this, deep links like /dashboard 404 on refresh.
-      - type: rewrite
-        source: /*
-        destination: /index.html
+        value: "60000"       # raised: the AI service may be waking up
+      - key: CORS_ORIGIN
+        sync: false          # https://<project>.pages.dev,http://localhost
+      # Redis and RabbitMQ are intentionally unset. Both degrade gracefully:
+      # redis.config.js disables caching and stops retrying; rabbitmq.config.js
+      # retries without crashing. Same as on the old EC2 box.

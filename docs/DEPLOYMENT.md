@@ -1,104 +1,103 @@
 # Deploying the stack — free, no credit card
 
-Target: **₹0/month**. AWS was terminated 2026-09-02 after its 12-month free
-tier expired (account created 2025-07-29, tier ended 2026-07-29) and the stack
-began billing ~$14/mo. Oracle Cloud was the next plan but its card
-verification rejects many Indian cards, so the live plan is **Zeabur +
-Cloudflare Pages**, neither of which asks for a card.
+Target: **₹0/month**. Two earlier plans died, and the reasons are worth keeping:
+
+- **AWS** — terminated 2026-09-02. The 12-month free tier expired 2026-07-29
+  (account created 2025-07-29) and the stack began billing ~$14/mo.
+- **Oracle Cloud Always Free** — card verification rejects many Indian cards.
+- **Zeabur** — its CLI now refuses project creation with *"Shared clusters are
+  deprecated. Please rent a Server."* Free shared hosting is gone; their "Free
+  plan" is a control plane for a server you rent yourself.
 
 ## Architecture
 
 ```
-Cloudflare Pages ──► Zeabur: Express ──► Zeabur: FastAPI ──► Gemini
-  (Angular,              │                  (AI service)
-   never sleeps)         ├──► MongoDB Atlas   (already hosted, free)
-                         └──► Neon Postgres   (already hosted, free)
+Cloudflare Pages ──► Render: Express ──► HF Spaces: FastAPI ──► Gemini
+  (Angular,             │                  (AI service, 16GB)
+   never sleeps)        ├──► MongoDB Atlas   (already hosted, free)
+                        └──► Neon Postgres   (already hosted, free)
 ```
 
-| Component | Host | Cost | Sleeps? |
+| Component | Host | Free? | Sleeps? |
 |---|---|---|---|
-| Angular web | Cloudflare Pages | free | never |
-| Express API | Zeabur | free | after idle, few-sec wake |
-| FastAPI AI service | Zeabur | free | after idle, few-sec wake |
-| MongoDB | Atlas M0 | free | — |
-| Postgres | Neon | free | — |
-| Android APK | GitHub Releases | free | — |
+| Angular web | Cloudflare Pages | yes, no card | never |
+| Express API | Render | 750 instance-h/month | after 15 min, ~1 min wake |
+| FastAPI AI | Hugging Face Spaces | yes, no card | after long idle |
+| MongoDB | Atlas M0 | yes | — |
+| Postgres | Neon | yes | — |
+| Android APK | GitHub Releases | yes | — |
 
-The frontend is deliberately **not** on Zeabur: it is static, so a CDN that
-never sleeps means the site always loads instantly and only API calls wait on a
-cold backend.
+**Why this exact split.** Render grants **750 free instance-hours per workspace
+per month** and a month is ~730 hours — so exactly one service fits. Putting
+the AI service on Hugging Face instead keeps Render to a single service *and*
+gives it 16 GB RAM rather than Render's 512 MB, which matters once ChromaDB and
+the LangChain/Gemini stack load. The frontend is static, so a CDN that never
+sleeps means the site always loads instantly and only API calls wait on a cold
+backend.
+
+> **Do not add a keep-alive pinger to Render.** Keeping the service awake 24/7
+> would consume ~730 of your 750 hours and leave no margin.
 
 Redis and RabbitMQ are not hosted anywhere. Both degrade gracefully
 (`redis.config.js` disables caching and stops retrying; `rabbitmq.config.js`
 retries without crashing), exactly as on the old EC2 box.
 
-> **Known unknown:** Zeabur does not publish runtime CPU/RAM limits — the
-> "2C4G" figure on their pricing page is the *build* machine, explicitly
-> separate from runtime. If the Python service runs out of memory, move it to
-> Hugging Face Spaces (16 GB free, no card). `render.yaml` in the repo root is
-> a second fallback: Render publishes 512MB/750h but has ~50s cold starts.
-
 ---
 
-## Phase 0 — Local prep
+## Phase 0 — Already in the repo
 
-Already done and in the repo:
-
-- `sounak-backend/zbpack.json` → `node server.js`, and `engines.node >= 22`
-- `sounak-ai-service/zbpack.json` → `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-  (it bound to `127.0.0.1:8000` under PM2, which is unreachable when hosted)
-- `sounak-project/public/_redirects` → SPA fallback, or `/dashboard` 404s on refresh
+- `render.yaml` — the backend blueprint
+- `sounak-ai-service/Dockerfile` + `README.hf.md` — the Hugging Face Space
+- `sounak-project/public/_redirects` — SPA fallback, or `/dashboard` 404s
 - `angular.json` `fileReplacements` **now actually wired** — without it
   `environment.prod.ts` was dead code and the dev config shipped to production
-- Shared-secret auth between backend and AI service (see Phase 3)
+- Shared-secret auth between backend and AI service (Phase 3)
 
-## Phase 1 — Zeabur: the two servers
+## Phase 1 — Hugging Face Space (deploy this FIRST)
 
-1. Sign up at <https://zeabur.com> with GitHub. No card.
-2. New Project → Deploy Service → Git → pick `sounak-project`.
-3. Add **two** services from the same repo, setting **Root Directory** on each
-   (Service → Settings → Root Directory). This is how Zeabur handles a monorepo:
+The backend needs this URL, so it goes first.
 
-   | Service | Root Directory |
-   |---|---|
-   | backend | `sounak-backend` |
-   | ai-service | `sounak-ai-service` |
+1. Sign up at <https://huggingface.co>. No card.
+2. New → Space. SDK **Docker**, visibility Public (private works too).
+3. Push the `sounak-ai-service` directory to the Space repo, renaming
+   `README.hf.md` to `README.md` — Spaces read its frontmatter to learn the
+   SDK and port.
+4. Settings → Variables and secrets:
 
-   Each directory's `zbpack.json` supplies the start command automatically.
-
-4. Set environment variables per service (Zeabur dashboard → Variables):
-
-   **backend**
-   ```
-   NODE_ENV=production
-   MONGO_URI=<from your backup folder>
-   POSTGRES_URL=<your Neon URL, from the backup folder>
-   JWT_SECRET=<from your backup folder>
-   AI_SERVICE_URL=https://<ai-service>.zeabur.app
-   AI_INTERNAL_KEY=<shared secret>
-   AI_TIMEOUT_MS=60000
-   CORS_ORIGIN=https://<your-pages-domain>.pages.dev,http://localhost
-   ```
-
-   **ai-service**
    ```
    GEMINI_API_KEY=<from your backup folder>
+   INTERNAL_API_KEY=<shared secret>
    MODEL=gemini-2.5-flash
    MAX_TOKENS=1024
-   INTERNAL_API_KEY=<same shared secret>
-   CHROMA_DIR=/tmp/chroma_db
    ```
 
-5. Generate a domain for each service (Networking → Generate Domain) and note
-   both URLs.
+5. Note the URL: `https://<username>-<space-name>.hf.space`
 
-> Chroma persists to disk and the free filesystem is ephemeral, so the vector
-> store is wiped on restart. Documents must be re-ingested after a cold start.
+> The Space filesystem is ephemeral, so Chroma is wiped on restart. Seed
+> documents are baked into the image via `COPY data/`; anything uploaded at
+> runtime must be re-ingested after a restart.
 
-## Phase 2 — Cloudflare Pages: the frontend
+## Phase 2 — Render: the backend
+
+1. Sign up at <https://render.com> with GitHub. No card for the free tier.
+2. New → **Blueprint** → select this repo. Render reads `render.yaml`.
+3. Set the secrets it prompts for (all in your backup folder):
+
+   ```
+   MONGO_URI          <Atlas>
+   POSTGRES_URL       <Neon>
+   JWT_SECRET
+   AI_SERVICE_URL     https://<username>-<space>.hf.space
+   AI_INTERNAL_KEY    <same shared secret as Phase 1>
+   CORS_ORIGIN        https://<project>.pages.dev,http://localhost
+   ```
+
+4. Note the URL: `https://sounak-backend.onrender.com`
+
+## Phase 3 — Cloudflare Pages: the frontend
 
 1. Sign up at <https://dash.cloudflare.com>. No card.
-2. Workers & Pages → Create → Pages → Connect to Git → `sounak-project`.
+2. Workers & Pages → Create → Pages → Connect to Git → this repo.
 3. Build settings:
 
    | Field | Value |
@@ -109,64 +108,59 @@ Already done and in the repo:
 
    (The legacy `:browser` builder produces flat output — no `browser/` subdir.)
 
-4. Before this build is useful, set the real backend URL in
-   `sounak-project/src/environment/environment.prod.ts` and push.
+4. Put the real Render URL in
+   `sounak-project/src/environment/environment.prod.ts` and push; Pages
+   rebuilds automatically.
 
-## Phase 3 — Lock down the AI service
+## Phase 4 — Lock down the AI service
 
 Hosted, the AI service has a **public URL**; on EC2 it was `127.0.0.1`-only.
-Without a guard, anyone who finds it can spend your Gemini quota.
-
-Both services now share a secret:
+Without a guard anyone who finds it can spend your Gemini quota.
 
 - Backend sends `x-internal-key` on every call (`aiService.js`)
 - AI service rejects anything without it (`main.py` middleware)
-- `/health` stays open so the platform's health check works
+- `/health` stays open so platform health checks work
 - **Unset = disabled**, so local dev is unchanged
 
-Set `AI_INTERNAL_KEY` (backend) and `INTERNAL_API_KEY` (AI service) to the same
-value. One is saved in your backup folder as `INTERNAL_API_KEY.txt`.
+`AI_INTERNAL_KEY` (Render) and `INTERNAL_API_KEY` (Space) must match. One is
+saved in your backup folder as `INTERNAL_API_KEY.txt`.
 
-## Phase 4 — Wire the URLs together
+## Phase 5 — Atlas network access
 
-Order matters, because each step needs the previous URL:
+Render and Hugging Face both use dynamic egress IPs, so the old single-IP
+whitelist will not work. Atlas → Network Access → allow `0.0.0.0/0`.
+Without this, DB calls time out and look like app bugs.
 
-1. Deploy ai-service → copy its URL → set `AI_SERVICE_URL` on the backend
-2. Deploy backend → copy its URL → put in `environment.prod.ts`, push
-3. Cloudflare rebuilds → copy the Pages URL → set `CORS_ORIGIN` on the backend
-4. Whitelist nothing in Atlas: Zeabur egress IPs are dynamic, so Atlas needs
-   `0.0.0.0/0` under Network Access (or Zeabur's documented ranges, if any)
-
-## Phase 5 — Verify
+## Phase 6 — Verify
 
 ```bash
-curl -s https://<backend>.zeabur.app/health
-curl -s https://<ai-service>.zeabur.app/health          # open by design
-curl -s https://<ai-service>.zeabur.app/rag/status      # expect 401
-curl -sI https://<pages-domain>.pages.dev/dashboard     # expect 200, not 404
+curl -s https://<space>.hf.space/health                  # open by design
+curl -s https://<space>.hf.space/rag/status              # expect 401
+curl -s https://sounak-backend.onrender.com/health       # may take ~1 min cold
+curl -sI https://<project>.pages.dev/dashboard           # expect 200, not 404
 ```
 
-The 401 is the point: it proves the guard is on.
+The 401 is the point: it proves the guard is live.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
 | Frontend loads, API calls fail | `CORS_ORIGIN` missing the Pages domain |
-| Everything 401s | secret mismatch between the two services |
+| Everything 401s | secret mismatch between backend and Space |
 | `/dashboard` 404s on refresh | `_redirects` missing from the build output |
-| API calls go to the Pages domain | `environment.prod.ts` not updated, or `fileReplacements` reverted |
+| API calls hit the Pages domain | `environment.prod.ts` not updated, or `fileReplacements` reverted |
 | DB timeouts | Atlas Network Access needs `0.0.0.0/0` |
-| First request takes ~30s | cold start; expected on free tier |
-| AI answers ignore your documents | Chroma wiped by a restart — re-ingest |
-| AI service OOM | move it to Hugging Face Spaces (16 GB free) |
+| First request takes ~1 min | Render cold start; expected |
+| AI answers ignore your documents | Space restarted, Chroma wiped — re-ingest |
+| Render service stops mid-month | 750 instance-hours exhausted — remove any keep-alive pinger |
 
 ## Alternative: a real VM
 
-`provision.sh` still works and rebuilds the whole stack on any Linux box
-(Ubuntu/Oracle Linux/Amazon Linux, x86 or ARM). Use it if you get an Oracle
-Always Free instance later, or any other VM. It is architecture-independent,
-unlike an AMI — an x86 image cannot boot on Oracle's free ARM tier.
+`provision.sh` still rebuilds the whole stack on any Linux box (Ubuntu, Oracle
+Linux or Amazon Linux; x86 or ARM). Use it if you ever get an Oracle Always
+Free instance or rent a small VPS. It is architecture-independent, unlike an
+AMI — an x86 image cannot boot on ARM.
 
 ---
 

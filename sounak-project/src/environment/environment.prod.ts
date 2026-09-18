@@ -6,8 +6,8 @@
 // relative URLs no longer reach the API. This must be the backend's absolute
 // URL. Both ends are HTTPS, so there is no mixed-content problem.
 //
-// TODO: replace with the real Zeabur domain once the backend service is up.
+// TODO: replace with the real Render URL once the backend service is live.
 export const environment = {
   production: true,
-  apiUrl: 'https://REPLACE-WITH-ZEABUR-BACKEND.zeabur.app',
+  apiUrl: 'https://sounak-backend.onrender.com',
 };
