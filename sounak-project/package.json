@@ -7,7 +7,9 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "serve:ssr:sounak-project": "node dist/sounak-project/server/server.mjs"
+    "serve:ssr:sounak-project": "node dist/sounak-project/server/server.mjs",
+    "deploy": "ng build --configuration production && wrangler deploy",
+    "preview": "ng build --configuration production && wrangler dev"
   },
   "prettier": {
     "overrides": [
@@ -58,6 +60,7 @@
     "karma-coverage": "~2.2.0",
     "karma-jasmine": "~5.1.0",
     "karma-jasmine-html-reporter": "~2.1.0",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "wrangler": "^4.134.0"
   }
 }
