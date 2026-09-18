@@ -3,6 +3,7 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 // --- Database ---
 const connectDB = require('./src/config/db.config');
@@ -129,12 +130,22 @@ app.get('/health', (req, res) => {
   });
 });
 
-// --- Serve Angular in Production ---
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../sounak-project/dist/sounak-project')));
+// --- Serve Angular in Production (single-host deploys only) ---
+// Only mount this when the bundle is actually present. On a single-host deploy
+// (the old EC2 box, or anything built by provision.sh) Express serves the
+// frontend same-origin and this is correct. On Render the frontend lives on
+// Cloudflare and this directory does not exist — registering the catch-all
+// anyway makes sendFile throw ENOENT, so every unmatched route returns a
+// confusing 500 instead of a clean 404, masking real routing mistakes.
+const FRONTEND_DIST = path.join(__dirname, '../sounak-project/dist/sounak-project');
+if (process.env.NODE_ENV === 'production' && fs.existsSync(path.join(FRONTEND_DIST, 'index.html'))) {
+  console.log('[static] Serving Angular bundle from', FRONTEND_DIST);
+  app.use(express.static(FRONTEND_DIST));
   app.get('*', (req, res) => {
-    res.sendFile(path.resolve(__dirname, '../sounak-project/dist/sounak-project', 'index.html'));
+    res.sendFile(path.resolve(FRONTEND_DIST, 'index.html'));
   });
+} else {
+  console.log('[static] No Angular bundle present — API-only mode (frontend is hosted separately)');
 }
 
 // --- Global Error Handler ---
