@@ -1,199 +1,172 @@
-# Deploying to Oracle Cloud Always Free
+# Deploying the stack — free, no credit card
 
-Target: **₹0/month, permanently.** Replaces the AWS setup, which started billing
-~$14/mo once the 12-month free tier expired. The account was created
-2025-07-29, so the free tier ended 2026-07-29. All AWS resources were
-terminated 2026-09-02 and verified clean across all 17 regions.
+Target: **₹0/month**. AWS was terminated 2026-09-02 after its 12-month free
+tier expired (account created 2025-07-29, tier ended 2026-07-29) and the stack
+began billing ~$14/mo. Oracle Cloud was the next plan but its card
+verification rejects many Indian cards, so the live plan is **Zeabur +
+Cloudflare Pages**, neither of which asks for a card.
 
 ## Architecture
 
 ```
-Browser ──► nginx :80 ──► Express :3000 ──► AI service 127.0.0.1:8000 ──► Gemini
-                             │
-                             └─► serves the Angular dist (SAME-ORIGIN)
-                             └─► MongoDB Atlas M0 (external, free forever)
+Cloudflare Pages ──► Zeabur: Express ──► Zeabur: FastAPI ──► Gemini
+  (Angular,              │                  (AI service)
+   never sleeps)         ├──► MongoDB Atlas   (already hosted, free)
+                         └──► Neon Postgres   (already hosted, free)
 ```
 
-Everything except Mongo runs on one Oracle ARM VM. **Keep the frontend on the
-same host as the backend.** The Angular app uses `apiUrl: ''` (relative URLs),
-so there is no CORS and no HTTPS/mixed-content problem. Splitting the frontend
-onto Cloudflare Pages breaks all three at once — don't, until you own a domain.
+| Component | Host | Cost | Sleeps? |
+|---|---|---|---|
+| Angular web | Cloudflare Pages | free | never |
+| Express API | Zeabur | free | after idle, few-sec wake |
+| FastAPI AI service | Zeabur | free | after idle, few-sec wake |
+| MongoDB | Atlas M0 | free | — |
+| Postgres | Neon | free | — |
+| Android APK | GitHub Releases | free | — |
 
-| Piece | Where | Cost |
-|---|---|---|
-| Angular + Express + Python AI | Oracle VM.Standard.A1.Flex (4 OCPU, 24 GB) | Free always |
-| MongoDB | Atlas M0 | Free always |
-| LLM | Gemini API | Free tier |
+The frontend is deliberately **not** on Zeabur: it is static, so a CDN that
+never sleeps means the site always loads instantly and only API calls wait on a
+cold backend.
+
+Redis and RabbitMQ are not hosted anywhere. Both degrade gracefully
+(`redis.config.js` disables caching and stops retrying; `rabbitmq.config.js`
+retries without crashing), exactly as on the old EC2 box.
+
+> **Known unknown:** Zeabur does not publish runtime CPU/RAM limits — the
+> "2C4G" figure on their pricing page is the *build* machine, explicitly
+> separate from runtime. If the Python service runs out of memory, move it to
+> Hugging Face Spaces (16 GB free, no card). `render.yaml` in the repo root is
+> a second fallback: Render publishes 512MB/750h but has ~50s cold starts.
 
 ---
 
-## Phase 0 — Local prep (do this first)
+## Phase 0 — Local prep
 
-### 0.1 SSH key ✅ done
-`~/.ssh/oracle.key` / `.pub` already generated (RSA 4096).
+Already done and in the repo:
 
-### 0.2 Push your code — REQUIRED
-`provision.sh` clones from GitHub, so anything uncommitted will be **missing on
-the server**. At last check there were 13 modified and 166 untracked files,
-including `provision.sh` and `nginx/sounak.conf` themselves.
+- `sounak-backend/zbpack.json` → `node server.js`, and `engines.node >= 22`
+- `sounak-ai-service/zbpack.json` → `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+  (it bound to `127.0.0.1:8000` under PM2, which is unreachable when hosted)
+- `sounak-project/public/_redirects` → SPA fallback, or `/dashboard` 404s on refresh
+- `angular.json` `fileReplacements` **now actually wired** — without it
+  `environment.prod.ts` was dead code and the dev config shipped to production
+- Shared-secret auth between backend and AI service (see Phase 3)
+
+## Phase 1 — Zeabur: the two servers
+
+1. Sign up at <https://zeabur.com> with GitHub. No card.
+2. New Project → Deploy Service → Git → pick `sounak-project`.
+3. Add **two** services from the same repo, setting **Root Directory** on each
+   (Service → Settings → Root Directory). This is how Zeabur handles a monorepo:
+
+   | Service | Root Directory |
+   |---|---|
+   | backend | `sounak-backend` |
+   | ai-service | `sounak-ai-service` |
+
+   Each directory's `zbpack.json` supplies the start command automatically.
+
+4. Set environment variables per service (Zeabur dashboard → Variables):
+
+   **backend**
+   ```
+   NODE_ENV=production
+   MONGO_URI=<from your backup folder>
+   POSTGRES_URL=<your Neon URL, from the backup folder>
+   JWT_SECRET=<from your backup folder>
+   AI_SERVICE_URL=https://<ai-service>.zeabur.app
+   AI_INTERNAL_KEY=<shared secret>
+   AI_TIMEOUT_MS=60000
+   CORS_ORIGIN=https://<your-pages-domain>.pages.dev,http://localhost
+   ```
+
+   **ai-service**
+   ```
+   GEMINI_API_KEY=<from your backup folder>
+   MODEL=gemini-2.5-flash
+   MAX_TOKENS=1024
+   INTERNAL_API_KEY=<same shared secret>
+   CHROMA_DIR=/tmp/chroma_db
+   ```
+
+5. Generate a domain for each service (Networking → Generate Domain) and note
+   both URLs.
+
+> Chroma persists to disk and the free filesystem is ephemeral, so the vector
+> store is wiped on restart. Documents must be re-ingested after a cold start.
+
+## Phase 2 — Cloudflare Pages: the frontend
+
+1. Sign up at <https://dash.cloudflare.com>. No card.
+2. Workers & Pages → Create → Pages → Connect to Git → `sounak-project`.
+3. Build settings:
+
+   | Field | Value |
+   |---|---|
+   | Root directory | `sounak-project` |
+   | Build command | `npm ci && npx ng build --configuration production` |
+   | Output directory | `dist/sounak-project` |
+
+   (The legacy `:browser` builder produces flat output — no `browser/` subdir.)
+
+4. Before this build is useful, set the real backend URL in
+   `sounak-project/src/environment/environment.prod.ts` and push.
+
+## Phase 3 — Lock down the AI service
+
+Hosted, the AI service has a **public URL**; on EC2 it was `127.0.0.1`-only.
+Without a guard, anyone who finds it can spend your Gemini quota.
+
+Both services now share a secret:
+
+- Backend sends `x-internal-key` on every call (`aiService.js`)
+- AI service rejects anything without it (`main.py` middleware)
+- `/health` stays open so the platform's health check works
+- **Unset = disabled**, so local dev is unchanged
+
+Set `AI_INTERNAL_KEY` (backend) and `INTERNAL_API_KEY` (AI service) to the same
+value. One is saved in your backup folder as `INTERNAL_API_KEY.txt`.
+
+## Phase 4 — Wire the URLs together
+
+Order matters, because each step needs the previous URL:
+
+1. Deploy ai-service → copy its URL → set `AI_SERVICE_URL` on the backend
+2. Deploy backend → copy its URL → put in `environment.prod.ts`, push
+3. Cloudflare rebuilds → copy the Pages URL → set `CORS_ORIGIN` on the backend
+4. Whitelist nothing in Atlas: Zeabur egress IPs are dynamic, so Atlas needs
+   `0.0.0.0/0` under Network Access (or Zeabur's documented ranges, if any)
+
+## Phase 5 — Verify
 
 ```bash
-cd "~/Desktop/sounak project"
-git status                 # review — don't blind-commit 166 files
-git add provision.sh nginx/sounak.conf docs/DEPLOYMENT.md
-git add <the source files you actually want>
-git commit -m "chore: provisioning script and nginx config for Oracle deploy"
-git push origin master
+curl -s https://<backend>.zeabur.app/health
+curl -s https://<ai-service>.zeabur.app/health          # open by design
+curl -s https://<ai-service>.zeabur.app/rag/status      # expect 401
+curl -sI https://<pages-domain>.pages.dev/dashboard     # expect 200, not 404
 ```
 
-Confirm `provision.sh` is really on GitHub before continuing — the server
-cannot get it any other way.
-
----
-
-## Phase 1 — Oracle account
-
-1. Sign up at <https://cloud.oracle.com/> → *Start for free*
-2. Credit card is for **identity verification only** (~₹100 hold, refunded).
-   You are not charged unless you explicitly click *Upgrade to Paid*.
-3. **Home region cannot be changed later.** Pick a less-busy region for a better
-   chance at ARM capacity. From India, `ap-hyderabad-1` and `ap-mumbai-1` are
-   convenient but often full; `ap-osaka-1` or `eu-frankfurt-1` are often easier.
-4. You start on a 30-day trial with $300 credits, then auto-drop to Always Free.
-   **Stay within the free shapes from day one** so nothing gets reclaimed.
-
----
-
-## Phase 2 — Create the VM
-
-Compute → Instances → **Create instance**
-
-| Field | Value |
-|---|---|
-| Image | **Ubuntu 24.04** (ARM build) |
-| Shape | **VM.Standard.A1.Flex** ← must be Ampere, not the AMD micro |
-| OCPUs | **4** |
-| Memory | **24 GB** |
-| Boot volume | 50 GB (200 GB total is free; 50 is plenty) |
-| SSH key | **Paste `~/.ssh/oracle.key.pub`** |
-| Public IPv4 | Assign |
-
-That's the entire Always Free ARM allowance in one machine — use all of it.
-
-> **"Out of host capacity"** is extremely common on A1.Flex. It is not your
-> mistake. Retry across the three availability domains, retry at a different
-> hour, or fall back to `VM.Standard.E2.1.Micro` (AMD, 1 GB RAM) — the provision
-> script detects low RAM and builds the 2 GB swapfile automatically.
-
-Note the public IP when it boots.
-
----
-
-## Phase 3 — Open the firewall (BOTH halves)
-
-This is the #1 reason an Oracle VM appears dead. There are **two** firewalls.
-
-**3.1 Cloud-side.** Networking → Virtual Cloud Networks → your VCN → Subnet →
-Security List → **Add Ingress Rules**:
-
-| Source | Protocol | Dest. port |
-|---|---|---|
-| `0.0.0.0/0` | TCP | 80 |
-| `0.0.0.0/0` | TCP | 443 |
-
-**3.2 Host-side.** Oracle's images ship iptables rules that REJECT everything
-but SSH. `provision.sh` step 7 adds and persists the rules for 80/443, so this
-half is automated — but if you skip the script, you must do it by hand.
-
----
-
-## Phase 4 — Provision
-
-```bash
-ssh -i ~/.ssh/oracle.key ubuntu@<PUBLIC_IP>
-
-git clone https://github.com/sounak1997/sounak-project.git ~/sounak-project
-cd ~/sounak-project
-./provision.sh
-```
-
-Takes 10–20 minutes. The slow part is `pip install` — on ARM, `chromadb` pulls
-`onnxruntime`, which may compile from source.
-
-The script installs Node 22, Python (3.11 via dnf on Oracle Linux; the system
-3.10+ on Ubuntu, which parses `str | None` fine), builds the venv, runs
-`npm ci`, builds Angular with `--configuration production`, installs the nginx
-conf, opens the firewall, and starts both services under PM2 with boot
-persistence.
-
----
-
-## Phase 5 — Secrets and database
-
-### 5.1 Copy the `.env` files
-They are deliberately never in git. From your laptop:
-
-```bash
-BK=~/Desktop/sounak-server-backup-20260902
-scp -i ~/.ssh/oracle.key $BK/env/backend.env    ubuntu@<IP>:~/sounak-project/sounak-backend/.env
-scp -i ~/.ssh/oracle.key $BK/env/ai-service.env ubuntu@<IP>:~/sounak-project/sounak-ai-service/.env
-```
-
-Then on the server: `pm2 restart all --update-env`
-
-### 5.2 Whitelist the new IP in Atlas
-Atlas → Network Access → Add IP Address → the Oracle public IP.
-**Until you do this, every database call fails** with a timeout that looks
-like an app bug.
-
----
-
-## Phase 6 — Verify
-
-```bash
-pm2 list                                  # both processes 'online'
-curl -s localhost:3000/api/health         # Express
-curl -s 127.0.0.1:8000/health             # AI service (localhost-bound by design)
-sudo nginx -t && sudo systemctl status nginx
-```
-
-From your laptop: `curl -I http://<PUBLIC_IP>/` → expect `200`.
-
----
-
-## Phase 7 — Point deploy.sh at the new box
-
-`deploy.sh` is now host-agnostic. Add to your `~/.zshrc`:
-
-```bash
-export SOUNAK_HOST=<oracle-public-ip>
-export SOUNAK_USER=ubuntu
-export SOUNAK_KEY=~/.ssh/oracle.key
-```
-
-Then `./deploy.sh all` works exactly as it did against EC2.
-
----
+The 401 is the point: it proves the guard is on.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| Site unreachable, SSH works | Firewall — you did only one of the two halves (Phase 3) |
-| `Out of host capacity` | ARM shortage. Retry other ADs/regions, or use the AMD micro |
-| DB timeouts | Atlas IP whitelist (5.2) |
-| AI service won't start | Python < 3.10 can't parse `str | None`. Check `python3 --version` |
-| pip killed mid-install | No swap on a 1 GB shape. Re-run provision.sh; step 3 handles it |
-| Angular bundle huge / has source maps | Built without `--configuration production` |
-| Uploads fail at ~1 MB | nginx `client_max_body_size` — it's in `nginx/sounak.conf` |
-| Chat streams in one lump | nginx `proxy_buffering off` on the SSE route — same file |
+| Frontend loads, API calls fail | `CORS_ORIGIN` missing the Pages domain |
+| Everything 401s | secret mismatch between the two services |
+| `/dashboard` 404s on refresh | `_redirects` missing from the build output |
+| API calls go to the Pages domain | `environment.prod.ts` not updated, or `fileReplacements` reverted |
+| DB timeouts | Atlas Network Access needs `0.0.0.0/0` |
+| First request takes ~30s | cold start; expected on free tier |
+| AI answers ignore your documents | Chroma wiped by a restart — re-ingest |
+| AI service OOM | move it to Hugging Face Spaces (16 GB free) |
 
-## Later: HTTPS
+## Alternative: a real VM
 
-Needs a domain. Once you have one, either point it at the VM and run
-`certbot --nginx`, or put Cloudflare's free plan in front for HTTPS + CDN in
-about ten minutes. Only *then* does moving the frontend to Cloudflare Pages
-become viable.
+`provision.sh` still works and rebuilds the whole stack on any Linux box
+(Ubuntu/Oracle Linux/Amazon Linux, x86 or ARM). Use it if you get an Oracle
+Always Free instance later, or any other VM. It is architecture-independent,
+unlike an AMI — an x86 image cannot boot on Oracle's free ARM tier.
 
 ---
 

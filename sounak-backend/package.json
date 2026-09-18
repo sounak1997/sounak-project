@@ -1,6 +1,9 @@
 {
   "name": "my-angular-node-backend",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "description": "Node.js backend for an Angular application",
   "main": "server.js",
   "scripts": {

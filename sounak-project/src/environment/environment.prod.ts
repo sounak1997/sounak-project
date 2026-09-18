@@ -1,12 +1,13 @@
-// src/environment/environment.prod.ts
+// Production build. angular.json's `fileReplacements` swaps environment.ts for
+// this file — without that wiring this file is dead code and the dev config
+// ships to production, which is what used to happen here.
+//
+// The frontend is a Cloudflare Pages static site on its own origin, so
+// relative URLs no longer reach the API. This must be the backend's absolute
+// URL. Both ends are HTTPS, so there is no mixed-content problem.
+//
+// TODO: replace with the real Zeabur domain once the backend service is up.
 export const environment = {
   production: true,
-
-  // Empty = same-origin relative URLs (e.g. "/api/ai/ask").
-  //
-  // In production nginx serves the app and proxies /api to the Express backend
-  // on the same host and port, so relative URLs are correct and avoid CORS
-  // entirely. Hardcoding a host here previously pointed at a decommissioned
-  // EC2 instance and doubled the /api prefix, breaking every API call.
-  apiUrl: '',
+  apiUrl: 'https://REPLACE-WITH-ZEABUR-BACKEND.zeabur.app',
 };

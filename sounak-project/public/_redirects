@@ -1,0 +1,4 @@
+# Cloudflare Pages SPA fallback. Angular does client-side routing, so every
+# path must serve index.html and let the router resolve it. Status 200 (a
+# rewrite, not a 302) keeps the URL the user typed.
+/*    /index.html   200
