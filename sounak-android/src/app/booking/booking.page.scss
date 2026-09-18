@@ -108,3 +108,40 @@ ion-segment {
     border-radius: 999px;
   }
 }
+
+/* Desktop: facilities and labs tile, and the segment control stops stretching
+   across the whole window. */
+@media (min-width: 768px) {
+  .booking-content {
+    --padding-start: 24px;
+    --padding-end: 24px;
+  }
+
+  ion-segment {
+    max-width: 420px;
+    margin: 0 auto 24px;
+  }
+
+  .booking-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .facility-card,
+  .lab-card {
+    padding: 18px;
+    border-radius: 16px;
+    margin-bottom: 0;
+  }
+
+  .facility-name,
+  .lab-name {
+    font-size: 16px;
+  }
+
+  .book-btn {
+    cursor: pointer;
+  }
+}

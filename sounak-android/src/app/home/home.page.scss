@@ -58,3 +58,52 @@
 .opt-orders  { background: #3D5A80; color: #E8EEF6; }
 .opt-booking { background: #1F6B5C; color: #E9F4F0; }
 .opt-helper { background: #B54A34; color: #FBE9E3; }
+
+/* Desktop: the four entry points read better as a 2x2 grid than as four
+   full-width bars, and the cards get room to breathe. */
+@media (min-width: 768px) {
+  .home-content {
+    --padding-start: 24px;
+    --padding-end: 24px;
+    --padding-top: 24px;
+  }
+
+  .topbar {
+    padding: 16px 0 28px;
+  }
+
+  .greet {
+    font-size: 24px;
+  }
+
+  .options {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+
+  .option-card {
+    padding: 28px;
+    border-radius: 20px;
+    min-height: 130px;
+  }
+
+  .opt-title {
+    font-size: 19px;
+    margin-bottom: 4px;
+  }
+
+  .opt-sub {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .options {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .option-card {
+    min-height: 160px;
+  }
+}

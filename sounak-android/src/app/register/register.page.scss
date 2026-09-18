@@ -13,3 +13,13 @@
 .submit-btn {
   margin-top: 20px;
 }
+
+/* Desktop: keep the form a readable width instead of letting the inputs run
+   the full width of the window. */
+@media (min-width: 768px) {
+  .register-content {
+    --padding-top: 40px;
+    --padding-start: max(24px, calc((100% - 460px) / 2));
+    --padding-end: max(24px, calc((100% - 460px) / 2));
+  }
+}

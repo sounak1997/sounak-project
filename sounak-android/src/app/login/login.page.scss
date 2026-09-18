@@ -62,3 +62,39 @@
     text-decoration: none;
   }
 }
+
+/* Desktop: a centred sign-in card rather than a full-width form. */
+@media (min-width: 768px) {
+  .login-content {
+    --padding-top: 64px;
+  }
+
+  .brand,
+  form,
+  .login-links {
+    max-width: 420px;
+    margin-inline: auto;
+  }
+
+  .brand {
+    margin-bottom: 28px;
+
+    .brand-mark {
+      width: 64px;
+      height: 64px;
+      font-size: 30px;
+    }
+
+    h1 {
+      font-size: 28px;
+    }
+
+    p {
+      font-size: 14.5px;
+    }
+  }
+
+  .login-links a:hover {
+    text-decoration: underline;
+  }
+}

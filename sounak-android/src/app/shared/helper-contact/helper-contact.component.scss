@@ -22,3 +22,25 @@
     --border-radius: 8px;
   }
 }
+
+/* Desktop: message and actions sit on one row instead of stacking. */
+@media (min-width: 768px) {
+  .helper-contact {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 16px 20px;
+    margin: 24px 0;
+  }
+
+  .message {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .buttons {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+  }
+}

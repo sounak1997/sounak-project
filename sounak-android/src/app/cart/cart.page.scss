@@ -210,3 +210,63 @@
     margin-bottom: 24px;
   }
 }
+
+/* Desktop: items on the left, a checkout panel on the right — so the coupon,
+   totals and "place order" button stay in view beside the item list instead of
+   sitting a long scroll below it. */
+@media (min-width: 768px) {
+  .cart-content {
+    --padding-start: 24px;
+    --padding-end: 24px;
+  }
+
+  .item-thumb {
+    width: 80px;
+    height: 80px;
+  }
+
+  .item-name {
+    font-size: 15px;
+  }
+
+  /* One-off flows read better centred than stretched across the column. */
+  .success-state,
+  .state-row {
+    max-width: 460px;
+    margin-inline: auto;
+  }
+}
+
+@media (min-width: 900px) {
+  .cart-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
+  }
+
+  .cart-aside {
+    background: var(--ion-color-light);
+    border-radius: 16px;
+    padding: 18px 20px;
+    position: sticky;
+    top: 16px;
+  }
+
+  /* Inside the panel the dividers and padding of the phone layout are
+     redundant — the panel itself is the boundary now. */
+  .coupon-section {
+    padding: 0;
+    border-top: none;
+  }
+
+  .totals {
+    padding: 14px 0 0;
+    margin-top: 14px;
+  }
+
+  .cart-aside ion-list {
+    --ion-item-background: transparent;
+    background: transparent;
+  }
+}

@@ -35,3 +35,78 @@
 /* @import "@ionic/angular/css/palettes/dark.always.css"; */
 /* @import "@ionic/angular/css/palettes/dark.class.css"; */
 @import '@ionic/angular/css/palettes/dark.system.css';
+
+/*
+ * Responsive / desktop layer
+ * ----------------------------------------------------------------------------
+ * The app was laid out phone-first for the Capacitor build. Everything below is
+ * additive and lives behind `min-width` breakpoints, so the Android build (and
+ * any phone-sized browser) renders exactly as it did before. On wider viewports
+ * the page is capped to a readable column and the header chrome goes full-bleed
+ * like a normal web app.
+ */
+
+:root {
+  /* One width for the whole app so the toolbar and the content column line up
+     on every page. Pages narrow their own inner blocks rather than this. */
+  --app-max-width: 1040px;
+  --app-gutter: 16px;
+}
+
+@media (min-width: 768px) {
+  /* Content: full-bleed background, centred scroll column. */
+  ion-content::part(scroll) {
+    max-width: var(--app-max-width);
+    margin-inline: auto;
+  }
+
+  /* Header: the bar itself spans the window, its contents are centred on the
+     same column as the content. The hairline moves from the toolbar to the
+     header so it spans the full width instead of stopping at the column. */
+  ion-header {
+    background: var(--ion-toolbar-background, var(--ion-background-color, #fff));
+    box-shadow: none;
+    border-bottom: 1px solid var(--ion-color-step-150, rgba(0, 0, 0, 0.08));
+  }
+
+  ion-header::after {
+    display: none;
+  }
+
+  ion-header ion-toolbar {
+    --background: transparent;
+    --border-width: 0;
+    max-width: var(--app-max-width);
+    margin-inline: auto;
+  }
+}
+
+/* Pointer affordances. Touch targets get no hover state, so these are gated on
+   a real pointer rather than a width — a touchscreen laptop keeps tap behaviour. */
+@media (hover: hover) and (pointer: fine) {
+  .option-card,
+  .product-card,
+  .order-card,
+  .request-card,
+  .facility-card,
+  .lab-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .option-card:hover,
+  .order-card:hover,
+  .product-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  }
+
+  .product-tap:hover .product-name,
+  .order-card:hover .order-id {
+    text-decoration: underline;
+  }
+
+  .thumb:hover,
+  .book-btn:hover {
+    opacity: 0.88;
+  }
+}

@@ -133,3 +133,27 @@
   font-size: 13px;
   line-height: 1.5;
 }
+
+/* Desktop: an invoice-style column reads better than full-window rows. */
+@media (min-width: 768px) {
+  /* Symmetric padding rather than max-width on the children, so inline
+     elements like the "Cancelled" chip align with the sections too. */
+  .order-detail-content {
+    --padding-start: max(24px, calc((100% - 720px) / 2));
+    --padding-end: max(24px, calc((100% - 720px) / 2));
+  }
+
+  .tracker {
+    margin-bottom: 28px;
+  }
+
+  .step .step-label {
+    font-size: 12px;
+  }
+
+  .item-row,
+  .total-row,
+  .kv {
+    font-size: 14px;
+  }
+}

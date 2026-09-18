@@ -25,44 +25,49 @@
     @if (centers().length === 0) {
       <div class="state-row"><p>No medical centers listed yet.</p></div>
     }
-    @for (center of centers(); track center.id) {
-      <div class="facility-card">
-        <div class="facility-name">{{ center.name }}</div>
-        @for (doctor of center.doctors; track doctor.id) {
-          <div class="doctor-row">
-            <div class="doctor-info">
-              <div class="doctor-name">{{ doctor.name }}</div>
-              <div class="doctor-meta">{{ doctorMeta(doctor) }}</div>
-              <div class="mini-day-strip">
-                @for (day of weekStrip; track day.dayOfWeek) {
-                  <span [class.on]="isActiveDay(doctor, day.dayOfWeek)">{{ day.label }}</span>
-                }
+    <!-- Plain stack on phones; tiles into columns on desktop. -->
+    <div class="booking-grid">
+      @for (center of centers(); track center.id) {
+        <div class="facility-card">
+          <div class="facility-name">{{ center.name }}</div>
+          @for (doctor of center.doctors; track doctor.id) {
+            <div class="doctor-row">
+              <div class="doctor-info">
+                <div class="doctor-name">{{ doctor.name }}</div>
+                <div class="doctor-meta">{{ doctorMeta(doctor) }}</div>
+                <div class="mini-day-strip">
+                  @for (day of weekStrip; track day.dayOfWeek) {
+                    <span [class.on]="isActiveDay(doctor, day.dayOfWeek)">{{ day.label }}</span>
+                  }
+                </div>
               </div>
+              <a class="book-btn" [href]="bookDoctorHref(doctor, center)" target="_blank" rel="noopener">Book</a>
             </div>
-            <a class="book-btn" [href]="bookDoctorHref(doctor, center)" target="_blank" rel="noopener">Book</a>
-          </div>
-        }
-      </div>
-    }
+          }
+        </div>
+      }
+    </div>
   } @else {
     @if (labs().length === 0) {
       <div class="state-row"><p>No labs listed yet.</p></div>
     }
-    @for (lab of labs(); track lab.id) {
-      <div class="lab-card">
-        <div class="lab-name">{{ lab.name }}</div>
-        <div class="test-tags">
+    <div class="booking-grid">
+      @for (lab of labs(); track lab.id) {
+        <div class="lab-card">
+          <div class="lab-name">{{ lab.name }}</div>
+          <div class="test-tags">
+            @for (test of lab.tests; track test.id) {
+              <span>{{ test.name }}@if (test.price) { — ₹{{ test.price }} }</span>
+            }
+          </div>
           @for (test of lab.tests; track test.id) {
-            <span>{{ test.name }}@if (test.price) { — ₹{{ test.price }} }</span>
+            <a class="book-btn full" [href]="bookTestHref(test.name, lab.name)" target="_blank" rel="noopener">
+              Book "{{ test.name }}"
+            </a>
           }
         </div>
-        @for (test of lab.tests; track test.id) {
-          <a class="book-btn full" [href]="bookTestHref(test.name, lab.name)" target="_blank" rel="noopener">
-            Book "{{ test.name }}"
-          </a>
-        }
-      </div>
-    }
+      }
+    </div>
   }
 
   <app-helper-contact

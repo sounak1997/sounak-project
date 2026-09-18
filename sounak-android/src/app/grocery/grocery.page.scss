@@ -137,3 +137,67 @@
   --padding-start: 10px;
   --padding-end: 10px;
 }
+
+/* Desktop: the fixed two-column grid becomes a fluid one that adds columns as
+   the window grows, and the cards scale up with it. */
+@media (min-width: 768px) {
+  .grocery-content {
+    --padding-start: 24px;
+    --padding-end: 24px;
+  }
+
+  .category-row {
+    padding: 4px 0 8px;
+    flex-wrap: wrap;
+    overflow-x: visible;
+
+    ion-chip {
+      font-size: 13px;
+      height: 32px;
+    }
+  }
+
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+  }
+
+  .product-card {
+    padding: 14px;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Push the meta/controls to the bottom so cards in a row line up even when
+     product names wrap to different heights. */
+  .product-tap {
+    flex: 1;
+  }
+
+  .product-thumb {
+    height: 160px;
+  }
+
+  .product-name {
+    font-size: 14.5px;
+  }
+
+  .product-price {
+    font-size: 15px;
+  }
+
+  .cart-controls {
+    margin-top: 10px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+
+  .product-thumb {
+    height: 180px;
+  }
+}

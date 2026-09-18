@@ -146,3 +146,69 @@
   height: 40px;
   margin: 0;
 }
+
+/* Desktop: gallery on the left, details on the right, instead of a very wide
+   hero image with everything stacked underneath it. */
+@media (min-width: 768px) {
+  .product-content {
+    --padding-start: 24px;
+    --padding-end: 24px;
+  }
+
+  .product-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+    margin-top: 8px;
+  }
+
+  .hero {
+    height: 360px;
+  }
+
+  .thumb {
+    width: 68px;
+    height: 68px;
+    cursor: pointer;
+  }
+
+  /* The title already sits at the top of its own column, so drop the phone
+     spacing that separated it from the hero. */
+  .title {
+    font-size: 26px;
+    margin-top: 0;
+  }
+
+  .price {
+    font-size: 24px;
+  }
+
+  .description {
+    font-size: 15px;
+  }
+
+  .buy-row {
+    margin-top: 28px;
+  }
+
+  .qty-stepper ion-button {
+    height: 40px;
+  }
+
+  .add-btn {
+    flex: 0 1 240px;
+    height: 46px;
+  }
+
+  app-helper-contact {
+    display: block;
+    margin-top: 32px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero {
+    height: 420px;
+  }
+}

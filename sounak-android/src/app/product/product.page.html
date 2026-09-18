@@ -25,64 +25,71 @@
       <p>{{ error() }}</p>
     </div>
   } @else if (product(); as p) {
-    <div class="hero">
-      @if (activeImage(); as img) {
-        <img [src]="img" [alt]="p.name" />
-      } @else {
-        <span class="no-image">No image</span>
-      }
-    </div>
-
-    @if (images().length > 1) {
-      <div class="thumb-row">
-        @for (img of images(); track img) {
-          <div class="thumb" [class.active]="img === activeImage()" (click)="selectImage(img)">
+    <!-- Stacks on phones; splits into gallery + details columns on desktop. -->
+    <div class="product-layout">
+      <div class="product-gallery">
+        <div class="hero">
+          @if (activeImage(); as img) {
             <img [src]="img" [alt]="p.name" />
+          } @else {
+            <span class="no-image">No image</span>
+          }
+        </div>
+
+        @if (images().length > 1) {
+          <div class="thumb-row">
+            @for (img of images(); track img) {
+              <div class="thumb" [class.active]="img === activeImage()" (click)="selectImage(img)">
+                <img [src]="img" [alt]="p.name" />
+              </div>
+            }
           </div>
         }
       </div>
-    }
 
-    <h1 class="title">{{ p.name }}</h1>
-    <div class="meta-row">
-      <span class="price">₹{{ p.price }}</span>
-      <ion-chip [color]="p.in_stock ? 'success' : 'medium'" class="stock-chip">
-        {{ p.in_stock ? 'In stock' : 'Out of stock' }}
-      </ion-chip>
-    </div>
-
-    @if (p.category) {
-      <div class="category">{{ p.category }}</div>
-    }
-
-    @if (p.description) {
-      <p class="description">{{ p.description }}</p>
-    }
-
-    <div class="stock-note">
-      @if (p.in_stock) {
-        {{ p.stock }} available
-      } @else {
-        Currently unavailable
-      }
-    </div>
-
-    @if (p.in_stock) {
-      <div class="buy-row">
-        <div class="qty-stepper">
-          <ion-button fill="clear" size="small" [disabled]="quantity() <= 1" (click)="decrement()">−</ion-button>
-          <span class="qty-value">{{ quantity() }}</span>
-          <ion-button fill="clear" size="small" [disabled]="quantity() >= p.stock" (click)="increment()">+</ion-button>
+      <div class="product-info">
+        <h1 class="title">{{ p.name }}</h1>
+        <div class="meta-row">
+          <span class="price">₹{{ p.price }}</span>
+          <ion-chip [color]="p.in_stock ? 'success' : 'medium'" class="stock-chip">
+            {{ p.in_stock ? 'In stock' : 'Out of stock' }}
+          </ion-chip>
         </div>
-        <ion-button class="add-btn" [disabled]="adding()" (click)="addToCart()">
-          @if (adding()) {
-            <ion-spinner name="dots"></ion-spinner>
+
+        @if (p.category) {
+          <div class="category">{{ p.category }}</div>
+        }
+
+        @if (p.description) {
+          <p class="description">{{ p.description }}</p>
+        }
+
+        <div class="stock-note">
+          @if (p.in_stock) {
+            {{ p.stock }} available
           } @else {
-            Add to cart
+            Currently unavailable
           }
-        </ion-button>
+        </div>
+
+        @if (p.in_stock) {
+          <div class="buy-row">
+            <div class="qty-stepper">
+              <ion-button fill="clear" size="small" [disabled]="quantity() <= 1" (click)="decrement()">−</ion-button>
+              <span class="qty-value">{{ quantity() }}</span>
+              <ion-button fill="clear" size="small" [disabled]="quantity() >= p.stock" (click)="increment()">+</ion-button>
+            </div>
+            <ion-button class="add-btn" [disabled]="adding()" (click)="addToCart()">
+              @if (adding()) {
+                <ion-spinner name="dots"></ion-spinner>
+              } @else {
+                Add to cart
+              }
+            </ion-button>
+          </div>
+        }
       </div>
-    }
+    </div>
 
     <app-helper-contact
       message="Want this item in a different size or quantity? Ask us and we'll arrange it."
