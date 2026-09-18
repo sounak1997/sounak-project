@@ -1,6 +1,7 @@
 import { Injectable, OnDestroy, inject, signal, computed } from '@angular/core';
 import { io, Socket } from 'socket.io-client';
 import { AuthService } from './auth.service';
+import { environment } from '../../environment/environment';
 
 export interface ChatMessage {
   id: string;
@@ -87,9 +88,13 @@ export class WebSocketService implements OnDestroy {
     if (this.socket?.connected) return;
     this.connecting.set(true);
 
-    const serverUrl = typeof window !== 'undefined'
-      ? window.location.origin
-      : 'http://localhost:3000';
+    // window.location.origin was right when Express served this bundle
+    // same-origin. With the frontend on Cloudflare and the API on Render it
+    // points at the static host, which has no Socket.IO server. Prefer the
+    // configured backend origin and keep the old behaviour as the fallback
+    // for single-host deploys, where apiUrl is ''.
+    const serverUrl = environment.apiUrl
+      || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
 
     this.socket = io(serverUrl, {
       transports: ['websocket', 'polling'],

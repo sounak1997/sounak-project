@@ -14,6 +14,7 @@ import { provideHttpClient, withFetch, withInterceptorsFromDi } from '@angular/c
 import { HTTP_INTERCEPTORS } from '@angular/common/http';
 import { JwtInterceptor } from './interceptors/jwt.interceptor';
 import { AuthErrorInterceptor } from './interceptors/auth-error.interceptor';
+import { ApiUrlInterceptor } from './interceptors/api-url.interceptor';
 
 import { provideStore } from '@ngrx/store';
 import { EffectsModule, provideEffects } from '@ngrx/effects';
@@ -27,6 +28,9 @@ export const appConfig: ApplicationConfig = {
   providers: [
     // --- HttpClient & interceptors ---
     provideHttpClient(withFetch(), withInterceptorsFromDi()),
+    // Registered first: it rewrites relative /api paths onto the backend
+    // origin, so the interceptors below inspect the final URL.
+    { provide: HTTP_INTERCEPTORS, useClass: ApiUrlInterceptor, multi: true },
     { provide: HTTP_INTERCEPTORS, useClass: JwtInterceptor, multi: true },
     { provide: HTTP_INTERCEPTORS, useClass: AuthErrorInterceptor, multi: true },
 
