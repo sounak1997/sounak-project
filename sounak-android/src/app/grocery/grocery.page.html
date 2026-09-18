@@ -16,6 +16,7 @@
   <ion-toolbar>
     <ion-searchbar
       placeholder="Search for items"
+      [value]="searchTerm"
       [debounce]="400"
       (ionInput)="onSearch($any($event.target).value)"
     ></ion-searchbar>

@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonIcon } from '@ionic/angular';
+import { IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonIcon, IonBadge } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
   logOutOutline,
@@ -9,9 +9,12 @@ import {
   medkitOutline,
   handLeftOutline,
   arrowForwardOutline,
+  searchOutline,
+  cartOutline,
 } from 'ionicons/icons';
 import { AuthService } from '../core/auth.service';
 import { Category, Product, ProductService } from '../core/product.service';
+import { CartService } from '../core/cart.service';
 import { HelperContactComponent } from '../shared/helper-contact/helper-contact.component';
 
 interface Shortcut {
@@ -48,17 +51,20 @@ const GLYPH_PATHS: Record<string, string> = {
   selector: 'app-home',
   templateUrl: 'home.page.html',
   styleUrls: ['home.page.scss'],
-  imports: [IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonIcon, HelperContactComponent],
+  imports: [IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonIcon, IonBadge, HelperContactComponent],
 })
 export class HomePage {
   auth = inject(AuthService);
   private router = inject(Router);
   private productService = inject(ProductService);
+  private cartService = inject(CartService);
 
   readonly picks = signal<Product[]>([]);
   readonly picksLoading = signal(true);
   readonly picksFailed = signal(false);
   readonly categories = signal<Category[]>([]);
+
+  readonly cartCount = this.cartService.itemCount;
 
   /** Placement, size and timing for each drifting glyph live in SCSS :nth-child. */
   readonly glyphs = [
@@ -96,6 +102,8 @@ export class HomePage {
   constructor() {
     addIcons({
       logOutOutline,
+      searchOutline,
+      cartOutline,
       basketOutline,
       receiptOutline,
       medkitOutline,
@@ -104,6 +112,8 @@ export class HomePage {
     });
     this.loadPicks();
     this.loadCategories();
+    // Seeds the header badge; cart calls elsewhere keep it current.
+    this.cartService.getCart().subscribe({ error: () => {} });
   }
 
   private loadPicks(): void {
@@ -128,6 +138,16 @@ export class HomePage {
       next: (res) => this.categories.set((res.data ?? []).slice(0, 10)),
       error: () => {}, // decorative shortcut; the shelf and cards still stand
     });
+  }
+
+  /** Hands the term to the grocery grid rather than filtering a 12-item shelf. */
+  search(term: string): void {
+    const q = term.trim();
+    this.router.navigate(['/grocery'], q ? { queryParams: { search: q } } : {});
+  }
+
+  goToCart(): void {
+    this.router.navigateByUrl('/cart');
   }
 
   openCategory(category: Category): void {

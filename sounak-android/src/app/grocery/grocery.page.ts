@@ -57,8 +57,12 @@ export class GroceryPage implements OnInit {
   ngOnInit(): void {
     // Home's category chips deep-link into the filtered grid, so honour the
     // param before the first load rather than fetching everything and refiltering.
-    const category = this.route.snapshot.queryParamMap.get('category');
+    const params = this.route.snapshot.queryParamMap;
+    const category = params.get('category');
     if (category) this.activeCategory.set(category);
+
+    const search = params.get('search');
+    if (search) this.searchTerm = search;
 
     this.load();
     this.loadCategories();

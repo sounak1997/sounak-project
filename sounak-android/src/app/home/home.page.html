@@ -1,6 +1,12 @@
 <ion-header class="home-header">
   <ion-toolbar>
     <ion-title>Sohay</ion-title>
+    <ion-button slot="end" fill="clear" (click)="goToCart()" aria-label="View cart">
+      <ion-icon slot="icon-only" name="cart-outline"></ion-icon>
+      @if (cartCount() > 0) {
+        <ion-badge color="danger" class="cart-badge">{{ cartCount() }}</ion-badge>
+      }
+    </ion-button>
     <ion-button slot="end" fill="clear" (click)="logout()" aria-label="Log out">
       <ion-icon slot="icon-only" name="log-out-outline"></ion-icon>
     </ion-button>
@@ -23,18 +29,38 @@
 
   <div class="page">
     <header class="hero">
-      <div class="hero-text">
-        <p class="eyebrow">{{ greeting() }}</p>
-        <h1 class="hero-name">{{ firstName() }}</h1>
-        <p class="hero-tagline">Groceries, doctors and a helping hand — all in one place.</p>
+      <div class="hero-top">
+        <div class="hero-text">
+          <p class="eyebrow">{{ greeting() }}</p>
+          <h1 class="hero-name">{{ firstName() }}</h1>
+        </div>
+        <span class="role-badge">{{ auth.user()?.role }}</span>
       </div>
-      <span class="role-badge">{{ auth.user()?.role }}</span>
+
+      <p class="hero-tagline">Groceries, doctors and a helping hand — all in one place.</p>
+
+      <div class="search">
+        <ion-icon class="search-icon" name="search-outline"></ion-icon>
+        <input
+          #q
+          class="search-input"
+          type="search"
+          enterkeyhint="search"
+          placeholder="Search for rice, milk, vegetables…"
+          aria-label="Search the catalogue"
+          (keyup.enter)="search(q.value)"
+        />
+        <button class="search-btn" (click)="search(q.value)">Search</button>
+      </div>
     </header>
 
     <!-- Fresh picks: real catalogue items drifting past, tap to open. -->
     <section class="shelf-section">
       <div class="section-head">
-        <h2 class="section-title">Fresh picks</h2>
+        <div>
+          <h2 class="section-title">Fresh picks</h2>
+          <p class="section-sub">In stock today</p>
+        </div>
         <button class="see-all" (click)="goTo('grocery')">
           See all
           <ion-icon name="arrow-forward-outline"></ion-icon>
@@ -77,7 +103,12 @@
 
     @if (categories().length) {
       <section class="cats">
-        <h2 class="section-title">Shop by category</h2>
+        <div class="section-head">
+          <div>
+            <h2 class="section-title">Shop by category</h2>
+            <p class="section-sub">{{ categories().length }} to browse</p>
+          </div>
+        </div>
         <div class="cat-row">
           @for (cat of categories(); track cat.category) {
             <button class="cat-chip" (click)="openCategory(cat)">
