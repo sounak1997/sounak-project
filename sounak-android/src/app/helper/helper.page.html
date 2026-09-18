@@ -7,10 +7,61 @@
   </ion-toolbar>
 </ion-header>
 
-<ion-content [fullscreen]="true" class="ion-padding">
-  <p>Need a hand with something — placing an order verbally, general help, or a delivery issue? Reach the assistant directly:</p>
+<ion-content [fullscreen]="true" class="ion-padding helper-content">
+  <p class="intro">
+    Need a hand — placing an order verbally, general help, or a delivery issue? Ask us to call you back,
+    and we'll ring you on the number below.
+  </p>
 
-  <app-helper-contact message="Call or WhatsApp us and we'll take it from there."></app-helper-contact>
+  <ion-list lines="full">
+    <ion-item>
+      <ion-label position="stacked">What do you need help with?</ion-label>
+      <ion-select [(ngModel)]="reason" name="reason" interface="action-sheet" placeholder="Choose a reason">
+        @for (r of reasons; track r.value) {
+          <ion-select-option [value]="r.value">{{ r.label }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+    <ion-item>
+      <ion-label position="stacked">Phone number</ion-label>
+      <ion-input type="tel" [(ngModel)]="phone" name="phone" placeholder="Number to call you back on"></ion-input>
+    </ion-item>
+    <ion-item>
+      <ion-label position="stacked">Anything else? (optional)</ion-label>
+      <ion-textarea
+        [(ngModel)]="note"
+        name="note"
+        autoGrow="true"
+        placeholder="e.g. please bring 2 kg potatoes not in the app"
+      ></ion-textarea>
+    </ion-item>
+  </ion-list>
 
-  <p class="ion-margin-top">The in-app "request a callback" form (queued to staff automatically) isn't built yet, but the backend behind it already is — <code>POST /api/assistance</code> on sounak-backend.</p>
+  <ion-button expand="block" class="submit-btn" [disabled]="submitting()" (click)="submit()">
+    @if (submitting()) {
+      <ion-spinner name="dots"></ion-spinner>
+    } @else {
+      Request a callback
+    }
+  </ion-button>
+
+  @if (!loadingRequests() && requests().length) {
+    <div class="past-section">
+      <div class="section-title">Your requests</div>
+      @for (req of requests(); track req.id) {
+        <div class="request-card">
+          <div class="request-top">
+            <span class="request-reason">{{ reasonLabel(req.reason) }}</span>
+            <ion-chip [color]="statusColor(req.status)" class="status-chip">{{ req.status }}</ion-chip>
+          </div>
+          <div class="request-meta">{{ req.created_at | date: 'medium' }} · {{ req.phone }}</div>
+          @if (req.note) {
+            <div class="request-note">{{ req.note }}</div>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <app-helper-contact message="In a hurry? Call or WhatsApp us directly instead."></app-helper-contact>
 </ion-content>

@@ -20,14 +20,19 @@
     <div class="success-state">
       <div class="success-title">Order placed!</div>
       <p>Order {{ order.id }} — total ₹{{ order.total }}</p>
-      <p class="success-sub">We've opened WhatsApp with your order details — just hit send.</p>
+      @if (order.payment_method === 'qr') {
+        <p class="success-sub">We'll confirm once your payment is verified.</p>
+      } @else {
+        <p class="success-sub">Pay cash when your order is delivered.</p>
+      }
       @if (whatsappOrderHref(); as href) {
         <ion-button expand="block" color="success" [href]="href" target="_blank" rel="noopener">
           <ion-icon slot="start" name="logo-whatsapp"></ion-icon>
           Send order on WhatsApp
         </ion-button>
       }
-      <ion-button expand="block" fill="outline" (click)="goToGrocery()">Continue shopping</ion-button>
+      <ion-button expand="block" fill="outline" (click)="goToOrders()">View my orders</ion-button>
+      <ion-button expand="block" fill="clear" (click)="goToGrocery()">Continue shopping</ion-button>
     </div>
   } @else if (!cart() || cart()!.items.length === 0) {
     <div class="state-row">
@@ -65,13 +70,55 @@
       }
     </ion-list>
 
-    <div class="subtotal-row">
-      <span>Subtotal</span>
-      <span>₹{{ cart()!.subtotal }}</span>
+    <!-- Coupon (FR-3.5) -->
+    <div class="coupon-section">
+      <div class="section-title">Have a coupon?</div>
+      @if (couponPreview(); as coupon) {
+        <div class="coupon-applied">
+          <span><strong>{{ coupon.code }}</strong> applied — you saved ₹{{ coupon.discountAmount }}</span>
+          <ion-button fill="clear" size="small" color="danger" (click)="clearCoupon()">Remove</ion-button>
+        </div>
+      } @else {
+        <div class="coupon-row">
+          <ion-input
+            [(ngModel)]="couponCode"
+            name="couponCode"
+            placeholder="Enter coupon code"
+            class="coupon-input"
+          ></ion-input>
+          <ion-button size="small" [disabled]="validatingCoupon()" (click)="applyCoupon()">
+            @if (validatingCoupon()) {
+              <ion-spinner name="dots"></ion-spinner>
+            } @else {
+              Apply
+            }
+          </ion-button>
+        </div>
+        @if (couponError(); as err) {
+          <ion-note color="danger" class="coupon-error">{{ err }}</ion-note>
+        }
+      }
+    </div>
+
+    <div class="totals">
+      <div class="total-row">
+        <span>Subtotal</span>
+        <span>₹{{ cart()!.subtotal }}</span>
+      </div>
+      @if (couponPreview(); as coupon) {
+        <div class="total-row discount">
+          <span>Discount ({{ coupon.code }})</span>
+          <span>−₹{{ coupon.discountAmount }}</span>
+        </div>
+      }
+      <div class="total-row grand">
+        <span>Total</span>
+        <span>₹{{ payableTotal() }}</span>
+      </div>
     </div>
 
     <div class="checkout-section">
-      <div class="checkout-title">Delivery details</div>
+      <div class="section-title">Delivery details</div>
       <ion-list lines="full">
         <ion-item>
           <ion-label position="stacked">Name</ion-label>
@@ -87,11 +134,36 @@
         </ion-item>
       </ion-list>
 
+      <!-- Payment method (FR-3.6 / FR-3.7 / FR-3.8) -->
+      <div class="section-title payment-title">Payment method</div>
+      <ion-segment [value]="paymentMethod()" (ionChange)="selectPaymentMethod($any($event.detail.value))">
+        <ion-segment-button value="cod">Cash on delivery</ion-segment-button>
+        <ion-segment-button value="qr">Scan &amp; Pay</ion-segment-button>
+      </ion-segment>
+
+      @if (paymentMethod() === 'qr') {
+        <div class="qr-block">
+          @if (qrImage(); as qr) {
+            <img class="qr-image" [src]="qr" alt="Scan to pay" />
+            <p class="qr-hint">Scan with any UPI app to pay ₹{{ payableTotal() }}, then enter the reference number below.</p>
+          } @else {
+            <p class="qr-hint">No payment QR has been set up yet — please choose Cash on delivery, or contact us.</p>
+          }
+          <ion-list lines="full">
+            <ion-item>
+              <ion-label position="stacked">UPI reference / transaction ID (optional)</ion-label>
+              <ion-input [(ngModel)]="paymentReference" name="paymentReference" placeholder="e.g. 4319xxxxxx"></ion-input>
+            </ion-item>
+          </ion-list>
+          <ion-note class="qr-note">Your order will be marked "awaiting verification" until we confirm the payment.</ion-note>
+        </div>
+      }
+
       <ion-button expand="block" class="place-order-btn" [disabled]="placingOrder()" (click)="placeOrder()">
         @if (placingOrder()) {
           <ion-spinner name="dots"></ion-spinner>
         } @else {
-          Place order (Cash on delivery)
+          Place order — ₹{{ payableTotal() }}
         }
       </ion-button>
     </div>

@@ -7,6 +7,9 @@
     <ion-buttons slot="end">
       <ion-button (click)="goToCart()" aria-label="View cart">
         <ion-icon slot="icon-only" name="cart-outline"></ion-icon>
+        @if (cartCount() > 0) {
+          <ion-badge color="danger" class="cart-badge">{{ cartCount() }}</ion-badge>
+        }
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
@@ -17,6 +20,24 @@
       (ionInput)="onSearch($any($event.target).value)"
     ></ion-searchbar>
   </ion-toolbar>
+  @if (categories().length) {
+    <ion-toolbar>
+      <div class="category-row">
+        <ion-chip
+          [outline]="activeCategory() !== null"
+          [color]="activeCategory() === null ? 'primary' : 'medium'"
+          (click)="selectCategory(null)"
+        >All</ion-chip>
+        @for (cat of categories(); track cat.category) {
+          <ion-chip
+            [outline]="activeCategory() !== cat.category"
+            [color]="activeCategory() === cat.category ? 'primary' : 'medium'"
+            (click)="selectCategory(cat.category)"
+          >{{ cat.category }}</ion-chip>
+        }
+      </div>
+    </ion-toolbar>
+  }
 </ion-header>
 
 <ion-content [fullscreen]="true" class="ion-padding grocery-content">
@@ -36,14 +57,16 @@
     <div class="product-grid">
       @for (product of products(); track product.id) {
         <div class="product-card">
-          <div class="product-thumb">
-            @if (imageFor(product); as img) {
-              <img [src]="img" [alt]="product.name" />
-            } @else {
-              <span>{{ product.name }}</span>
-            }
+          <div class="product-tap" (click)="openProduct(product)">
+            <div class="product-thumb">
+              @if (imageFor(product); as img) {
+                <img [src]="img" [alt]="product.name" />
+              } @else {
+                <span>{{ product.name }}</span>
+              }
+            </div>
+            <div class="product-name">{{ product.name }}</div>
           </div>
-          <div class="product-name">{{ product.name }}</div>
           <div class="product-meta">
             <span class="product-price">₹{{ product.price }}</span>
             <ion-chip [color]="product.in_stock ? 'success' : 'medium'" class="stock-chip">
@@ -81,6 +104,10 @@
         </div>
       }
     </div>
+
+    <ion-infinite-scroll [disabled]="!hasMore()" (ionInfinite)="loadMore($any($event))">
+      <ion-infinite-scroll-content loadingSpinner="dots"></ion-infinite-scroll-content>
+    </ion-infinite-scroll>
   }
 
   <app-helper-contact

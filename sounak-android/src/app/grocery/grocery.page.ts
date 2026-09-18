@@ -2,13 +2,17 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import {
   IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent,
-  IonSearchbar, IonSpinner, IonChip, IonButton, IonIcon, ToastController,
+  IonSearchbar, IonSpinner, IonChip, IonButton, IonIcon, IonBadge,
+  IonInfiniteScroll, IonInfiniteScrollContent, InfiniteScrollCustomEvent,
+  ToastController,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { cartOutline } from 'ionicons/icons';
-import { ProductService, Product } from '../core/product.service';
+import { ProductService, Product, Category } from '../core/product.service';
 import { CartService } from '../core/cart.service';
 import { HelperContactComponent } from '../shared/helper-contact/helper-contact.component';
+
+const PAGE_SIZE = 40;
 
 @Component({
   selector: 'app-grocery',
@@ -16,7 +20,8 @@ import { HelperContactComponent } from '../shared/helper-contact/helper-contact.
   styleUrls: ['./grocery.page.scss'],
   imports: [
     IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent,
-    IonSearchbar, IonSpinner, IonChip, IonButton, IonIcon,
+    IonSearchbar, IonSpinner, IonChip, IonButton, IonIcon, IonBadge,
+    IonInfiniteScroll, IonInfiniteScrollContent,
     HelperContactComponent,
   ],
 })
@@ -26,41 +31,96 @@ export class GroceryPage implements OnInit {
   private toastController = inject(ToastController);
   private router = inject(Router);
 
-  constructor() {
-    addIcons({ cartOutline });
-  }
-
   products = signal<Product[]>([]);
+  categories = signal<Category[]>([]);
+  activeCategory = signal<string | null>(null);
   loading = signal(true);
   error = signal<string | null>(null);
   searchTerm = '';
+
+  // Paged browsing (NFR-5) — the catalog is far larger than one page.
+  private page = signal(1);
+  hasMore = signal(false);
+
+  cartCount = this.cartService.itemCount;
 
   // Quantity picked per product (defaults to 1) and in-flight add state,
   // keyed by product id — lets each card have its own independent stepper.
   private quantities = signal<Record<string, number>>({});
   private addingIds = signal<Record<string, boolean>>({});
 
+  constructor() {
+    addIcons({ cartOutline });
+  }
+
   ngOnInit(): void {
     this.load();
+    this.loadCategories();
+    // Seeds the header badge; every later cart call keeps it current.
+    this.cartService.getCart().subscribe({ error: () => {} });
+  }
+
+  private loadCategories(): void {
+    this.productService.categories().subscribe({
+      next: (res) => this.categories.set(res.data),
+      error: () => {}, // filter chips are an enhancement; the grid still works
+    });
   }
 
   load(): void {
     this.loading.set(true);
     this.error.set(null);
-    this.productService.list({ search: this.searchTerm || undefined }).subscribe({
-      next: (res) => {
-        this.products.set(res.data);
-        this.loading.set(false);
-      },
-      error: (err) => {
-        this.error.set(err?.error?.message || 'Could not load products.');
-        this.loading.set(false);
-      },
-    });
+    this.page.set(1);
+    this.productService
+      .list({
+        search: this.searchTerm || undefined,
+        category: this.activeCategory() || undefined,
+        page: 1,
+        limit: PAGE_SIZE,
+      })
+      .subscribe({
+        next: (res) => {
+          this.products.set(res.data);
+          this.hasMore.set(res.pagination.page < res.pagination.totalPages);
+          this.loading.set(false);
+        },
+        error: (err) => {
+          this.error.set(err?.error?.message || 'Could not load products.');
+          this.loading.set(false);
+        },
+      });
+  }
+
+  loadMore(event: InfiniteScrollCustomEvent): void {
+    const nextPage = this.page() + 1;
+    this.productService
+      .list({
+        search: this.searchTerm || undefined,
+        category: this.activeCategory() || undefined,
+        page: nextPage,
+        limit: PAGE_SIZE,
+      })
+      .subscribe({
+        next: (res) => {
+          this.page.set(nextPage);
+          this.products.update((current) => [...current, ...res.data]);
+          this.hasMore.set(res.pagination.page < res.pagination.totalPages);
+          event.target.complete();
+        },
+        error: () => {
+          this.hasMore.set(false);
+          event.target.complete();
+        },
+      });
   }
 
   onSearch(term: string | null | undefined): void {
     this.searchTerm = term || '';
+    this.load();
+  }
+
+  selectCategory(category: string | null): void {
+    this.activeCategory.set(category);
     this.load();
   }
 
@@ -70,6 +130,10 @@ export class GroceryPage implements OnInit {
 
   goToCart(): void {
     this.router.navigateByUrl('/cart');
+  }
+
+  openProduct(product: Product): void {
+    this.router.navigateByUrl(`/product/${product.id}`);
   }
 
   qtyFor(productId: string): number {

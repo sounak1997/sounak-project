@@ -23,6 +23,36 @@
   padding: 10px;
 }
 
+.product-tap {
+  cursor: pointer;
+}
+
+.cart-badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  font-size: 10px;
+  padding: 2px 5px;
+  border-radius: 10px;
+}
+
+.category-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 4px 12px 8px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+
+  ion-chip {
+    flex: 0 0 auto;
+    font-size: 12px;
+    height: 28px;
+    margin: 0;
+  }
+}
+
 .product-thumb {
   height: 90px;
   border-radius: 10px;

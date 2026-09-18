@@ -19,7 +19,7 @@ export class HomePage {
     addIcons({ logOutOutline });
   }
 
-  goTo(section: 'grocery' | 'booking' | 'helper'): void {
+  goTo(section: 'grocery' | 'orders' | 'booking' | 'helper'): void {
     this.router.navigateByUrl(`/${section}`);
   }
 

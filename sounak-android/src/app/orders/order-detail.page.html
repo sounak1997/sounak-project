@@ -1,0 +1,96 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/orders"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Order</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding order-detail-content">
+  @if (loading()) {
+    <div class="state-row">
+      <ion-spinner name="dots"></ion-spinner>
+    </div>
+  } @else if (error()) {
+    <div class="state-row">
+      <p>{{ error() }}</p>
+    </div>
+  } @else if (order(); as order) {
+    <div class="order-head">
+      <div class="order-id">{{ order.id }}</div>
+      <div class="order-date">{{ order.created_at | date: 'medium' }}</div>
+    </div>
+
+    @if (order.status === 'cancelled') {
+      <ion-chip color="danger" class="cancelled-chip">Cancelled</ion-chip>
+    } @else {
+      <div class="tracker">
+        @for (step of steps(); track step.status) {
+          <div class="step" [class.done]="step.done">
+            <div class="dot"></div>
+            <div class="step-label">{{ step.label }}</div>
+          </div>
+        }
+      </div>
+    }
+
+    <div class="section">
+      <div class="section-title">Items</div>
+      @for (item of order.items; track item.product_id) {
+        <div class="item-row">
+          <span class="item-name">{{ item.product_name }} × {{ item.quantity }}</span>
+          <span class="item-total">₹{{ lineTotal(item.price_at_purchase, item.quantity) }}</span>
+        </div>
+      }
+    </div>
+
+    <div class="section totals">
+      <div class="total-row">
+        <span>Subtotal</span>
+        <span>₹{{ order.subtotal }}</span>
+      </div>
+      @if (+order.discount_applied > 0) {
+        <div class="total-row discount">
+          <span>Discount{{ order.coupon_code ? ' (' + order.coupon_code + ')' : '' }}</span>
+          <span>−₹{{ order.discount_applied }}</span>
+        </div>
+      }
+      <div class="total-row grand">
+        <span>Total</span>
+        <span>₹{{ order.total }}</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Payment</div>
+      <div class="kv">
+        <span>Method</span>
+        <span>{{ order.payment_method === 'cod' ? 'Cash on delivery' : 'Scan & Pay (UPI)' }}</span>
+      </div>
+      <div class="kv">
+        <span>Status</span>
+        <span>{{ paymentLabel() }}</span>
+      </div>
+      @if (order.payment_reference) {
+        <div class="kv">
+          <span>Reference</span>
+          <span>{{ order.payment_reference }}</span>
+        </div>
+      }
+    </div>
+
+    <div class="section">
+      <div class="section-title">Delivering to</div>
+      <div class="address">
+        <div>{{ order.delivery_address.name }}</div>
+        <div>{{ order.delivery_address.phone }}</div>
+        <div>{{ order.delivery_address.address }}</div>
+      </div>
+    </div>
+
+    <app-helper-contact
+      message="Question about this order? Call or WhatsApp us and we'll sort it out."
+    ></app-helper-contact>
+  }
+</ion-content>

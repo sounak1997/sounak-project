@@ -1,0 +1,41 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/home"></ion-back-button>
+    </ion-buttons>
+    <ion-title>My Orders</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding orders-content">
+  @if (loading()) {
+    <div class="state-row">
+      <ion-spinner name="dots"></ion-spinner>
+    </div>
+  } @else if (error()) {
+    <div class="state-row">
+      <p>{{ error() }}</p>
+    </div>
+  } @else if (orders().length === 0) {
+    <div class="state-row empty">
+      <p>You haven't placed any orders yet.</p>
+      <ion-button fill="outline" (click)="goToGrocery()">Start shopping</ion-button>
+    </div>
+  } @else {
+    @for (order of orders(); track order.id) {
+      <div class="order-card" (click)="openOrder(order)">
+        <div class="order-top">
+          <span class="order-id">{{ order.id }}</span>
+          <ion-chip [color]="statusColor(order.status)" class="status-chip">{{ statusLabel(order.status) }}</ion-chip>
+        </div>
+        <div class="order-date">{{ order.created_at | date: 'medium' }}</div>
+        <div class="order-bottom">
+          <span class="order-total">₹{{ order.total }}</span>
+          <span class="order-payment">
+            {{ order.payment_method === 'cod' ? 'COD' : 'Scan & Pay' }} · {{ paymentLabel(order.payment_status) }}
+          </span>
+        </div>
+      </div>
+    }
+  }
+</ion-content>

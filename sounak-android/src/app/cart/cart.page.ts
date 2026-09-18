@@ -1,16 +1,18 @@
 // src/app/cart/cart.page.ts
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import {
   IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent,
   IonSpinner, IonButton, IonIcon, IonInput, IonTextarea, IonList, IonItem, IonLabel,
+  IonSegment, IonSegmentButton, IonNote,
   ToastController,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { logoWhatsapp } from 'ionicons/icons';
 import { CartService, Cart, CartItem } from '../core/cart.service';
-import { OrderService } from '../core/order.service';
+import { OrderService, Order, DeliveryAddress } from '../core/order.service';
+import { CheckoutService, CouponPreview } from '../core/checkout.service';
 import { AuthService } from '../core/auth.service';
 import { whatsappHrefWithMessage } from '../core/assistant-contact';
 
@@ -22,11 +24,13 @@ import { whatsappHrefWithMessage } from '../core/assistant-contact';
     FormsModule,
     IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent,
     IonSpinner, IonButton, IonIcon, IonInput, IonTextarea, IonList, IonItem, IonLabel,
+    IonSegment, IonSegmentButton, IonNote,
   ],
 })
 export class CartPage implements OnInit {
   private cartService = inject(CartService);
   private orderService = inject(OrderService);
+  private checkoutService = inject(CheckoutService);
   private auth = inject(AuthService);
   private toastController = inject(ToastController);
   private router = inject(Router);
@@ -41,12 +45,33 @@ export class CartPage implements OnInit {
   name = this.auth.user()?.name ?? '';
   phone = '';
   address = '';
+
+  // Coupon (FR-3.5) — previewed against /coupons/validate before checkout so
+  // the customer sees the discount before committing; placeOrder re-validates
+  // and redeems it server-side.
+  couponCode = '';
+  couponPreview = signal<CouponPreview | null>(null);
+  couponError = signal<string | null>(null);
+  validatingCoupon = signal(false);
+
+  // Payment method (FR-3.6) — 'cod' or 'qr' (Scan & Pay, FR-3.8).
+  paymentMethod = signal<'cod' | 'qr'>('cod');
+  qrImage = signal<string | null>(null);
+  paymentReference = '';
+
   placingOrder = signal(false);
-  placedOrder = signal<{ id: string; total: string } | null>(null);
+  placedOrder = signal<Order | null>(null);
   // Kept so the success screen can offer the WhatsApp handoff as a real link —
   // the automatic window.open runs after an async response, so browsers can
   // treat it as a non-user-gesture popup and block it.
   whatsappOrderHref = signal<string | null>(null);
+
+  readonly payableTotal = computed(() => {
+    const cart = this.cart();
+    if (!cart) return 0;
+    const discount = this.couponPreview()?.discountAmount ?? 0;
+    return Math.round((cart.subtotal - discount) * 100) / 100;
+  });
 
   constructor() {
     addIcons({ logoWhatsapp });
@@ -100,6 +125,7 @@ export class CartPage implements OnInit {
       next: (res) => {
         this.cart.set(res.data);
         this.setBusy(item.product_id, false);
+        this.revalidateCoupon();
       },
       error: async (err) => {
         this.setBusy(item.product_id, false);
@@ -114,12 +140,56 @@ export class CartPage implements OnInit {
       next: async (res) => {
         this.cart.set(res.data);
         this.setBusy(item.product_id, false);
+        this.revalidateCoupon();
         await this.showToast(`Removed ${item.name} from cart`, 'medium');
       },
       error: async (err) => {
         this.setBusy(item.product_id, false);
         await this.showToast(err?.error?.message || 'Could not remove item.', 'danger');
       },
+    });
+  }
+
+  applyCoupon(): void {
+    const code = this.couponCode.trim();
+    const cart = this.cart();
+    if (!code || !cart) return;
+
+    this.validatingCoupon.set(true);
+    this.couponError.set(null);
+    this.checkoutService.validateCoupon(code, cart.subtotal).subscribe({
+      next: (res) => {
+        this.couponPreview.set(res.data);
+        this.validatingCoupon.set(false);
+      },
+      error: (err) => {
+        this.couponPreview.set(null);
+        this.couponError.set(err?.error?.message || 'That coupon could not be applied.');
+        this.validatingCoupon.set(false);
+      },
+    });
+  }
+
+  clearCoupon(): void {
+    this.couponCode = '';
+    this.couponPreview.set(null);
+    this.couponError.set(null);
+  }
+
+  /** A cart edit changes the subtotal, so a held coupon preview is stale. */
+  private revalidateCoupon(): void {
+    if (this.couponPreview()) this.applyCoupon();
+  }
+
+  selectPaymentMethod(method: 'cod' | 'qr'): void {
+    this.paymentMethod.set(method);
+    if (method === 'qr' && this.qrImage() === null) this.loadQr();
+  }
+
+  private loadQr(): void {
+    this.checkoutService.getPaymentQr().subscribe({
+      next: (res) => this.qrImage.set(this.checkoutService.qrImageUrl(res.data?.qr_image_url ?? null)),
+      error: () => this.qrImage.set(null),
     });
   }
 
@@ -132,27 +202,35 @@ export class CartPage implements OnInit {
     }
 
     this.placingOrder.set(true);
-    const deliveryAddress = { name: this.name.trim(), phone: this.phone.trim(), address: this.address.trim() };
+    const deliveryAddress: DeliveryAddress = {
+      name: this.name.trim(),
+      phone: this.phone.trim(),
+      address: this.address.trim(),
+    };
 
-    this.orderService.placeOrder(deliveryAddress, 'cod').subscribe({
-      next: (res) => {
-        const order = res.data;
-        this.placingOrder.set(false);
-        this.placedOrder.set({ id: order.id, total: order.total });
-        this.sendOrderToWhatsapp(order, deliveryAddress);
-        this.load(); // cart is now empty server-side
-      },
-      error: async (err) => {
-        this.placingOrder.set(false);
-        await this.showToast(err?.error?.message || 'Could not place order.', 'danger');
-      },
-    });
+    this.orderService
+      .placeOrder({
+        deliveryAddress,
+        paymentMethod: this.paymentMethod(),
+        couponCode: this.couponPreview()?.code,
+        paymentReference: this.paymentMethod() === 'qr' ? this.paymentReference.trim() || undefined : undefined,
+      })
+      .subscribe({
+        next: (res) => {
+          const order = res.data;
+          this.placingOrder.set(false);
+          this.placedOrder.set(order);
+          this.sendOrderToWhatsapp(order, deliveryAddress);
+          this.load(); // cart is now empty server-side
+        },
+        error: async (err) => {
+          this.placingOrder.set(false);
+          await this.showToast(err?.error?.message || 'Could not place order.', 'danger');
+        },
+      });
   }
 
-  private sendOrderToWhatsapp(
-    order: { id: string; total: string; subtotal: string; items: { product_name: string; quantity: number; price_at_purchase: string }[] },
-    deliveryAddress: { name: string; phone: string; address: string }
-  ): void {
+  private sendOrderToWhatsapp(order: Order, deliveryAddress: DeliveryAddress): void {
     const lines = [
       `New order ${order.id}`,
       `Customer: ${deliveryAddress.name} (${deliveryAddress.phone})`,
@@ -163,9 +241,17 @@ export class CartPage implements OnInit {
         (item) => `- ${item.product_name} x${item.quantity} — ₹${(Number(item.price_at_purchase) * item.quantity).toFixed(2)}`
       ),
       '',
-      `Total: ₹${order.total}`,
-      'Payment: Cash on delivery',
+      `Subtotal: ₹${order.subtotal}`,
     ];
+    if (Number(order.discount_applied) > 0) {
+      lines.push(`Discount${order.coupon_code ? ` (${order.coupon_code})` : ''}: -₹${order.discount_applied}`);
+    }
+    lines.push(
+      `Total: ₹${order.total}`,
+      `Payment: ${order.payment_method === 'cod' ? 'Cash on delivery' : 'Scan & Pay (UPI)'}`
+    );
+    if (order.payment_reference) lines.push(`Reference: ${order.payment_reference}`);
+
     const href = whatsappHrefWithMessage(lines.join('\n'));
     this.whatsappOrderHref.set(href);
     window.open(href, '_blank');
@@ -173,6 +259,10 @@ export class CartPage implements OnInit {
 
   goToGrocery(): void {
     this.router.navigateByUrl('/grocery');
+  }
+
+  goToOrders(): void {
+    this.router.navigateByUrl('/orders');
   }
 
   private async showToast(message: string, color: string): Promise<void> {
