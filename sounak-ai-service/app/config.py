@@ -86,5 +86,15 @@ class Settings(BaseSettings):
     # even when the sample is trimmed.
     tool_result_limit: int = 25
 
+    # Shared secret between the Express backend and this service.
+    #
+    # On EC2 this service bound to 127.0.0.1 and was unreachable from the
+    # internet. Hosted on Zeabur it gets a PUBLIC url, so without this anyone
+    # who finds it can spend your Gemini quota.
+    #
+    # Unset (the default) = no check, so local dev and existing setups keep
+    # working. Set it in BOTH services to turn enforcement on.
+    internal_api_key: str | None = None
+
 
 settings = Settings()

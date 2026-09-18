@@ -22,6 +22,18 @@ const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS) || 30000;
 // the 30s chat timeout here would abort perfectly healthy multi-tool runs.
 const AI_AGENT_TIMEOUT_MS = Number(process.env.AI_AGENT_TIMEOUT_MS) || 90000;
 
+// Shared secret proving a request really came from this backend.
+//
+// On EC2 the AI service bound to 127.0.0.1 and no one else could reach it.
+// Hosted, it has a public URL, so without this anyone who finds it can spend
+// the Gemini quota. Unset = no header sent, and the AI service skips the check
+// too, so local dev is unaffected. Set it in BOTH services to enforce.
+const AI_INTERNAL_KEY = process.env.AI_INTERNAL_KEY || '';
+
+/** The auth header, or nothing at all when no secret is configured. */
+const internalKeyHeader = () =>
+  AI_INTERNAL_KEY ? { 'x-internal-key': AI_INTERNAL_KEY } : {};
+
 /**
  * POST some JSON to the Python service and return its parsed body, mapping
  * failures to errors tagged with an HTTP .status for the controller to use.
@@ -33,7 +45,7 @@ async function callAiService(path, body, timeoutMs = AI_TIMEOUT_MS) {
   try {
     const response = await fetch(`${AI_SERVICE_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...internalKeyHeader() },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -101,7 +113,7 @@ exports.confirmAction = ({ tool, args, authToken }) =>
 exports.openChatStream = ({ message, system }) =>
   fetch(`${AI_SERVICE_URL}/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...internalKeyHeader() },
     body: JSON.stringify({ message, system }),
   });
 
@@ -116,6 +128,9 @@ async function requestAiService(path, options = {}) {
   try {
     const response = await fetch(`${AI_SERVICE_URL}${path}`, {
       ...options,
+      // Merged, not overwritten: FormData must set its own Content-Type
+      // boundary, so we only ever add the auth header here.
+      headers: { ...(options.headers || {}), ...internalKeyHeader() },
       signal: controller.signal,
     });
     const data = await response.json().catch(() => ({}));

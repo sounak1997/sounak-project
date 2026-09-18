@@ -17,9 +17,9 @@ Open http://localhost:8000/docs for interactive, auto-generated API docs.
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from google.genai import errors as genai_errors
 
@@ -55,6 +55,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def _require_internal_key(request: Request, call_next):
+    """Reject anything that isn't from our own backend.
+
+    Skipped entirely when INTERNAL_API_KEY is unset, so local dev is unchanged.
+    /health stays open because the platform's health check cannot send headers.
+    """
+    if settings.internal_api_key and request.url.path != "/health":
+        if request.headers.get("x-internal-key") != settings.internal_api_key:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+    return await call_next(request)
+
 
 # Built once at startup and reused. Neither needs an API key to construct, so
 # the app still boots and /health still works before you've added a key.
