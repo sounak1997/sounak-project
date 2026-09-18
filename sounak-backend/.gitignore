@@ -1,8 +1,15 @@
 node_modules
 
-# Runtime-uploaded product images / payment QR (NFR-3). Not source — each
-# environment accumulates its own; see src/utils/imageUpload.js.
-uploads/
+# Runtime-uploaded images (NFR-3); see src/utils/imageUpload.js.
+#
+# Product photos ARE tracked, deliberately: Render builds from git onto an
+# ephemeral filesystem, so anything not in the repo 404s in production while
+# Mongo still points at it. Everything else here (payment QR, etc.) stays
+# local to each environment.
+uploads/*
+!uploads/products/
+uploads/products/*
+!uploads/products/*.webp
 
 # Pre-fetched source photos for scripts/seedGroceryProducts500.js — large
 # binaries, not source; re-run scripts/prefetchGroceryImages.js to regenerate.
