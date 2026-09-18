@@ -5,38 +5,43 @@ Target: **₹0/month**. Two earlier plans died, and the reasons are worth keepin
 - **AWS** — terminated 2026-09-02. The 12-month free tier expired 2026-07-29
   (account created 2025-07-29) and the stack began billing ~$14/mo.
 - **Oracle Cloud Always Free** — card verification rejects many Indian cards.
-- **Zeabur** — its CLI now refuses project creation with *"Shared clusters are
+- **Zeabur** — its CLI refuses project creation: *"Shared clusters are
   deprecated. Please rent a Server."* Free shared hosting is gone; their "Free
   plan" is a control plane for a server you rent yourself.
+- **Hugging Face Spaces** — repo creation returns 402: *"hosting Gradio and
+  Docker Spaces on free cpu-basic requires a PRO subscription."* Only static
+  Spaces are free, which cannot run FastAPI.
 
 ## Architecture
 
 ```
-Cloudflare Pages ──► Render: Express ──► HF Spaces: FastAPI ──► Gemini
-  (Angular,             │                  (AI service, 16GB)
-   never sleeps)        ├──► MongoDB Atlas   (already hosted, free)
-                        └──► Neon Postgres   (already hosted, free)
+Cloudflare Workers ──► Render: Express ──► Render: FastAPI ──► Gemini
+  (Angular,               │                  (AI service)
+   never sleeps)          ├──► MongoDB Atlas   (already hosted, free)
+                          └──► Neon Postgres   (already hosted, free)
 ```
 
 | Component | Host | Free? | Sleeps? |
 |---|---|---|---|
-| Angular web | Cloudflare Pages | yes, no card | never |
+| Angular web | Cloudflare Workers | yes, no card | never |
 | Express API | Render | 750 instance-h/month | after 15 min, ~1 min wake |
-| FastAPI AI | Hugging Face Spaces | yes, no card | after long idle |
+| FastAPI AI | Render | shares the 750 h | after 15 min, ~1 min wake |
 | MongoDB | Atlas M0 | yes | — |
 | Postgres | Neon | yes | — |
 | Android APK | GitHub Releases | yes | — |
 
-**Why this exact split.** Render grants **750 free instance-hours per workspace
-per month** and a month is ~730 hours — so exactly one service fits. Putting
-the AI service on Hugging Face instead keeps Render to a single service *and*
-gives it 16 GB RAM rather than Render's 512 MB, which matters once ChromaDB and
-the LangChain/Gemini stack load. The frontend is static, so a CDN that never
-sleeps means the site always loads instantly and only API calls wait on a cold
-backend.
+**On the 750-hour limit.** Render grants 750 free instance-hours per workspace
+per month. Hours accrue only while a service is **awake**, and both spin down
+after 15 minutes idle — so a couple of hours of real use per day across both
+services is roughly 120 h/month, far under the cap. Two services are fine.
 
-> **Do not add a keep-alive pinger to Render.** Keeping the service awake 24/7
-> would consume ~730 of your 750 hours and leave no margin.
+> **Do not add a keep-alive pinger.** Keeping both awake 24/7 would need ~1460
+> hours against a 750 cap, and the services would stop mid-month. That, not the
+> service count, is what actually blows the budget.
+
+The frontend is on Cloudflare rather than Render because it is static: a host
+that never sleeps means the site always loads instantly and only API calls wait
+on a cold backend.
 
 Redis and RabbitMQ are not hosted anywhere. Both degrade gracefully
 (`redis.config.js` disables caching and stops retrying; `rabbitmq.config.js`
@@ -46,71 +51,71 @@ retries without crashing), exactly as on the old EC2 box.
 
 ## Phase 0 — Already in the repo
 
-- `render.yaml` — the backend blueprint
-- `sounak-ai-service/Dockerfile` + `README.hf.md` — the Hugging Face Space
-- `sounak-project/public/_redirects` — SPA fallback, or `/dashboard` 404s
+- `render.yaml` — blueprint for **both** backend services
+- `sounak-project/wrangler.jsonc` — the Cloudflare Worker, already deployed
 - `angular.json` `fileReplacements` **now actually wired** — without it
   `environment.prod.ts` was dead code and the dev config shipped to production
 - Shared-secret auth between backend and AI service (Phase 3)
 
-## Phase 1 — Hugging Face Space (deploy this FIRST)
+`sounak-ai-service/Dockerfile` and `README.hf.md` are kept for reference — they
+work on any Docker host if you ever move off Render — but are unused here.
 
-The backend needs this URL, so it goes first.
+## Phase 1 — Frontend (DONE)
 
-1. Sign up at <https://huggingface.co>. No card.
-2. New → Space. SDK **Docker**, visibility Public (private works too).
-3. Push the `sounak-ai-service` directory to the Space repo, renaming
-   `README.hf.md` to `README.md` — Spaces read its frontmatter to learn the
-   SDK and port.
-4. Settings → Variables and secrets:
+Deployed to Cloudflare Workers static assets:
 
-   ```
-   GEMINI_API_KEY=<from your backup folder>
-   INTERNAL_API_KEY=<shared secret>
-   MODEL=gemini-2.5-flash
-   MAX_TOKENS=1024
-   ```
+**https://sounak-project.sounak-project.workers.dev**
 
-5. Note the URL: `https://<username>-<space-name>.hf.space`
+Redeploy after any frontend change:
 
-> The Space filesystem is ephemeral, so Chroma is wiped on restart. Seed
-> documents are baked into the image via `COPY data/`; anything uploaded at
-> runtime must be re-ingested after a restart.
+```bash
+cd sounak-project
+npx ng build --configuration production
+npx wrangler deploy
+```
 
-## Phase 2 — Render: the backend
+SPA routing comes from `not_found_handling: "single-page-application"` in
+`wrangler.jsonc`. The classic Pages `_redirects` rule `/* /index.html 200` is
+rejected by Cloudflare's validator as a redirect loop — do not reintroduce it.
 
-1. Sign up at <https://render.com> with GitHub. No card for the free tier.
-2. New → **Blueprint** → select this repo. Render reads `render.yaml`.
-3. Set the secrets it prompts for (all in your backup folder):
+## Phase 2 — Render: both backend services
 
+The CLI can list services, tail logs and trigger deploys, but it has **no
+blueprint-create command**, so this step is the dashboard.
+
+1. <https://dashboard.render.com> → **New → Blueprint** → pick this repo.
+   Render reads `render.yaml` and creates both services.
+2. Set the secrets it prompts for (all in your backup folder):
+
+   **sounak-backend**
    ```
    MONGO_URI          <Atlas>
    POSTGRES_URL       <Neon>
    JWT_SECRET
-   AI_SERVICE_URL     https://<username>-<space>.hf.space
-   AI_INTERNAL_KEY    <same shared secret as Phase 1>
-   CORS_ORIGIN        https://<project>.pages.dev,http://localhost
+   AI_SERVICE_URL     https://sounak-ai-service.onrender.com
+   AI_INTERNAL_KEY    <shared secret>
+   CORS_ORIGIN        https://sounak-project.sounak-project.workers.dev
    ```
 
-4. Note the URL: `https://sounak-backend.onrender.com`
+   **sounak-ai-service**
+   ```
+   GEMINI_API_KEY     <from your backup folder>
+   INTERNAL_API_KEY   <same shared secret>
+   ```
 
-## Phase 3 — Cloudflare Pages: the frontend
+3. If the backend's URL is not `https://sounak-backend.onrender.com`, update
+   `sounak-project/src/environment/environment.prod.ts` and redeploy the
+   frontend as in Phase 1.
 
-1. Sign up at <https://dash.cloudflare.com>. No card.
-2. Workers & Pages → Create → Pages → Connect to Git → this repo.
-3. Build settings:
+> Chroma persists to disk and Render's free filesystem is ephemeral, so the
+> vector store is wiped on restart. Documents need re-ingesting after a cold
+> start.
 
-   | Field | Value |
-   |---|---|
-   | Root directory | `sounak-project` |
-   | Build command | `npm ci && npx ng build --configuration production` |
-   | Output directory | `dist/sounak-project` |
+## Phase 3 — Atlas network access
 
-   (The legacy `:browser` builder produces flat output — no `browser/` subdir.)
-
-4. Put the real Render URL in
-   `sounak-project/src/environment/environment.prod.ts` and push; Pages
-   rebuilds automatically.
+Render uses dynamic egress IPs, so the old single-IP whitelist will not work.
+Atlas → Network Access → allow `0.0.0.0/0`. Without this, DB calls time out and
+look like app bugs.
 
 ## Phase 4 — Lock down the AI service
 
@@ -122,22 +127,16 @@ Without a guard anyone who finds it can spend your Gemini quota.
 - `/health` stays open so platform health checks work
 - **Unset = disabled**, so local dev is unchanged
 
-`AI_INTERNAL_KEY` (Render) and `INTERNAL_API_KEY` (Space) must match. One is
+`AI_INTERNAL_KEY` (backend) and `INTERNAL_API_KEY` (AI service) must match. One is
 saved in your backup folder as `INTERNAL_API_KEY.txt`.
 
-## Phase 5 — Atlas network access
-
-Render and Hugging Face both use dynamic egress IPs, so the old single-IP
-whitelist will not work. Atlas → Network Access → allow `0.0.0.0/0`.
-Without this, DB calls time out and look like app bugs.
-
-## Phase 6 — Verify
+## Phase 5 — Verify
 
 ```bash
-curl -s https://<space>.hf.space/health                  # open by design
-curl -s https://<space>.hf.space/rag/status              # expect 401
-curl -s https://sounak-backend.onrender.com/health       # may take ~1 min cold
-curl -sI https://<project>.pages.dev/dashboard           # expect 200, not 404
+curl -s https://sounak-ai-service.onrender.com/health      # open by design
+curl -s https://sounak-ai-service.onrender.com/rag/status  # expect 401
+curl -s https://sounak-backend.onrender.com/health         # ~1 min when cold
+curl -sI https://sounak-project.sounak-project.workers.dev/dashboard  # 200, not 404
 ```
 
 The 401 is the point: it proves the guard is live.
@@ -146,14 +145,14 @@ The 401 is the point: it proves the guard is live.
 
 | Symptom | Cause |
 |---|---|
-| Frontend loads, API calls fail | `CORS_ORIGIN` missing the Pages domain |
-| Everything 401s | secret mismatch between backend and Space |
-| `/dashboard` 404s on refresh | `_redirects` missing from the build output |
-| API calls hit the Pages domain | `environment.prod.ts` not updated, or `fileReplacements` reverted |
+| Frontend loads, API calls fail | `CORS_ORIGIN` missing the Cloudflare domain |
+| Everything 401s | secret mismatch between the two services |
+| `/dashboard` 404s on refresh | `not_found_handling` missing from wrangler.jsonc |
+| API calls hit the frontend domain | `environment.prod.ts` not updated, or `fileReplacements` reverted |
 | DB timeouts | Atlas Network Access needs `0.0.0.0/0` |
 | First request takes ~1 min | Render cold start; expected |
-| AI answers ignore your documents | Space restarted, Chroma wiped — re-ingest |
-| Render service stops mid-month | 750 instance-hours exhausted — remove any keep-alive pinger |
+| AI answers ignore your documents | service restarted, Chroma wiped — re-ingest |
+| Services stop mid-month | 750 instance-hours exhausted — remove any keep-alive pinger |
 
 ## Alternative: a real VM
 

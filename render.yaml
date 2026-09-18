@@ -1,13 +1,18 @@
 # ============================================================
-# Render blueprint — the Express backend ONLY.
+# Render blueprint — Express backend + FastAPI AI service.
 #
-# Render grants 750 free instance-hours per WORKSPACE per month. A month is
-# ~730 hours, so exactly one always-available service fits; two would not.
-# That is why the AI service lives on Hugging Face Spaces instead (which also
-# gives it 16GB RAM instead of 512MB) and the frontend on Cloudflare Pages.
+# The frontend is NOT here: it is on Cloudflare Workers/Pages, which never
+# sleeps, so the site loads instantly and only API calls wait on a cold start.
 #
-# Free services spin down after 15 minutes idle and take ~1 minute to wake.
-# Do NOT add a keep-alive pinger: staying awake 24/7 would burn the 750 hours.
+# Hugging Face Spaces was the original home for the AI service, but free
+# cpu-basic now refuses Docker Spaces ("requires a PRO subscription") — only
+# static Spaces are free. So both servers live here.
+#
+# On the 750 free instance-hours per workspace per month: hours accrue only
+# while a service is AWAKE. Both spin down after 15 minutes idle, so real
+# usage of a couple of hours a day across both is ~120 h/month, far under the
+# cap. Do NOT add a keep-alive pinger — that is what would blow the budget,
+# not the second service.
 #
 # Deploy: Render dashboard -> New -> Blueprint -> select this repo.
 # Values marked `sync: false` are secrets and are set in the dashboard.
@@ -44,3 +49,30 @@ services:
       # Redis and RabbitMQ are intentionally unset. Both degrade gracefully:
       # redis.config.js disables caching and stops retrying; rabbitmq.config.js
       # retries without crashing. Same as on the old EC2 box.
+
+  - type: web
+    name: sounak-ai-service
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: sounak-ai-service
+    buildCommand: pip install -r requirements.txt
+    # Must bind 0.0.0.0 and Render's $PORT. Under PM2 this ran on
+    # 127.0.0.1:8000, which would be unreachable here.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"      # 3.9 cannot parse `str | None` annotations
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: MODEL
+        value: gemini-2.5-flash
+      - key: MAX_TOKENS
+        value: "1024"
+      - key: INTERNAL_API_KEY
+        sync: false          # must match AI_INTERNAL_KEY on the backend
+      # Chroma persists to disk and the free filesystem is EPHEMERAL, so the
+      # vector store is wiped on every restart. Documents need re-ingesting.
+      - key: CHROMA_DIR
+        value: /tmp/chroma_db
