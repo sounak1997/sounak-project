@@ -13,6 +13,8 @@ const requireAdmin = [requireAuth, requireRole('admin')];
 
 // 1. GET /api/products/list (List endpoint must come first)
 router.get('/list', requireAuth, productController.getProductsList);
+// Must also precede '/:id' so 'categories' isn't swallowed as an id.
+router.get('/categories', requireAuth, productController.getCategories);
 
 // Admin: catalog management (FR-2.1–FR-2.4). These must come before the
 // generic '/:id' routes below so 'list' etc. above already claimed their own

@@ -10,11 +10,16 @@ const KEYS = {
   productInfo: (id) => `products:info:${id}`,
 };
 const LIST_CACHE_PATTERN = 'products:list:*';
+const CATEGORIES_CACHE_KEY = 'products:categories';
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 200;
 
 const invalidateProductCaches = (productId) =>
-  Promise.all([cache.flush(LIST_CACHE_PATTERN), cache.del(KEYS.product(productId))]);
+  Promise.all([
+    cache.flush(LIST_CACHE_PATTERN),
+    cache.del(KEYS.product(productId)),
+    cache.del(CATEGORIES_CACHE_KEY), // a new/edited product may add or empty a category
+  ]);
 
 // --- 1. List products, paginated (Redis-cached) — FR-3.1, NFR-5 ---
 // Customers only ever see active products; `includeInactive` is for the
@@ -77,6 +82,29 @@ exports.listProducts = async ({ page, limit, category, search, includeInactive =
 
 // Back-compat helper for any caller that just wants a flat array.
 exports.getAllProducts = async () => (await exports.listProducts({ limit: MAX_PAGE_SIZE })).rows;
+
+// --- 1b. Distinct categories, for the customer-facing category filter (FR-3.1) ---
+// Derived from the catalog rather than a separate table: `products.category`
+// is free text, so this is the only source of truth for what exists.
+exports.listCategories = async () => {
+  const cached = await cache.get(CATEGORIES_CACHE_KEY);
+  if (cached) return cached;
+
+  try {
+    const result = await pgPool.query(
+      `SELECT category, COUNT(*)::int AS count
+       FROM products
+       WHERE active = true AND category IS NOT NULL AND category <> ''
+       GROUP BY category
+       ORDER BY category ASC`
+    );
+    await cache.set(CATEGORIES_CACHE_KEY, result.rows, 300);
+    return result.rows;
+  } catch (error) {
+    console.error('Database Error listing categories (Postgres):', error.message);
+    throw new Error('POSTGRES_ERROR: Could not retrieve categories.');
+  }
+};
 
 // --- 2. Get Single Product Details (Redis-cached) ---
 exports.getProductDetails = async (productId) => {

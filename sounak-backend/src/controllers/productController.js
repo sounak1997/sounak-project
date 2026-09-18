@@ -48,6 +48,26 @@ exports.getProductsList = async (req, res) => {
 };
 
 
+/**
+ * GET /api/products/categories
+ * Distinct active-product categories with counts, for the customer-facing
+ * category filter (FR-3.1).
+ */
+exports.getCategories = async (req, res) => {
+    try {
+        const categories = await productService.listCategories();
+        return res.status(200).json({ success: true, count: categories.length, data: categories });
+    } catch (error) {
+        console.error("Controller Error (Categories):", error.message);
+        return res.status(500).json({
+            success: false,
+            message: "An internal server error occurred while fetching categories.",
+            detail: error.message,
+        });
+    }
+};
+
+
 // --- 2. Get Single Product Details Controller ---
 
 /**
