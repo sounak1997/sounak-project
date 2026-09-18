@@ -8,7 +8,7 @@ Full deployment runbook: [DEPLOYMENT.md](DEPLOYMENT.md)
 | What | URL | Host | Sleeps? |
 |---|---|---|---|
 | **Web app** (Angular) | https://sounak-project.sounak-project.workers.dev | Cloudflare Workers | never |
-| **Mobile app in browser** (Ionic) | https://sounak-android-web.sounak-project.workers.dev | Cloudflare Workers | never |
+| **Mobile app in browser** (Ionic) | https://suvidhaa.sounak-project.workers.dev | Cloudflare Workers | never |
 | **Backend API** (Express) | https://sounak-backend.onrender.com | Render | 15 min idle |
 | **AI service** (FastAPI) | https://sounak-ai-service.onrender.com | Render | 15 min idle |
 
@@ -89,6 +89,30 @@ npx wrangler deploy
 
 **Android APK**: see section 8 of `CREDENTIALS-AND-NOTES.txt` in the backup
 folder. Signed APK currently at `~/Desktop/sounak-release.apk`.
+
+## Custom naming — what is and is not possible
+
+Tested, so it does not get retried:
+
+- **Cloudflare account subdomain cannot be changed.** `PUT
+  /accounts/{id}/workers/subdomain` returns error 10036, "Account already has
+  an associated subdomain." It is fixed at first use, so `app.suvidhaa.workers.dev`
+  is unreachable on this account. Only the *worker name* is editable, which is
+  why the Ionic app is `suvidhaa.sounak-project.workers.dev`.
+- **Renaming a Render service does not change its URL.** The service object has
+  a `slug` separate from `name`; the URL is `https://<slug>.onrender.com` and
+  the slug is frozen at creation. Verified by renaming the AI service to
+  `suvidhaa-ai`: name changed, slug and URL did not. Reverted, because a name
+  that disagrees with `render.yaml` risks the blueprint creating a duplicate on
+  its next sync.
+- Getting `suvidhaa-api.onrender.com` would require deleting and recreating the
+  service: all 8 env vars re-entered, downtime, and a new backend URL — which
+  is compiled into the APK, so every installed copy would break.
+
+**A real domain is the only clean fix.** `suvidhaa.dev` was available at the
+time of writing (~₹1,100/yr). The practical argument is not branding: the
+backend URL is baked into every APK, so on a domain you own you repoint DNS
+when hosts change, instead of rebuilding, re-signing and redistributing.
 
 ## Not used
 
