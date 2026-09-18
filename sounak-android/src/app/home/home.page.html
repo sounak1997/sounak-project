@@ -1,4 +1,4 @@
-<ion-header [translucent]="true">
+<ion-header class="home-header">
   <ion-toolbar>
     <ion-title>Sohay</ion-title>
     <ion-button slot="end" fill="clear" (click)="logout()" aria-label="Log out">
@@ -7,31 +7,103 @@
   </ion-toolbar>
 </ion-header>
 
-<ion-content [fullscreen]="true" class="home-content">
-  <div class="topbar">
-    <div class="greet">Hello, {{ auth.user()?.name }}</div>
-    <div class="role-badge">{{ auth.user()?.role }}</div>
+<ion-content class="home-content">
+  <!--
+    Animated backdrop. Sits behind everything and spans the full scroll height,
+    so there is never a bare white area regardless of how little content loads.
+  -->
+  <div class="backdrop" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+    <span class="blob blob-3"></span>
+    @for (path of glyphs; track $index) {
+      <svg class="glyph" viewBox="0 0 24 24"><path [attr.d]="path" /></svg>
+    }
   </div>
 
-  <div class="options">
-    <button class="option-card opt-grocery" (click)="goTo('grocery')">
-      <div class="opt-title">Grocery</div>
-      <div class="opt-sub">Order daily essentials</div>
-    </button>
+  <div class="page">
+    <header class="hero">
+      <div class="hero-text">
+        <p class="eyebrow">{{ greeting() }}</p>
+        <h1 class="hero-name">{{ firstName() }}</h1>
+        <p class="hero-tagline">Groceries, doctors and a helping hand — all in one place.</p>
+      </div>
+      <span class="role-badge">{{ auth.user()?.role }}</span>
+    </header>
 
-    <button class="option-card opt-orders" (click)="goTo('orders')">
-      <div class="opt-title">My Orders</div>
-      <div class="opt-sub">Track and review past orders</div>
-    </button>
+    <!-- Fresh picks: real catalogue items drifting past, tap to open. -->
+    <section class="shelf-section">
+      <div class="section-head">
+        <h2 class="section-title">Fresh picks</h2>
+        <button class="see-all" (click)="goTo('grocery')">
+          See all
+          <ion-icon name="arrow-forward-outline"></ion-icon>
+        </button>
+      </div>
 
-    <button class="option-card opt-booking" (click)="goTo('booking')">
-      <div class="opt-title">Doctors &amp; Tests</div>
-      <div class="opt-sub">Book a doctor or a test</div>
-    </button>
+      @if (picksLoading()) {
+        <div class="shelf">
+          <div class="shelf-track static">
+            @for (s of skeletons; track $index) {
+              <div class="pick skeleton">
+                <div class="pick-img"></div>
+                <div class="sk-line"></div>
+                <div class="sk-line short"></div>
+              </div>
+            }
+          </div>
+        </div>
+      } @else if (picksFailed()) {
+        <div class="shelf-empty">
+          <p>Today's picks aren't loading just now — the catalogue is still open.</p>
+          <button class="shelf-empty-btn" (click)="goTo('grocery')">Browse groceries</button>
+        </div>
+      } @else {
+        <div class="shelf">
+          <div class="shelf-track">
+            @for (product of shelf(); track $index) {
+              <button class="pick" (click)="openProduct(product)">
+                <span class="pick-img">
+                  <img [src]="imageFor(product)" [alt]="product.name" loading="lazy" />
+                </span>
+                <span class="pick-name">{{ product.name }}</span>
+                <span class="pick-price">₹{{ product.price }}</span>
+              </button>
+            }
+          </div>
+        </div>
+      }
+    </section>
 
-    <button class="option-card opt-helper" (click)="goTo('helper')">
-      <div class="opt-title">Helper</div>
-      <div class="opt-sub">Call someone to help</div>
-    </button>
+    @if (categories().length) {
+      <section class="cats">
+        <h2 class="section-title">Shop by category</h2>
+        <div class="cat-row">
+          @for (cat of categories(); track cat.category) {
+            <button class="cat-chip" (click)="openCategory(cat)">
+              {{ cat.category }}
+              <span class="cat-count">{{ cat.count }}</span>
+            </button>
+          }
+        </div>
+      </section>
+    }
+
+    <section class="actions">
+      @for (item of shortcuts; track item.id) {
+        <button class="option-card" [class]="'opt-' + item.tone" (click)="goTo(item.id)">
+          <span class="opt-icon"><ion-icon [name]="item.icon"></ion-icon></span>
+          <span class="opt-text">
+            <span class="opt-title">{{ item.title }}</span>
+            <span class="opt-sub">{{ item.sub }}</span>
+          </span>
+          <ion-icon class="opt-chevron" name="arrow-forward-outline"></ion-icon>
+        </button>
+      }
+    </section>
+
+    <app-helper-contact
+      message="Can't find something, or would rather order over the phone? We'll take it that way too."
+    ></app-helper-contact>
   </div>
 </ion-content>

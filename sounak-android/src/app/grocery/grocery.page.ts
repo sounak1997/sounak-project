@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent,
   IonSearchbar, IonSpinner, IonChip, IonButton, IonIcon, IonBadge,
@@ -30,6 +30,7 @@ export class GroceryPage implements OnInit {
   private cartService = inject(CartService);
   private toastController = inject(ToastController);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
 
   products = signal<Product[]>([]);
   categories = signal<Category[]>([]);
@@ -54,6 +55,11 @@ export class GroceryPage implements OnInit {
   }
 
   ngOnInit(): void {
+    // Home's category chips deep-link into the filtered grid, so honour the
+    // param before the first load rather than fetching everything and refiltering.
+    const category = this.route.snapshot.queryParamMap.get('category');
+    if (category) this.activeCategory.set(category);
+
     this.load();
     this.loadCategories();
     // Seeds the header badge; every later cart call keeps it current.
