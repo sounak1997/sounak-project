@@ -1,4 +1,4 @@
-<ion-header [translucent]="true">
+<ion-header class="grocery-header">
   <ion-toolbar>
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/home"></ion-back-button>
@@ -13,105 +13,145 @@
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
-  <ion-toolbar>
-    <ion-searchbar
-      placeholder="Search for items"
-      [value]="searchTerm"
-      [debounce]="400"
-      (ionInput)="onSearch($any($event.target).value)"
-    ></ion-searchbar>
-  </ion-toolbar>
-  @if (categories().length) {
-    <ion-toolbar>
-      <div class="category-row">
-        <ion-chip
-          [outline]="activeCategory() !== null"
-          [color]="activeCategory() === null ? 'primary' : 'medium'"
-          (click)="selectCategory(null)"
-        >All</ion-chip>
-        @for (cat of categories(); track cat.category) {
-          <ion-chip
-            [outline]="activeCategory() !== cat.category"
-            [color]="activeCategory() === cat.category ? 'primary' : 'medium'"
-            (click)="selectCategory(cat.category)"
-          >{{ cat.category }}</ion-chip>
-        }
-      </div>
-    </ion-toolbar>
-  }
 </ion-header>
 
-<ion-content [fullscreen]="true" class="ion-padding grocery-content">
-  @if (loading()) {
-    <div class="state-row">
-      <ion-spinner name="dots"></ion-spinner>
-    </div>
-  } @else if (error()) {
-    <div class="state-row">
-      <p>{{ error() }}</p>
-    </div>
-  } @else if (products().length === 0) {
-    <div class="state-row">
-      <p>No products found.</p>
-    </div>
-  } @else {
-    <div class="product-grid">
-      @for (product of products(); track product.id) {
-        <div class="product-card">
-          <div class="product-tap" (click)="openProduct(product)">
-            <div class="product-thumb">
-              @if (imageFor(product); as img) {
-                <img [src]="img" [alt]="product.name" />
-              } @else {
-                <span>{{ product.name }}</span>
-              }
-            </div>
-            <div class="product-name">{{ product.name }}</div>
-          </div>
-          <div class="product-meta">
-            <span class="product-price">₹{{ product.price }}</span>
-            <ion-chip [color]="product.in_stock ? 'success' : 'medium'" class="stock-chip">
-              {{ product.in_stock ? 'In stock' : 'Out of stock' }}
-            </ion-chip>
-          </div>
-          @if (product.in_stock) {
-            <div class="cart-controls">
-              <div class="qty-stepper">
-                <ion-button
-                  fill="clear" size="small"
-                  [disabled]="qtyFor(product.id) <= 1"
-                  (click)="decrementQty(product)"
-                >−</ion-button>
-                <span class="qty-value">{{ qtyFor(product.id) }}</span>
-                <ion-button
-                  fill="clear" size="small"
-                  [disabled]="qtyFor(product.id) >= product.stock"
-                  (click)="incrementQty(product)"
-                >+</ion-button>
-              </div>
-              <ion-button
-                class="add-btn" size="small"
-                [disabled]="isAdding(product.id)"
-                (click)="addToCart(product)"
-              >
-                @if (isAdding(product.id)) {
-                  <ion-spinner name="dots"></ion-spinner>
-                } @else {
-                  Add
-                }
-              </ion-button>
-            </div>
+<!-- --hue drives the wash and every accent below; it follows the active filter. -->
+<ion-content class="grocery-content" [style.--hue]="activeHue()">
+  <div class="backdrop" aria-hidden="true">
+    <span class="blob blob-1"></span>
+    <span class="blob blob-2"></span>
+  </div>
+
+  <div class="page">
+    <!-- Search and categories live in the scroll area rather than in stacked
+         toolbars, which cost ~195px of header before a single product showed. -->
+    <div class="filters">
+      <div class="search">
+        <ion-icon class="search-icon" name="search-outline"></ion-icon>
+        <input
+          #q
+          class="search-input"
+          type="search"
+          enterkeyhint="search"
+          placeholder="Search for items"
+          aria-label="Search for items"
+          [value]="searchTerm()"
+          (input)="onSearchDebounced($any($event.target).value)"
+          (keyup.enter)="onSearch(q.value)"
+        />
+        @if (searchTerm()) {
+          <button class="search-clear" (click)="clearSearch(q)" aria-label="Clear search">
+            <ion-icon name="close-outline"></ion-icon>
+          </button>
+        }
+      </div>
+
+      @if (categories().length) {
+        <div class="category-row">
+          <button
+            class="cat-chip"
+            [class.on]="activeCategory() === null"
+            [style.--hue]="38"
+            (click)="selectCategory(null)"
+          >All</button>
+          @for (cat of categories(); track cat.category) {
+            <button
+              class="cat-chip"
+              [class.on]="activeCategory() === cat.category"
+              [style.--hue]="hueFor(cat.category)"
+              (click)="selectCategory(cat.category)"
+            >
+              {{ cat.category }}
+              <span class="cat-count">{{ cat.count }}</span>
+            </button>
           }
         </div>
       }
     </div>
 
-    <ion-infinite-scroll [disabled]="!hasMore()" (ionInfinite)="loadMore($any($event))">
-      <ion-infinite-scroll-content loadingSpinner="dots"></ion-infinite-scroll-content>
-    </ion-infinite-scroll>
-  }
+    @if (loading()) {
+      <div class="product-grid">
+        @for (s of skeletons; track $index) {
+          <div class="product-card skeleton">
+            <div class="thumb"></div>
+            <div class="sk-line"></div>
+            <div class="sk-line short"></div>
+          </div>
+        }
+      </div>
+    } @else if (error()) {
+      <div class="state-row">
+        <p>{{ error() }}</p>
+        <button class="state-btn" (click)="load()">Try again</button>
+      </div>
+    } @else if (products().length === 0) {
+      <div class="state-row">
+        <p>Nothing matched that. Try another word, or browse a category.</p>
+        <button class="state-btn" (click)="resetFilters(q)">Show everything</button>
+      </div>
+    } @else {
+      <p class="result-meta">{{ resultLabel() }}</p>
 
-  <app-helper-contact
-    message="Can't find an item, or want to place your order over the phone instead? We'll take it that way too."
-  ></app-helper-contact>
+      <div class="product-grid">
+        @for (product of products(); track product.id) {
+          <div class="product-card" [class.out]="!product.in_stock" [style.--hue]="hueFor(product.category)">
+            <div class="product-tap" (click)="openProduct(product)">
+              <div class="thumb">
+                @if (imageFor(product); as img) {
+                  <img [src]="img" [alt]="product.name" loading="lazy" />
+                } @else {
+                  <span class="no-img">{{ product.name }}</span>
+                }
+                @if (!product.in_stock) {
+                  <span class="out-flag">Out of stock</span>
+                }
+              </div>
+              <div class="product-name">{{ product.name }}</div>
+            </div>
+
+            <div class="product-foot">
+              <span class="product-price">₹{{ product.price }}</span>
+
+              @if (product.in_stock) {
+                <div class="buy">
+                  <div class="qty-stepper">
+                    <button
+                      class="qty-btn"
+                      [disabled]="qtyFor(product.id) <= 1"
+                      (click)="decrementQty(product)"
+                      aria-label="Decrease quantity"
+                    >−</button>
+                    <span class="qty-value">{{ qtyFor(product.id) }}</span>
+                    <button
+                      class="qty-btn"
+                      [disabled]="qtyFor(product.id) >= product.stock"
+                      (click)="incrementQty(product)"
+                      aria-label="Increase quantity"
+                    >+</button>
+                  </div>
+                  <button class="add-btn" [disabled]="isAdding(product.id)" (click)="addToCart(product)">
+                    @if (isAdding(product.id)) {
+                      <ion-spinner name="dots"></ion-spinner>
+                    } @else {
+                      Add
+                    }
+                  </button>
+                </div>
+              } @else {
+                <span class="unavailable">Currently unavailable</span>
+              }
+            </div>
+          </div>
+        }
+      </div>
+
+      <ion-infinite-scroll [disabled]="!hasMore()" (ionInfinite)="loadMore($any($event))">
+        <ion-infinite-scroll-content loadingSpinner="dots"></ion-infinite-scroll-content>
+      </ion-infinite-scroll>
+    }
+
+    <app-helper-contact
+      message="Can't find an item, or want to place your order over the phone instead? We'll take it that way too."
+    ></app-helper-contact>
+  </div>
 </ion-content>
