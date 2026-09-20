@@ -26,3 +26,10 @@ yarn-error.log*
 
 # Claude Code settings (machine-local paths and permissions)
 .claude/
+
+# Local secrets: admin logins, API keys, the Android signing keystore, env
+# backups. Moved in from ~/Desktop/sounak-server-backup-20260902 on 2026-09-21.
+# This repo has a public GitHub remote — NEVER commit anything in here.
+/secrets/
+# Gym admin/owner/staff logins, kept at the top level so it is easy to find.
+/GYM-LOGINS.md
