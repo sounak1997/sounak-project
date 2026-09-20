@@ -1,0 +1,212 @@
+<div class="page">
+  <div class="hero">
+    <h1>{{ gymName() }}</h1>
+    <div class="accent-bar"></div>
+  </div>
+
+  <div class="wrap">
+    @if (error()) {
+      <div class="alert alert--error">{{ error() }}</div>
+    }
+
+    <!-- Waking the backend can take 30-60s on the free tier, so this screen has
+         to say so rather than look frozen. -->
+    @if (phase() === 'loading') {
+      <div class="card center">
+        <div class="spinner spinner--dark"></div>
+        <p class="muted mt">Connecting to the gym…</p>
+        <p class="muted small">This can take up to a minute the first time today.</p>
+      </div>
+    }
+
+    @if (phase() === 'blocked') {
+      <div class="card center">
+        <p class="muted">Please scan the QR code at the gym entrance.</p>
+      </div>
+    }
+
+    <!-- First visit on this phone: who are you? -->
+    @if (phase() === 'identify') {
+      <div class="card">
+        <h2>Who's checking in?</h2>
+        <p class="muted mb">
+          Just this once — after this, your phone is remembered and check-in is one tap.
+        </p>
+        <label for="q">Mobile number or name</label>
+        <input
+          id="q"
+          type="text"
+          inputmode="text"
+          autocomplete="tel"
+          placeholder="e.g. 9876543210 or Arjun"
+          [ngModel]="query()"
+          (ngModelChange)="query.set($event)"
+          (keyup.enter)="search()" />
+        <button class="btn mt" [disabled]="busy() || !query().trim()" (click)="search()">
+          {{ busy() ? 'Looking…' : 'Find me' }}
+        </button>
+      </div>
+    }
+
+    <!-- Several matches, or found by name: tap your own name. -->
+    @if (phase() === 'choose') {
+      <div class="card">
+        <h2>Is this you?</h2>
+        <p class="muted mb">Tap your name to continue.</p>
+        @for (c of candidates(); track c.id) {
+          <button class="choice" (click)="pick(c)">
+            <span class="choice__name">{{ c.fullName }}</span>
+            @if (c.phoneHint) { <span class="choice__hint">{{ c.phoneHint }}</span> }
+          </button>
+        }
+        <button class="btn btn--ghost mt" (click)="notYou()">Search again</button>
+      </div>
+    }
+
+    <!-- Found by name, so prove it with the last 4 digits. -->
+    @if (phase() === 'verify') {
+      <div class="card">
+        <h2>{{ chosen()?.fullName }}</h2>
+        <p class="muted mb">
+          Enter the last 4 digits of your mobile number to confirm it's you.
+        </p>
+        <label for="v">Last 4 digits</label>
+        <input
+          id="v"
+          type="tel"
+          inputmode="numeric"
+          maxlength="4"
+          placeholder="••••"
+          class="digits"
+          [ngModel]="verifyDigits()"
+          (ngModelChange)="verifyDigits.set($event)"
+          (keyup.enter)="confirmVerify()" />
+        <button
+          class="btn mt"
+          [disabled]="busy() || verifyDigits().length < 4"
+          (click)="confirmVerify()">
+          {{ busy() ? 'Checking…' : 'Confirm' }}
+        </button>
+        <button class="btn btn--ghost mt-s" (click)="notYou()">That's not me</button>
+      </div>
+    }
+
+    <!-- The everyday screen: recognised, one big button. -->
+    @if (phase() === 'ready' && state(); as s) {
+      <div class="card">
+        <p class="muted">Welcome back</p>
+        <h2 class="name">{{ s.member?.fullName }}</h2>
+
+        @if (s.subscription && !s.subscription.isExpired) {
+          <p class="muted small">
+            {{ s.subscription.planName }} · valid to {{ day(s.subscription.endDate) }}
+            @if (s.subscription.daysRemaining <= 7) {
+              <span class="pill pill--warn ml-s">{{ s.subscription.daysRemaining }}d left</span>
+            }
+          </p>
+        }
+
+        @if (s.today?.checkInAt) {
+          <div class="since">
+            In since <strong>{{ time(s.today?.checkInAt) }}</strong>
+          </div>
+        }
+
+        @if (s.nextAction === 'check_in') {
+          <button class="btn btn--action mt" [disabled]="busy()" (click)="mark()">
+            @if (busy()) { <span class="spinner"></span> } @else { I'm here — Check in }
+          </button>
+        }
+        @if (s.nextAction === 'check_out') {
+          <button class="btn btn--action btn--out mt" [disabled]="busy()" (click)="mark()">
+            @if (busy()) { <span class="spinner"></span> } @else { Check out }
+          </button>
+        }
+        @if (s.nextAction === 'none') {
+          <div class="alert alert--success mt">
+            Checked in at {{ time(s.today?.checkInAt) }}, out at {{ time(s.today?.checkOutAt) }}.
+            See you tomorrow.
+          </div>
+        }
+
+        @if (busy()) {
+          <p class="muted small center mt-s">Saving… this can take a moment.</p>
+        }
+      </div>
+
+      <!-- The member's own percentage. This is the only reason anyone bothers
+           to scan, since nothing here forces them to. -->
+      @if (s.summary && s.summary.percentage !== null) {
+        <div class="card">
+          <h2>Your attendance</h2>
+          <div class="pct">{{ s.summary.percentage }}%</div>
+          <div class="bar"><div class="bar__fill" [style.width.%]="s.summary.percentage"></div></div>
+          <p class="muted small">
+            {{ s.summary.attendedDays }} of {{ s.summary.openDays }} days this membership
+          </p>
+        </div>
+      }
+
+      <button class="linky" (click)="notYou()">Not {{ s.member?.fullName }}?</button>
+    }
+
+    <!-- After a tap. -->
+    @if (phase() === 'result' && result(); as r) {
+      <div class="card center">
+        <div
+          class="badge"
+          [class.badge--in]="r.outcome === 'checked_in'"
+          [class.badge--out]="r.outcome === 'checked_out'"
+          [class.badge--warn]="r.outcome === 'no_subscription' || r.outcome === 'subscription_expired'">
+          @if (r.outcome === 'checked_in') { ✓ }
+          @else if (r.outcome === 'checked_out') { ✓ }
+          @else { ! }
+        </div>
+
+        <h2>{{ headline(r.outcome) }}</h2>
+        <p class="muted">{{ r.member.fullName }}</p>
+
+        @if (r.outcome === 'checked_in') {
+          <p class="big">at {{ time(r.visit?.checkInAt) }}</p>
+          <p class="muted small">Scan again on your way out.</p>
+        }
+        @if (r.outcome === 'checked_out') {
+          <p class="big">{{ time(r.visit?.checkInAt) }} → {{ time(r.visit?.checkOutAt) }}</p>
+        }
+        @if (r.outcome === 'duplicate_ignored') {
+          <p class="muted">You're already checked in at {{ time(r.visit?.checkInAt) }}.</p>
+        }
+        @if (r.outcome === 'already_complete') {
+          <p class="muted">
+            In at {{ time(r.visit?.checkInAt) }}, out at {{ time(r.visit?.checkOutAt) }}.
+          </p>
+        }
+
+        @if (r.outcome === 'subscription_expired') {
+          <div class="alert alert--warn mt">
+            Your {{ r.subscription?.planName }} ended on {{ day(r.subscription?.endDate) }}.
+            Please renew at the desk to keep training.
+          </div>
+          @if (r.gymPhone) {
+            <a class="btn btn--ghost" [href]="'tel:' + r.gymPhone">Call the gym</a>
+          }
+        }
+        @if (r.outcome === 'no_subscription') {
+          <div class="alert alert--warn mt">
+            There's no active membership on your name yet. Please see the gym desk.
+          </div>
+        }
+
+        @if (r.summary && r.summary.percentage !== null) {
+          <div class="pct mt">{{ r.summary.percentage }}%</div>
+          <div class="bar"><div class="bar__fill" [style.width.%]="r.summary.percentage"></div></div>
+          <p class="muted small">
+            {{ r.summary.attendedDays }} of {{ r.summary.openDays }} days this membership
+          </p>
+        }
+
+        <button class="btn btn--ghost mt" (click)="done()">Done</button>
+      </div>
+    }
+  </div>
+</div>

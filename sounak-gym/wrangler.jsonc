@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sounak-gym",
+  "compatibility_date": "2026-09-20",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "dist/sounak-gym/browser",
+    // Angular routes on the client, so any path without a matching file must
+    // serve index.html with a 200. Critical here: /checkin?g=<code> is the URL
+    // printed on every gym's door poster, and it is not a real file.
+    "not_found_handling": "single-page-application"
+  }
+}

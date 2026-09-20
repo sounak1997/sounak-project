@@ -1,0 +1,23 @@
+/* The dark hero-with-card treatment from vmlfrontend's Altis login, rebuilt
+   without its Bootstrap/jQuery dependency. */
+.login {
+  background: var(--ink);
+  justify-content: center;
+}
+
+.login .wrap { display: flex; align-items: center; }
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.accent-bar--left { margin: 0 0 18px; }
+
+.field { margin-bottom: 16px; }
+
+.mt { margin-top: 14px; }
+.small { font-size: 13px; }

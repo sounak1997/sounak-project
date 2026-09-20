@@ -47,7 +47,13 @@
                   "maximumError": "8kB"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "fileReplacements": [
+                {
+                  "replace": "src/environment/environment.ts",
+                  "with": "src/environment/environment.prod.ts"
+                }
+              ]
             },
             "development": {
               "optimization": false,
@@ -64,10 +70,14 @@
               "buildTarget": "sounak-gym:build:production"
             },
             "development": {
-              "buildTarget": "sounak-gym:build:development"
+              "buildTarget": "sounak-gym:build:development",
+              "port": 4300
             }
           },
-          "defaultConfiguration": "development"
+          "defaultConfiguration": "development",
+          "options": {
+            "proxyConfig": "proxy.conf.json"
+          }
         },
         "test": {
           "builder": "@angular/build:unit-test"

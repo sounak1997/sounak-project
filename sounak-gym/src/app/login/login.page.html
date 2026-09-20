@@ -1,0 +1,42 @@
+<div class="page login">
+  <div class="wrap">
+    <div class="card">
+      <h2 class="title">Gym Login</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      @if (error()) {
+        <div class="alert alert--error mt">{{ error() }}</div>
+      }
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input
+          id="email"
+          type="email"
+          autocomplete="username"
+          [ngModel]="email()"
+          (ngModelChange)="email.set($event)"
+          (keyup.enter)="submit()" />
+      </div>
+
+      <div class="field">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          [ngModel]="password()"
+          (ngModelChange)="password.set($event)"
+          (keyup.enter)="submit()" />
+      </div>
+
+      <button class="btn" [disabled]="busy()" (click)="submit()">
+        {{ busy() ? 'Signing in…' : 'Sign in' }}
+      </button>
+
+      <p class="muted small mt">
+        Members don't sign in — scan the QR at the entrance instead.
+      </p>
+    </div>
+  </div>
+</div>

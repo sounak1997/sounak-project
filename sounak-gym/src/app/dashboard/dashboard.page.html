@@ -1,0 +1,197 @@
+<div class="page">
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div>
+        <div class="topbar__gym">{{ auth.activeGym()?.name }}</div>
+        <div class="topbar__who">{{ auth.account()?.name }}</div>
+      </div>
+      <div class="topbar__right">
+        @if (auth.gyms().length > 1) {
+          <select
+            [value]="auth.activeGymId()"
+            (change)="auth.selectGym($any($event.target).value)">
+            @for (g of auth.gyms(); track g.id) {
+              <option [value]="g.id">{{ g.name }}</option>
+            }
+          </select>
+        }
+        <button class="btn btn--ghost btn--sm" (click)="auth.signOut()">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap wrap--wide">
+    @if (error()) { <div class="alert alert--error">{{ error() }}</div> }
+
+    @if (loading()) {
+      <div class="card center"><p class="muted">Loading…</p></div>
+    } @else {
+
+      @if (summary(); as s) {
+        <div class="stat-grid">
+          <div class="stat">
+            <div class="stat__value">{{ s.currently_in }}</div>
+            <div class="stat__label">In the gym now</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value">{{ s.visits_today }}</div>
+            <div class="stat__label">Visits today</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value">{{ s.active_members }}</div>
+            <div class="stat__label">Active members</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value stat__value--danger">{{ s.expired_subscriptions }}</div>
+            <div class="stat__label">Expired memberships</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value">₹{{ s.collected_this_month }}</div>
+            <div class="stat__label">Collected this month</div>
+          </div>
+          <div class="stat">
+            <div class="stat__value">{{ s.payments_awaiting }}</div>
+            <div class="stat__label">Payments to confirm</div>
+          </div>
+        </div>
+      }
+
+      <!-- The renewal worklist: the reason the owner opens this screen. -->
+      @if (watchlist(); as w) {
+        <div class="card">
+          <h2>Needs a call</h2>
+          <p class="muted mb">Tap a number to ring them about renewing.</p>
+
+          @if (!w.expired.length && !w.expiring.length && !w.neverStarted.length) {
+            <p class="muted">Nothing to chase — every membership is current.</p>
+          }
+
+          @if (w.expired.length) {
+            <h3 class="sub">Expired</h3>
+            <table>
+              <tbody>
+                @for (m of w.expired; track m.id) {
+                  <tr>
+                    <td><strong>{{ m.full_name }}</strong></td>
+                    <td>{{ m.plan_name }}</td>
+                    <td><span class="pill pill--danger">{{ -(m.days_remaining ?? 0) }}d ago</span></td>
+                    <td class="right">
+                      @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+
+          @if (w.expiring.length) {
+            <h3 class="sub">Expiring within {{ w.withinDays }} days</h3>
+            <table>
+              <tbody>
+                @for (m of w.expiring; track m.id) {
+                  <tr>
+                    <td><strong>{{ m.full_name }}</strong></td>
+                    <td>{{ m.plan_name }}</td>
+                    <td><span class="pill pill--warn">{{ m.days_remaining }}d left</span></td>
+                    <td class="right">
+                      @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+
+          @if (w.neverStarted.length) {
+            <h3 class="sub">Registered but never started</h3>
+            <table>
+              <tbody>
+                @for (m of w.neverStarted; track m.id) {
+                  <tr>
+                    <td><strong>{{ m.full_name }}</strong></td>
+                    <td class="muted">joined {{ day(m.joined_on) }}</td>
+                    <td></td>
+                    <td class="right">
+                      @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+      }
+
+      @if (today(); as t) {
+        <div class="card">
+          <h2>Today — {{ day(t.visitDate) }}</h2>
+          <p class="muted mb">{{ t.present }} in the gym now, {{ t.total }} visits so far.</p>
+          @if (!t.visits.length) {
+            <p class="muted">Nobody has checked in yet.</p>
+          } @else {
+            <table>
+              <thead>
+                <tr><th>Member</th><th>In</th><th>Out</th><th>How</th></tr>
+              </thead>
+              <tbody>
+                @for (v of t.visits; track v.member_id) {
+                  <tr>
+                    <td><strong>{{ v.full_name }}</strong></td>
+                    <td>{{ time(v.check_in_at) }}</td>
+                    <td>
+                      @if (v.check_out_at) { {{ time(v.check_out_at) }} }
+                      @else { <span class="pill pill--ok">In now</span> }
+                    </td>
+                    <td class="muted">{{ v.method === 'manual' ? 'By desk' : 'Scanned' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          }
+        </div>
+      }
+
+      <div class="card">
+        <h2>Members</h2>
+        <p class="muted mb">
+          "Mark present" is for members without a smartphone — it records the same visit a scan would.
+        </p>
+        <table>
+          <thead>
+            <tr><th>Name</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
+          </thead>
+          <tbody>
+            @for (m of members(); track m.id) {
+              <tr>
+                <td><strong>{{ m.full_name }}</strong></td>
+                <td class="muted">{{ m.phone }}</td>
+                <td>{{ m.plan_name ?? '—' }}</td>
+                <td>{{ day(m.end_date) }}</td>
+                <td><span class="pill" [class]="'pill ' + pill(m.expiry)">{{ expiryLabel(m.expiry) }}</span></td>
+                <td class="right">
+                  <button
+                    class="btn btn--ghost btn--sm"
+                    [disabled]="marking() === m.id"
+                    (click)="markPresent(m.id)">
+                    {{ marking() === m.id ? '…' : 'Mark present' }}
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- The poster is the whole member-facing product, so the owner needs the
+           URL to hand to a QR generator and print. -->
+      <div class="card">
+        <h2>Door poster</h2>
+        <p class="muted mb">
+          Turn this link into a QR code, print it, and stick it by the entrance. Members point their
+          phone camera at it — no app to install.
+        </p>
+        <code class="poster">{{ posterUrl() }}</code>
+      </div>
+    }
+  </div>
+</div>

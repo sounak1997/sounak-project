@@ -1,0 +1,88 @@
+.topbar {
+  background: var(--ink);
+  color: #fff;
+  padding: 14px 16px;
+}
+
+.topbar__inner {
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topbar__gym {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.topbar__who { font-size: 13px; color: rgba(255, 255, 255, 0.65); }
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.topbar__right select {
+  width: auto;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.btn--sm {
+  width: auto;
+  display: inline-block;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.topbar .btn--ghost {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: transparent;
+}
+
+.topbar .btn--ghost:hover { background: rgba(255, 255, 255, 0.1); }
+
+.center { text-align: center; }
+.right { text-align: right; }
+.mb { margin-bottom: 14px; }
+
+.sub {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 18px 0 2px;
+}
+
+.stat__value--danger { color: var(--danger); }
+
+.call {
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.call:hover { text-decoration: underline; }
+
+.poster {
+  display: block;
+  padding: 14px;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  font-size: 13px;
+  word-break: break-all;
+}
+
+/* Tables are wide; let them scroll rather than squeezing a phone layout. */
+@media (max-width: 720px) {
+  .card table { display: block; overflow-x: auto; white-space: nowrap; }
+}
