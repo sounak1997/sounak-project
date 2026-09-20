@@ -1,10 +1,17 @@
-import { Component, inject, signal, effect } from '@angular/core';
+import { Component, inject, signal, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
+import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
+import { FormsModule } from '@angular/forms';
 import {
+  CreatedMember,
   DashboardSummary,
   GymService,
   MemberRow,
+  PaymentProvider,
+  PaymentRow,
+  Plan,
   Today,
   Watchlist,
 } from '../core/gym.service';
@@ -19,7 +26,7 @@ import {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterLink, FormsModule],
   templateUrl: './dashboard.page.html',
   styleUrl: './dashboard.page.scss',
 })
@@ -31,11 +38,42 @@ export class DashboardPage {
   readonly watchlist = signal<Watchlist | null>(null);
   readonly members = signal<MemberRow[]>([]);
   readonly today = signal<Today | null>(null);
+  readonly plans = signal<Plan[]>([]);
   readonly loading = signal(true);
   readonly error = signal('');
   readonly marking = signal<string | null>(null);
 
+  // --- registering a new member (front desk) ---
+  readonly newName = signal('');
+  readonly newPhone = signal('');
+  readonly adding = signal(false);
+  /** Held after a successful add so the desk can read the code out loud. */
+  readonly justAdded = signal<CreatedMember['member'] | null>(null);
+
+  // --- taking a renewal (front desk) ---
+  readonly renewing = signal<MemberRow | null>(null);
+  readonly renewPlanId = signal('');
+  readonly renewMethod = signal<'cash' | 'qr'>('cash');
+  readonly savingRenewal = signal(false);
+
   /** The door URL to print. Absolute, because it goes on a physical poster. */
+  // Money owed / awaiting confirmation
+  readonly payments = signal<PaymentRow[]>([]);
+  readonly settling = signal<string | null>(null);
+  readonly notice = signal('');
+
+  // UPI auto-payment setup
+  readonly provider = signal<PaymentProvider | null>(null);
+  readonly webhookUrl = signal('');
+  readonly showKeys = signal(false);
+  readonly keyId = signal('');
+  readonly keySecret = signal('');
+  readonly webhookSecret = signal('');
+  readonly savingKeys = signal(false);
+  readonly testing = signal(false);
+  readonly testResult = signal('');
+  readonly webhookReachable = signal(true);
+
   readonly posterUrl = signal('');
 
   constructor() {
@@ -52,21 +90,120 @@ export class DashboardPage {
     this.error.set('');
     this.posterUrl.set(`${location.origin}/checkin?g=${gymCode}`);
     try {
-      const [summary, watchlist, members, today] = await Promise.all([
+      // Reconcile BEFORE reading payments, so a UPI payment whose webhook was
+      // missed (the backend was asleep) shows as paid rather than as something
+      // the owner is about to chase for no reason. Failures are ignored: the
+      // gateway may not be configured, which is not an error here.
+      await this.api.reconcile(gymId).catch(() => undefined);
+
+      const [summary, watchlist, members, today, plans, payments, provider] = await Promise.all([
         this.api.dashboard(gymId),
         this.api.watchlist(gymId, 7),
         this.api.members(gymId),
         this.api.today(gymId),
+        this.api.plans(gymId),
+        this.api.payments(gymId),
+        this.api
+          .paymentProvider(gymId)
+          .catch(() => ({ provider: null, webhookUrl: '', webhookReachable: true })),
       ]);
       this.summary.set(summary);
       this.watchlist.set(watchlist);
       this.members.set(members);
       this.today.set(today);
+      this.plans.set(plans);
+      this.payments.set(payments);
+      this.provider.set(provider.provider);
+      this.webhookUrl.set(provider.webhookUrl);
+      this.webhookReachable.set(provider.webhookReachable ?? true);
+      if (provider.provider) this.keyId.set(provider.provider.key_id);
     } catch {
       this.error.set('Could not load this gym. Please try again.');
     } finally {
       this.loading.set(false);
     }
+  }
+
+  /** Everything still owed or awaiting the owner's confirmation. */
+  readonly outstanding = computed(() =>
+    this.payments().filter((p) => p.status === 'pending' || p.status === 'pending_verification'),
+  );
+
+  /**
+   * THE "mark as paid" action.
+   *
+   * Cash becomes 'collected', a UPI payment the owner has seen land becomes
+   * 'verified'. Both record who confirmed it and when — this is the one place a
+   * human overrides what the system can see for itself, so it has to be
+   * attributable.
+   */
+  async markPaid(payment: PaymentRow): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.settling.set(payment.id);
+    this.error.set('');
+    try {
+      await this.api.settlePayment(
+        gym.id,
+        payment.id,
+        payment.method === 'cash' ? 'collected' : 'verified',
+      );
+      this.notice.set(`Marked ₹${payment.amount} from ${payment.full_name} as paid.`);
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not mark that as paid. Please try again.'));
+    } finally {
+      this.settling.set(null);
+    }
+  }
+
+  /** Verifies the saved keys against the gateway. Read-only, moves no money. */
+  async testKeys(): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.testing.set(true);
+    this.testResult.set('');
+    try {
+      const r = await this.api.testPaymentProvider(gym.id);
+      this.testResult.set(
+        `Keys work — ${r.mode === 'live' ? 'LIVE mode, real money' : 'test mode, no real money'}.` +
+          (r.webhookConfigured ? '' : ' No webhook secret saved yet.'),
+      );
+    } catch (err) {
+      this.testResult.set(this.apiMessage(err, 'Those keys did not work.'));
+    } finally {
+      this.testing.set(false);
+    }
+  }
+
+  async saveKeys(): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.savingKeys.set(true);
+    this.error.set('');
+    try {
+      await this.api.savePaymentProvider(gym.id, {
+        keyId: this.keyId().trim(),
+        keySecret: this.keySecret().trim(),
+        webhookSecret: this.webhookSecret().trim() || undefined,
+      });
+      // Never keep the secrets in memory once they have been sent.
+      this.keySecret.set('');
+      this.webhookSecret.set('');
+      this.showKeys.set(false);
+      this.notice.set('Online payment is connected. Members can now renew by UPI.');
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not save those keys. Please check them.'));
+    } finally {
+      this.savingKeys.set(false);
+    }
+  }
+
+  payLabel(p: PaymentRow): string {
+    if (p.method === 'cash') return 'Cash — due at the desk';
+    if (p.status === 'pending_verification') return 'UPI — member says they paid';
+    return 'Online — awaiting the gateway';
   }
 
   async markPresent(memberId: string): Promise<void> {
@@ -81,6 +218,64 @@ export class DashboardPage {
     } finally {
       this.marking.set(null);
     }
+  }
+
+  /**
+   * Register a walk-in. Staff can do this — it is the desk's first job — and the
+   * member code that comes back is what the member needs to create their own
+   * login, so it is shown until dismissed rather than flashed.
+   */
+  async addMember(): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym || !this.newName().trim() || !this.newPhone().trim()) return;
+    this.adding.set(true);
+    this.error.set('');
+    try {
+      const created = await this.api.createMember(gym.id, {
+        fullName: this.newName().trim(),
+        phone: this.newPhone().trim(),
+      });
+      this.justAdded.set(created.member);
+      this.newName.set('');
+      this.newPhone.set('');
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not add that member.'));
+    } finally {
+      this.adding.set(false);
+    }
+  }
+
+  openRenewal(member: MemberRow): void {
+    this.renewing.set(member);
+    this.renewPlanId.set(this.plans()[0]?.id ?? '');
+    this.renewMethod.set('cash');
+    this.error.set('');
+  }
+
+  /** Sell or renew a membership and book the payment against it. */
+  async confirmRenewal(): Promise<void> {
+    const gym = this.auth.activeGym();
+    const member = this.renewing();
+    if (!gym || !member || !this.renewPlanId()) return;
+    this.savingRenewal.set(true);
+    this.error.set('');
+    try {
+      await this.api.createSubscription(gym.id, member.id, {
+        planId: this.renewPlanId(),
+        method: this.renewMethod(),
+      });
+      this.renewing.set(null);
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not record that payment.'));
+    } finally {
+      this.savingRenewal.set(false);
+    }
+  }
+
+  private apiMessage(err: unknown, fallback: string): string {
+    return err instanceof HttpErrorResponse && err.error?.message ? err.error.message : fallback;
   }
 
   time(value: string | null): string {

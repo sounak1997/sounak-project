@@ -357,3 +357,101 @@ exports.bindDeviceFromSession = async ({ account, gymCode, userAgent }) => {
 
   return { deviceToken: token, memberName: member.full_name, gymName: gym.name };
 };
+
+/**
+ * Self-service password reset: member code + mobile number -> new password.
+ *
+ * Deliberately the SAME proof as sign-up (see signUpWithCode). Anything weaker
+ * would be a way round sign-up; anything stronger would mean someone who can
+ * prove enough to create an account cannot prove enough to recover it, which
+ * makes no sense.
+ *
+ * KNOWN TRADE-OFF, stated rather than hidden: sign-up can only ever be used
+ * once, because a claimed membership refuses it. Reset works repeatedly. So a
+ * leaked member code plus a known mobile number is a standing route into that
+ * member's account, where before it was a one-shot race. That is accepted here
+ * because the account guards attendance history and a renewal button, not
+ * money — and because the alternative, an OTP, needs an SMS provider. If these
+ * accounts ever hold anything more sensitive, this is the first thing to
+ * revisit.
+ *
+ * Signs the member straight in afterwards: they have just proved who they are
+ * and chosen a password, so a login form would be a step for nothing.
+ */
+exports.resetPasswordWithCode = async ({ memberCode, phone, newPassword }) => {
+  const code = String(memberCode || '').trim();
+  const phoneDigits = String(phone || '').replace(/\D/g, '').slice(-10);
+
+  if (!code) throw err(400, 'Please enter your member code — the gym can tell you yours.');
+  if (phoneDigits.length < 10) throw err(400, 'Please enter your full 10-digit mobile number.');
+  if (!newPassword || String(newPassword).length < 8) {
+    throw err(400, 'Your new password must be at least 8 characters.');
+  }
+
+  // One query, one message for every failure, so this cannot be used to work
+  // out which member codes are real.
+  const result = await pgPool.query(
+    `SELECT m.*, g.name AS gym_name
+       FROM gym_members m
+       JOIN gyms g ON g.id = m.gym_id
+      WHERE m.member_code = $1
+        AND right(regexp_replace(COALESCE(m.phone, ''), '\\D', '', 'g'), 10) = $2
+        AND m.status = 'active'`,
+    [code, phoneDigits]
+  );
+  const member = result.rows[0];
+  if (!member) {
+    throw err(404, 'That member code and mobile number do not match a membership. Please check with the gym.');
+  }
+
+  // No account yet means there is no password to reset — send them to sign-up
+  // rather than silently creating one, so the two paths stay distinct.
+  if (!member.account_id) {
+    throw err(400, "You don't have a login yet. Use “Create your login” instead — it takes the same details.");
+  }
+
+  const account = (await pgPool.query('SELECT * FROM gym_accounts WHERE id = $1', [member.account_id])).rows[0];
+  if (!account || account.status !== 'active') {
+    throw err(403, 'This account is not active. Please ask at the gym desk.');
+  }
+
+  await pgPool.query(
+    'UPDATE gym_accounts SET password_hash = $1, updated_at = now() WHERE id = $2',
+    [await bcrypt.hash(newPassword, 10), account.id]
+  );
+
+  return {
+    accountId: account.id,
+    signInWith: account.email || account.phone,
+    gymName: member.gym_name,
+  };
+};
+
+/**
+ * An owner resetting one of their own members' passwords, from the console.
+ *
+ * The fallback for a member who has lost their member code as well, and the
+ * only route that does not depend on the member remembering anything. Scoped to
+ * the owner's own gym by the caller.
+ */
+exports.resetPasswordByOwner = async ({ gymId, memberId, newPassword }) => {
+  if (!newPassword || String(newPassword).length < 8) {
+    throw err(400, 'The new password must be at least 8 characters.');
+  }
+
+  const result = await pgPool.query(
+    'SELECT * FROM gym_members WHERE id = $1 AND gym_id = $2',
+    [memberId, gymId]
+  );
+  const member = result.rows[0];
+  if (!member) throw err(404, 'Member not found.');
+  if (!member.account_id) {
+    throw err(400, 'This member has no login yet, so there is no password to reset.');
+  }
+
+  await pgPool.query(
+    'UPDATE gym_accounts SET password_hash = $1, updated_at = now() WHERE id = $2',
+    [await bcrypt.hash(newPassword, 10), member.account_id]
+  );
+  return { memberId: member.id, fullName: member.full_name };
+};

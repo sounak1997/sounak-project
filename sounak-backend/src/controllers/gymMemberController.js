@@ -89,3 +89,22 @@ exports.bindDevice = asyncHandler(async (req, res) => {
   });
   res.status(201).json({ success: true, data: result });
 });
+
+// @desc    Reset my password using my member code + mobile
+// @route   POST /api/gym/auth/reset-password
+// @access  Public (rate limited — same enumeration surface as sign-up)
+//
+// Signs them in afterwards: they have just proved who they are and chosen a
+// password, so bouncing them to a login form would be a step for nothing.
+exports.resetPassword = asyncHandler(async (req, res) => {
+  const result = await gymMemberAccountService.resetPasswordWithCode({
+    memberCode: req.body.memberCode,
+    phone: req.body.phone,
+    newPassword: req.body.newPassword,
+  });
+  const session = await gymAuthService.login({
+    identifier: result.signInWith,
+    password: req.body.newPassword,
+  });
+  res.status(200).json({ success: true, data: { ...session, gymName: result.gymName } });
+});

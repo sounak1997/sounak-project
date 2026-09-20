@@ -1,0 +1,124 @@
+/* Topbar, .btn--sm and the small layout helpers are repeated per page in this
+   app rather than hoisted into styles.scss — same as dashboard.page.scss and
+   member.page.scss. Kept identical to the dashboard's so the two screens do not
+   drift apart visually when one is edited. */
+.topbar {
+  background: var(--ink);
+  color: #fff;
+  padding: 14px 16px;
+}
+
+.topbar__inner {
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.topbar__gym {
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.topbar__who { font-size: 13px; color: rgba(255, 255, 255, 0.65); }
+
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn--sm {
+  width: auto;
+  display: inline-block;
+  padding: 8px 14px;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.topbar .btn--ghost {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: transparent;
+}
+
+.topbar .btn--ghost:hover { background: rgba(255, 255, 255, 0.1); }
+
+.center { text-align: center; }
+.right  { text-align: right; }
+.small  { font-size: 13px; }
+
+.accent-bar--left { margin: 0 0 12px; }
+
+.stat__value--danger { color: var(--danger); }
+
+/* Suspending is the destructive action on this screen, so it is the only red
+   button in the app. */
+.btn--danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn--danger:hover:not(:disabled) { background: #a5322a; }
+
+.gym-table { margin-top: 14px; }
+.gym-name { font-weight: 700; }
+
+/* A suspended gym stays legible but visibly out of service, rather than being
+   hidden — the admin needs to see who is switched off. */
+.row--suspended {
+  background: #fdf7f6;
+}
+
+.row--suspended .gym-name { color: var(--text-muted); }
+
+@media (max-width: 720px) {
+  .card table { display: block; overflow-x: auto; white-space: nowrap; }
+}
+
+/* --- confirmation dialog ------------------------------------------------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 30, 32, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 22px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.modal h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
+
+.modal__body { margin: 0 0 8px; font-size: 15px; }
+
+.modal__list {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.modal__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal__actions .btn { flex: 1; }

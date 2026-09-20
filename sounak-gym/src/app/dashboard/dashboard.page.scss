@@ -96,3 +96,73 @@
   font-weight: 700;
   letter-spacing: 0.03em;
 }
+
+/* A staff account sees a narrower screen than an owner; say so once, quietly,
+   rather than leaving them wondering where the money went. */
+.role-note {
+  margin: -4px 0 16px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-left: 3px solid var(--cyan);
+  border-radius: var(--radius-s);
+}
+
+/* Name, phone, button on one line at the desk; stacked on a phone. */
+.add-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.add-row input { flex: 1 1 180px; width: auto; }
+.add-row .btn { flex: 0 0 auto; align-self: stretch; }
+
+.actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+/* --- renewal dialog ------------------------------------------------------ */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 30, 32, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 22px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.modal h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
+
+.accent-bar--left { margin: 0 0 14px; }
+
+.field { margin-bottom: 14px; }
+.small { font-size: 13px; }
+.mt { margin-top: 10px; }
+
+.modal__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal__actions .btn { flex: 1; }
+
+.block { display: block; font-size: 12px; }
+.mt-s { margin-top: 10px; }
+.field { margin-bottom: 14px; }

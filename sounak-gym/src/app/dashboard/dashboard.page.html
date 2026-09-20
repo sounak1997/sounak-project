@@ -15,6 +15,9 @@
             }
           </select>
         }
+        @if (auth.account()?.platformAdmin) {
+          <a class="btn btn--ghost btn--sm" routerLink="/admin">All gyms</a>
+        }
         <button class="btn btn--ghost btn--sm" (click)="auth.signOut()">Sign out</button>
       </div>
     </div>
@@ -22,6 +25,18 @@
 
   <div class="wrap wrap--wide">
     @if (error()) { <div class="alert alert--error">{{ error() }}</div> }
+    @if (notice()) { <div class="alert alert--success">{{ notice() }}</div> }
+
+    @if (auth.activeGym(); as g) {
+      @if (g.status !== 'active') {
+        <div class="alert alert--warn">
+          <strong>{{ g.name }} is suspended.</strong> Its door QR and its own
+          staff's access are switched off — you are seeing this only as the
+          platform administrator.
+          <a routerLink="/admin">Manage gyms</a>
+        </div>
+      }
+    }
 
     @if (loading()) {
       <div class="card center"><p class="muted">Loading…</p></div>
@@ -45,15 +60,26 @@
             <div class="stat__value stat__value--danger">{{ s.expired_subscriptions }}</div>
             <div class="stat__label">Expired memberships</div>
           </div>
-          <div class="stat">
-            <div class="stat__value">₹{{ s.collected_this_month }}</div>
-            <div class="stat__label">Collected this month</div>
-          </div>
-          <div class="stat">
-            <div class="stat__value">{{ s.payments_awaiting }}</div>
-            <div class="stat__label">Payments to confirm</div>
-          </div>
+          <!-- Takings and the payment-confirmation queue are the owner's. The
+               server does not even send these fields to a staff account. -->
+          @if (auth.isOwner()) {
+            <div class="stat">
+              <div class="stat__value">₹{{ s.collected_this_month }}</div>
+              <div class="stat__label">Collected this month</div>
+            </div>
+            <div class="stat">
+              <div class="stat__value">{{ s.payments_awaiting }}</div>
+              <div class="stat__label">Payments to confirm</div>
+            </div>
+          }
         </div>
+      }
+
+      @if (!auth.isOwner()) {
+        <p class="muted role-note">
+          Signed in as front desk. You can register members, mark attendance and take
+          renewals. The gym's takings are the owner's to see.
+        </p>
       }
 
       <!-- The renewal worklist: the reason the owner opens this screen. -->
@@ -151,6 +177,48 @@
         </div>
       }
 
+      <!-- Someone walks in and wants to join. Owner AND staff: registering a
+           member is running the gym, not spending its money, so this card is
+           deliberately outside the auth.isOwner() gates above. -->
+      <div class="card">
+        <h2>Add a member</h2>
+        <p class="muted mb">
+          Name and mobile number are all the gym needs. They can create their own login
+          later using the member code this gives you.
+        </p>
+
+        @if (justAdded(); as m) {
+          <div class="alert alert--success">
+            <strong>{{ m.full_name }}</strong> is registered. Their member code is
+            <code class="code">{{ m.member_code }}</code> — read it out to them.
+            <button class="btn btn--ghost btn--sm mt" (click)="justAdded.set(null)">Done</button>
+          </div>
+        }
+
+        <div class="add-row">
+          <input
+            type="text"
+            placeholder="Full name"
+            autocomplete="off"
+            [ngModel]="newName()"
+            (ngModelChange)="newName.set($event)" />
+          <input
+            type="tel"
+            inputmode="numeric"
+            placeholder="Mobile number"
+            autocomplete="off"
+            [ngModel]="newPhone()"
+            (ngModelChange)="newPhone.set($event)"
+            (keyup.enter)="addMember()" />
+          <button
+            class="btn btn--sm"
+            [disabled]="adding() || !newName().trim() || !newPhone().trim()"
+            (click)="addMember()">
+            {{ adding() ? 'Adding…' : 'Add member' }}
+          </button>
+        </div>
+      </div>
+
       <div class="card">
         <h2>Members</h2>
         <p class="muted mb">
@@ -172,18 +240,143 @@
                 <td>{{ m.plan_name ?? '—' }}</td>
                 <td>{{ day(m.end_date) }}</td>
                 <td><span class="pill" [class]="'pill ' + pill(m.expiry)">{{ expiryLabel(m.expiry) }}</span></td>
-                <td class="right">
+                <td class="right actions">
                   <button
                     class="btn btn--ghost btn--sm"
                     [disabled]="marking() === m.id"
                     (click)="markPresent(m.id)">
                     {{ marking() === m.id ? '…' : 'Mark present' }}
                   </button>
+                  <button class="btn btn--sm" (click)="openRenewal(m)">
+                    {{ m.expiry === 'none' ? 'Start plan' : 'Renew' }}
+                  </button>
                 </td>
               </tr>
             }
           </tbody>
         </table>
+      </div>
+
+      <!-- Money owed, and the one-tap way to say it has arrived. -->
+      <div class="card">
+        <h2>Payments to collect</h2>
+        <p class="muted mb">
+          Cash taken at the desk, or a UPI payment you've seen land in your account —
+          tap <strong>Mark paid</strong> and the membership activates straight away.
+        </p>
+
+        @if (!outstanding().length) {
+          <p class="muted">Nothing outstanding. Every membership is paid up.</p>
+        } @else {
+          <table>
+            <thead>
+              <tr><th>Member</th><th>Plan</th><th>Amount</th><th>How</th><th></th></tr>
+            </thead>
+            <tbody>
+              @for (p of outstanding(); track p.id) {
+                <tr>
+                  <td>
+                    <strong>{{ p.full_name }}</strong>
+                    @if (p.phone) {
+                      <a class="call block" [href]="'tel:' + p.phone">{{ p.phone }}</a>
+                    }
+                  </td>
+                  <td>{{ p.plan_name }}<span class="muted block">to {{ day(p.end_date) }}</span></td>
+                  <td><strong>₹{{ p.amount }}</strong></td>
+                  <td>
+                    <span class="muted">{{ payLabel(p) }}</span>
+                    @if (p.reference) { <span class="muted block">ref {{ p.reference }}</span> }
+                  </td>
+                  <td class="right">
+                    <button class="btn btn--sm" [disabled]="settling() === p.id" (click)="markPaid(p)">
+                      {{ settling() === p.id ? '…' : 'Mark paid' }}
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+
+      <!-- Switching on UPI auto-payment, so the owner stops marking things by hand. -->
+      <div class="card">
+        <h2>Online payment (UPI)</h2>
+
+        @if (provider()?.enabled) {
+          <p class="muted mb">
+            <span class="pill pill--ok">Connected</span>
+            Members can renew by UPI from the check-in screen, and payments mark
+            themselves paid — you only confirm cash.
+          </p>
+          <p class="muted small">
+            Key <code class="code">{{ provider()?.key_id }}</code>
+            @if (provider()?.key_id?.startsWith('rzp_test_')) {
+              <span class="pill pill--warn">Test mode — no real money</span>
+            }
+          </p>
+          <button class="btn btn--ghost btn--sm" [disabled]="testing()" (click)="testKeys()">
+            {{ testing() ? 'Checking…' : 'Test connection' }}
+          </button>
+          @if (testResult()) { <p class="muted small mt-s">{{ testResult() }}</p> }
+          @if (!provider()?.webhook_configured) {
+            <div class="alert alert--warn">
+              No webhook secret saved yet. Without it, payments still arrive but are
+              confirmed by polling rather than instantly.
+            </div>
+          }
+        } @else {
+          <p class="muted mb">
+            Not connected. Members can't pay online yet, so every membership has to
+            be marked paid by hand above.
+          </p>
+        }
+
+        @if (!showKeys()) {
+          <button class="btn btn--ghost" (click)="showKeys.set(true)">
+            {{ provider() ? 'Update keys' : 'Connect a payment account' }}
+          </button>
+        } @else {
+          <p class="muted small mb">
+            From your own Razorpay dashboard. The money settles to <em>your</em> bank
+            account — it never passes through us.
+          </p>
+          <div class="field">
+            <label for="kid">Key ID</label>
+            <input id="kid" type="text" placeholder="rzp_live_..."
+              [ngModel]="keyId()" (ngModelChange)="keyId.set($event)" />
+          </div>
+          <div class="field">
+            <label for="ksec">Key Secret</label>
+            <input id="ksec" type="password" autocomplete="off"
+              [ngModel]="keySecret()" (ngModelChange)="keySecret.set($event)" />
+          </div>
+          <div class="field">
+            <label for="wsec">Webhook Secret <span class="muted">(optional)</span></label>
+            <input id="wsec" type="password" autocomplete="off"
+              [ngModel]="webhookSecret()" (ngModelChange)="webhookSecret.set($event)" />
+          </div>
+          @if (webhookUrl()) {
+            <p class="muted small">
+              Add this as a webhook in Razorpay, for <em>payment.captured</em> and
+              <em>payment.failed</em>:
+            </p>
+            <code class="poster">{{ webhookUrl() }}</code>
+            @if (!webhookReachable()) {
+              <div class="alert alert--warn mt-s">
+                That's a localhost address — Razorpay can't reach it, so don't paste
+                it in yet. Leave the webhook secret blank for now: payments are still
+                confirmed by the browser and by polling. Add the webhook once this
+                backend has a public URL.
+              </div>
+            }
+          }
+          <button class="btn mt" [disabled]="savingKeys() || !keyId().trim() || !keySecret().trim()"
+            (click)="saveKeys()">
+            {{ savingKeys() ? 'Saving…' : 'Save' }}
+          </button>
+          <button class="btn btn--ghost mt-s" (click)="showKeys.set(false)">Cancel</button>
+        }
       </div>
 
       <!-- The poster is the whole member-facing product, so the owner needs the
@@ -199,3 +392,55 @@
     }
   </div>
 </div>
+
+<!-- Taking a renewal at the desk. Staff can do this: it is money coming IN
+     against one member, not a view of the gym's books. -->
+@if (renewing(); as m) {
+  <div class="modal-backdrop" (click)="renewing.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>{{ m.expiry === 'none' ? 'Start a plan' : 'Renew' }} — {{ m.full_name }}</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      @if (!plans().length) {
+        <p class="muted">
+          This gym has no active plans yet. The owner needs to add one before a
+          membership can be sold.
+        </p>
+      } @else {
+        <div class="field">
+          <label for="plan">Plan</label>
+          <select id="plan" [value]="renewPlanId()" (change)="renewPlanId.set($any($event.target).value)">
+            @for (p of plans(); track p.id) {
+              <option [value]="p.id">{{ p.name }} — ₹{{ p.price }} ({{ p.duration_days }} days)</option>
+            }
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="method">Paid by</label>
+          <select id="method" [value]="renewMethod()" (change)="renewMethod.set($any($event.target).value)">
+            <option value="cash">Cash at the desk</option>
+            <option value="qr">UPI / QR</option>
+          </select>
+          <p class="muted small">
+            @if (renewMethod() === 'cash') {
+              Recorded as collected — the money is in the drawer.
+            } @else {
+              Recorded as awaiting confirmation. The owner verifies it against the bank.
+            }
+          </p>
+        </div>
+      }
+
+      <div class="modal__actions">
+        <button class="btn btn--ghost" (click)="renewing.set(null)">Cancel</button>
+        <button
+          class="btn"
+          [disabled]="savingRenewal() || !renewPlanId()"
+          (click)="confirmRenewal()">
+          {{ savingRenewal() ? 'Saving…' : 'Record it' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

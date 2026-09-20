@@ -241,3 +241,25 @@ exports.markWebhookProcessed = async (id, error = null) => {
     [error, id]
   );
 };
+
+/**
+ * Verifies a gym's saved keys actually work, before anyone tries to pay.
+ *
+ * Without this the first sign that a key was mistyped is a member standing at
+ * the door with a failed payment. A read-only call is enough: Razorpay answers
+ * 401 for bad credentials and 200 for good ones, and listing payments moves no
+ * money and creates nothing.
+ */
+exports.testConnection = async (gymId) => {
+  const creds = await credentialsFor(gymId);
+  await call(creds, '/payments?count=1');
+  return {
+    ok: true,
+    keyId: creds.keyId,
+    // rzp_test_ keys cannot touch real money, which is exactly what you want
+    // while setting this up — worth saying out loud so nobody assumes they are
+    // live, or panics that they are.
+    mode: creds.keyId.startsWith('rzp_live_') ? 'live' : 'test',
+    webhookConfigured: !!creds.webhookSecret,
+  };
+};

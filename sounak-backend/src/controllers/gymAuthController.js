@@ -74,6 +74,21 @@ exports.createGym = asyncHandler(async (req, res) => {
   res.status(201).json({ success: true, data: gym });
 });
 
+// @desc    Suspend a gym, or bring a suspended one back
+// @route   PATCH /api/gym/admin/gyms/:gymId/status
+// @access  Platform admin
+//
+// Body is { status: 'suspended' } or { status: 'active' }, rather than two
+// separate endpoints, so "what state should this gym be in" is one idempotent
+// call the admin screen can drive from a toggle.
+exports.setGymStatus = asyncHandler(async (req, res) => {
+  const gym = await gymAuthService.setGymStatus({
+    gymId: req.params.gymId,
+    status: req.body.status,
+  });
+  res.status(200).json({ success: true, data: gym });
+});
+
 // @desc    Create an owner/staff account (grants no gym access by itself)
 // @route   POST /api/gym/admin/accounts
 // @access  Platform admin
@@ -109,4 +124,23 @@ exports.removeStaff = asyncHandler(async (req, res) => {
     accountId: req.params.accountId,
   });
   res.status(200).json({ success: true, data: result });
+});
+
+// @desc    Every account on the platform, so one can be picked to reset
+// @route   GET /api/gym/admin/accounts
+// @access  Platform admin
+exports.listAccounts = asyncHandler(async (req, res) => {
+  const accounts = await gymAuthService.listAccounts();
+  res.status(200).json({ success: true, count: accounts.length, data: accounts });
+});
+
+// @desc    Reset any account's password — the route for a locked-out gym owner
+// @route   POST /api/gym/admin/accounts/:accountId/reset-password
+// @access  Platform admin
+exports.resetAccountPassword = asyncHandler(async (req, res) => {
+  const account = await gymAuthService.resetAccountPassword({
+    accountId: req.params.accountId,
+    newPassword: req.body.newPassword,
+  });
+  res.status(200).json({ success: true, data: account });
 });

@@ -1,0 +1,62 @@
+<div class="page login">
+  <div class="wrap">
+    <div class="card">
+      <h2 class="title">Reset password</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      <p class="muted small mb">
+        Enter your member code and the mobile number your gym has — the same two
+        things you used to create your login.
+      </p>
+
+      @if (error()) { <div class="alert alert--error">{{ error() }}</div> }
+
+      <div class="field">
+        <label for="code">Member code</label>
+        <input
+          id="code"
+          type="text"
+          autocapitalize="none"
+          autocorrect="off"
+          placeholder="e.g. 123456"
+          [ngModel]="memberCode()"
+          (ngModelChange)="memberCode.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="phone">Mobile number</label>
+        <input
+          id="phone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="tel"
+          [ngModel]="phone()"
+          (ngModelChange)="phone.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="pw">New password</label>
+        <input
+          id="pw"
+          type="password"
+          autocomplete="new-password"
+          placeholder="At least 8 characters"
+          [ngModel]="newPassword()"
+          (ngModelChange)="newPassword.set($event)"
+          (keyup.enter)="submit()" />
+      </div>
+
+      <button class="btn" [disabled]="busy() || !canSubmit()" (click)="submit()">
+        {{ busy() ? 'Resetting…' : 'Set new password' }}
+      </button>
+
+      <p class="muted small mt">
+        Remembered it? <a routerLink="/login">Sign in</a>
+      </p>
+      <p class="muted small">
+        Don't know your member code? Your gym can look it up — or scan the QR at
+        the entrance, where it's shown to you.
+      </p>
+    </div>
+  </div>
+</div>

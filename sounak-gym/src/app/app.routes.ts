@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth.guard';
+import { platformAdminGuard } from './core/platform-admin.guard';
 
 export const routes: Routes = [
   /**
@@ -29,6 +30,13 @@ export const routes: Routes = [
     title: 'Create your login',
   },
 
+  /** Forgotten password. Public, for the obvious reason. */
+  {
+    path: 'reset-password',
+    loadComponent: () => import('./reset/reset.page').then((m) => m.ResetPage),
+    title: 'Reset password',
+  },
+
   {
     path: 'dashboard',
     loadComponent: () => import('./dashboard/dashboard.page').then((m) => m.DashboardPage),
@@ -45,6 +53,18 @@ export const routes: Routes = [
     loadComponent: () => import('./member/member.page').then((m) => m.MemberPage),
     canActivate: [authGuard],
     title: 'My membership',
+  },
+
+  /**
+   * The platform operator's screen: every gym, and the switch that suspends one.
+   * Its own guard, not authGuard — being signed in is not enough, and the server
+   * enforces the same thing again on every /admin/* route.
+   */
+  {
+    path: 'admin',
+    loadComponent: () => import('./admin/admin.page').then((m) => m.AdminPage),
+    canActivate: [platformAdminGuard],
+    title: 'Platform administration',
   },
 
   { path: '', redirectTo: 'login', pathMatch: 'full' },

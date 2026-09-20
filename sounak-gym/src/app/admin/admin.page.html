@@ -1,0 +1,116 @@
+<div class="page">
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div>
+        <div class="topbar__gym">Platform administration</div>
+        <div class="topbar__who">{{ auth.account()?.name }}</div>
+      </div>
+      <div class="topbar__right">
+        <a class="btn btn--ghost btn--sm" routerLink="/dashboard">Gym console</a>
+        <button class="btn btn--ghost btn--sm" (click)="auth.signOut()">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap wrap--wide">
+    @if (error()) { <div class="alert alert--error">{{ error() }}</div> }
+    @if (notice()) { <div class="alert alert--success">{{ notice() }}</div> }
+
+    @if (loading()) {
+      <div class="card center"><p class="muted">Loading gyms…</p></div>
+    } @else {
+      <div class="stat-grid">
+        <div class="stat">
+          <div class="stat__value">{{ gyms().length }}</div>
+          <div class="stat__label">Gyms on the platform</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value">{{ activeCount() }}</div>
+          <div class="stat__label">Active</div>
+        </div>
+        <div class="stat">
+          <div class="stat__value" [class.stat__value--danger]="suspendedCount() > 0">
+            {{ suspendedCount() }}
+          </div>
+          <div class="stat__label">Suspended</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Gyms</h2>
+        <p class="muted">
+          Suspending a gym stops its door QR and locks its owner out of the console.
+          Nothing is deleted — members, payments and attendance are kept, and
+          reactivating restores the gym exactly as it was.
+        </p>
+
+        <table class="gym-table">
+          <thead>
+            <tr>
+              <th>Gym</th>
+              <th>Members</th>
+              <th>Staff</th>
+              <th>Status</th>
+              <th class="right">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (g of gyms(); track g.id) {
+              <tr [class.row--suspended]="g.status !== 'active'">
+                <td>
+                  <div class="gym-name">{{ g.name }}</div>
+                  <div class="muted small">{{ g.phone || g.address || g.timezone }}</div>
+                </td>
+                <td>{{ g.active_members }}</td>
+                <td>{{ g.staff_count }}</td>
+                <td>
+                  <span class="pill" [class.pill--ok]="g.status === 'active'"
+                        [class.pill--danger]="g.status !== 'active'">
+                    {{ g.status }}
+                  </span>
+                </td>
+                <td class="right">
+                  <button
+                    class="btn btn--sm"
+                    [class.btn--ghost]="g.status !== 'active'"
+                    [class.btn--danger]="g.status === 'active'"
+                    [disabled]="saving() === g.id"
+                    (click)="toggle(g)">
+                    {{ saving() === g.id ? 'Saving…' : (g.status === 'active' ? 'Suspend' : 'Reactivate') }}
+                  </button>
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="5" class="muted">No gyms yet.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </div>
+</div>
+
+<!-- Suspending closes a real gym's front door, so it is confirmed by name. -->
+@if (confirming(); as g) {
+  <div class="modal-backdrop" (click)="confirming.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Suspend {{ g.name }}?</h2>
+      <div class="accent-bar accent-bar--left"></div>
+      <p class="modal__body">
+        From the moment you confirm:
+      </p>
+      <ul class="modal__list">
+        <li>the QR on their door stops working — members cannot check in</li>
+        <li>their owner and staff cannot open the console</li>
+        <li>{{ g.active_members }} member record(s) and all payment history are kept</li>
+      </ul>
+      <p class="muted small">You can reactivate them from this screen at any time.</p>
+      <div class="modal__actions">
+        <button class="btn btn--ghost" (click)="confirming.set(null)">Cancel</button>
+        <button class="btn btn--danger" [disabled]="saving() === g.id" (click)="confirmSuspend()">
+          {{ saving() === g.id ? 'Suspending…' : 'Suspend gym' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}

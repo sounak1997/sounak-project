@@ -26,6 +26,7 @@ const { gymCheckinLimiter, gymIdentifyLimiter } = require('../middleware/rateLim
 const {
   requireGymAccount,
   gymStaffOnly,
+  gymOwnerOnly,
   platformAdminOnly,
 } = require('../middleware/gymAuthMiddleware');
 
@@ -82,6 +83,10 @@ router.post('/auth/login', auth.login);
 // Standalone member sign-up, for someone not standing at the gym. Rate limited
 // with the identify limiter because a member code is a guessing surface.
 router.post('/auth/signup', gymIdentifyLimiter, member.signUpWithCode);
+
+// Password reset by member code + mobile — the same proof sign-up uses, and
+// rate limited for the same reason.
+router.post('/auth/reset-password', gymIdentifyLimiter, member.resetPassword);
 router.get('/auth/me', requireGymAccount, auth.me);
 router.post('/auth/change-password', requireGymAccount, auth.changePassword);
 
@@ -97,32 +102,52 @@ router.get('/me/memberships/:memberId', requireGymAccount, member.myMembership);
 
 // ---------------------------------------------------------------------------
 // Owner console — one gym, always tenancy-checked
+//
+// Two chains here, and which one a route gets is the whole owner/staff split:
+//
+//   gymStaffOnly  the front desk's work — run the gym, serve the members
+//   gymOwnerOnly  the takings, the prices, and the payout credentials
+//
+// The dividing line is totals and settings, not payments as such: staff DO
+// record a renewal and the cash that came with it (createSubscription below),
+// because that is the desk taking a membership. What they cannot do is read
+// what the gym has earned, re-price a plan, or touch the gateway keys.
 // ---------------------------------------------------------------------------
 router.get('/gyms/:gymId', gymStaffOnly, gym.getGym);
-router.put('/gyms/:gymId', gymStaffOnly, gym.updateGym);
-router.post('/gyms/:gymId/regenerate-code', gymStaffOnly, gym.regenerateGymCode);
-router.get('/gyms/:gymId/staff', gymStaffOnly, gym.listStaff);
+router.put('/gyms/:gymId', gymOwnerOnly, gym.updateGym);
+router.post('/gyms/:gymId/regenerate-code', gymOwnerOnly, gym.regenerateGymCode);
+router.get('/gyms/:gymId/staff', gymOwnerOnly, gym.listStaff);
 
+// Staff get this too, but the response drops the money fields — see
+// gymController.dashboard.
 router.get('/gyms/:gymId/dashboard', gymStaffOnly, gym.dashboard);
+// Who has lapsed and who is about to: the desk's chase list, deliberately open
+// to staff.
 router.get('/gyms/:gymId/expiring', gymStaffOnly, gym.expiryWatchlist);
 
+// Reading plans is needed to sell one; creating and re-pricing them is not.
 router.get('/gyms/:gymId/plans', gymStaffOnly, gym.listPlans);
-router.post('/gyms/:gymId/plans', gymStaffOnly, gym.createPlan);
-router.patch('/gyms/:gymId/plans/:planId/active', gymStaffOnly, gym.setPlanActive);
+router.post('/gyms/:gymId/plans', gymOwnerOnly, gym.createPlan);
+router.patch('/gyms/:gymId/plans/:planId/active', gymOwnerOnly, gym.setPlanActive);
 
 router.get('/gyms/:gymId/members', gymStaffOnly, gym.listMembers);
 router.post('/gyms/:gymId/members', gymStaffOnly, gym.createMember);
 router.get('/gyms/:gymId/members/:memberId', gymStaffOnly, gym.getMember);
 router.put('/gyms/:gymId/members/:memberId', gymStaffOnly, gym.updateMember);
 router.post('/gyms/:gymId/members/:memberId/revoke-devices', gymStaffOnly, gym.revokeMemberDevices);
+router.post('/gyms/:gymId/members/:memberId/reset-password', gymStaffOnly, gym.resetMemberPassword);
+// Selling or renewing a membership, cash included. The desk's core job.
 router.post('/gyms/:gymId/members/:memberId/subscriptions', gymStaffOnly, gym.createSubscription);
 
-router.get('/gyms/:gymId/payment-provider', gymStaffOnly, gym.getPaymentProvider);
-router.put('/gyms/:gymId/payment-provider', gymStaffOnly, gym.savePaymentProvider);
-router.post('/gyms/:gymId/payments/reconcile', gymStaffOnly, gym.reconcilePayments);
+// Payout credentials — the owner's bank, effectively.
+router.get('/gyms/:gymId/payment-provider', gymOwnerOnly, gym.getPaymentProvider);
+router.put('/gyms/:gymId/payment-provider', gymOwnerOnly, gym.savePaymentProvider);
+router.post('/gyms/:gymId/payment-provider/test', gymOwnerOnly, gym.testPaymentProvider);
+router.post('/gyms/:gymId/payments/reconcile', gymOwnerOnly, gym.reconcilePayments);
 
-router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
-router.post('/gyms/:gymId/payments/:paymentId/settle', gymStaffOnly, gym.settlePayment);
+// The ledger, and confirming money said to have arrived. Owner's books.
+router.get('/gyms/:gymId/payments', gymOwnerOnly, gym.listPayments);
+router.post('/gyms/:gymId/payments/:paymentId/settle', gymOwnerOnly, gym.settlePayment);
 
 router.get('/gyms/:gymId/attendance/today', gymStaffOnly, gym.attendanceToday);
 router.post('/gyms/:gymId/attendance/manual', gymStaffOnly, gym.markManual);
@@ -132,7 +157,15 @@ router.post('/gyms/:gymId/attendance/manual', gymStaffOnly, gym.markManual);
 // ---------------------------------------------------------------------------
 router.get('/admin/gyms', platformAdminOnly, auth.listGyms);
 router.post('/admin/gyms', platformAdminOnly, auth.createGym);
+// Suspending a gym is how a gym that has stopped working with the platform is
+// switched off: its door QR and its owner's console both stop, while every
+// member and payment row is kept.
+router.patch('/admin/gyms/:gymId/status', platformAdminOnly, auth.setGymStatus);
 router.post('/admin/accounts', platformAdminOnly, auth.createAccount);
+router.get('/admin/accounts', platformAdminOnly, auth.listAccounts);
+// The only way back in for a locked-out gym owner: staff hold no member code,
+// so the self-service reset cannot reach them.
+router.post('/admin/accounts/:accountId/reset-password', platformAdminOnly, auth.resetAccountPassword);
 router.post('/admin/gyms/:gymId/staff', platformAdminOnly, auth.addStaff);
 router.delete('/admin/gyms/:gymId/staff/:accountId', platformAdminOnly, auth.removeStaff);
 

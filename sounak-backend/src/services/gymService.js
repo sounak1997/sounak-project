@@ -485,7 +485,28 @@ exports.expiryWatchlist = async ({ gymId, withinDays = 7 }) => {
 };
 
 // Headline counts for the top of the owner's dashboard.
-exports.dashboardSummary = async ({ gymId }) => {
+//
+// `includeFinancials` is false for a staff account: the two money figures are
+// left out of the SQL entirely rather than computed and then stripped from the
+// response, so the gym's takings are never assembled for someone who may not
+// see them, and a future caller that forgets to filter the object cannot leak
+// them. Everything else — headcounts, attendance, how many memberships have
+// lapsed — is the front desk's job and stays.
+exports.dashboardSummary = async ({ gymId, includeFinancials = true }) => {
+  const financials = includeFinancials
+    ? `,
+       (SELECT COUNT(*)::int FROM gym_payments
+         WHERE gym_id = $1 AND status IN ('pending', 'pending_verification')) AS payments_awaiting,
+       -- Month boundaries in the GYM's timezone, not the server's. Comparing a
+       -- timestamptz against a bare timestamp would have Postgres resolve it
+       -- using the session TimeZone (UTC on Render), which puts payments taken
+       -- late on the last evening of a month into the next one.
+       (SELECT COALESCE(SUM(amount), 0) FROM gym_payments p, today t
+         WHERE p.gym_id = $1 AND p.status IN ('verified', 'collected')
+           AND date_trunc('month', (p.created_at AT TIME ZONE (SELECT timezone FROM tz))::date)
+               = date_trunc('month', t.d)) AS collected_this_month`
+    : '';
+
   const result = await pgPool.query(
     `WITH today AS (
        SELECT (now() AT TIME ZONE (SELECT timezone FROM gyms WHERE id = $1))::date AS d
@@ -508,17 +529,8 @@ exports.dashboardSummary = async ({ gymId }) => {
          WHERE a.gym_id = $1 AND a.visit_date = t.d)                       AS visits_today,
        (SELECT COUNT(*)::int FROM gym_attendance a, today t
          WHERE a.gym_id = $1 AND a.visit_date = t.d
-           AND a.check_out_at IS NULL)                                     AS currently_in,
-       (SELECT COUNT(*)::int FROM gym_payments
-         WHERE gym_id = $1 AND status IN ('pending', 'pending_verification')) AS payments_awaiting,
-       -- Month boundaries in the GYM's timezone, not the server's. Comparing a
-       -- timestamptz against a bare timestamp would have Postgres resolve it
-       -- using the session TimeZone (UTC on Render), which puts payments taken
-       -- late on the last evening of a month into the next one.
-       (SELECT COALESCE(SUM(amount), 0) FROM gym_payments p, today t
-         WHERE p.gym_id = $1 AND p.status IN ('verified', 'collected')
-           AND date_trunc('month', (p.created_at AT TIME ZONE (SELECT timezone FROM tz))::date)
-               = date_trunc('month', t.d)) AS collected_this_month`,
+           AND a.check_out_at IS NULL)                                     AS currently_in
+       ${financials}`,
     [gymId]
   );
   return result.rows[0];

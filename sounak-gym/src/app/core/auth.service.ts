@@ -62,6 +62,19 @@ export class AuthService {
   readonly isMember = computed(() => this.memberships().length > 0);
 
   /**
+   * Owner-or-above FOR THE GYM CURRENTLY SELECTED — someone can own one gym and
+   * work the desk at another, so this cannot be a property of the account.
+   *
+   * Only decides what the console draws. The server checks the same thing again
+   * on every money route (gymOwnerOnly), because a hidden tile is not a
+   * permission.
+   */
+  readonly isOwner = computed(() => {
+    const role = this.activeGym()?.staff_role;
+    return role === 'owner' || role === 'platform_admin';
+  });
+
+  /**
    * Where to send someone after they sign in. Members are the common case, so
    * an account that is both lands on the console — an owner opening the app is
    * almost always there to work, and their own record is one tap away.
@@ -122,6 +135,30 @@ export class AuthService {
       this.http.post<{
         data: { token: string; account: GymAccount; gyms: GymSummary[]; memberships: Membership[] };
       }>('/api/gym/auth/signup', fields),
+    );
+    this.write(TOKEN_KEY, res.data.token);
+    this.account.set(res.data.account);
+    this.gyms.set(res.data.gyms);
+    this.memberships.set(res.data.memberships ?? []);
+    this.selectGym(res.data.gyms[0]?.id ?? null);
+  }
+
+  /**
+   * Reset a forgotten password with member code + mobile, then sign in.
+   *
+   * Same proof as sign-up, because anything weaker would be a way round it and
+   * anything stronger would leave someone able to create an account but not
+   * recover it.
+   */
+  async resetPassword(fields: {
+    memberCode: string;
+    phone: string;
+    newPassword: string;
+  }): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.post<{
+        data: { token: string; account: GymAccount; gyms: GymSummary[]; memberships: Membership[] };
+      }>('/api/gym/auth/reset-password', fields),
     );
     this.write(TOKEN_KEY, res.data.token);
     this.account.set(res.data.account);

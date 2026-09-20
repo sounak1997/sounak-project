@@ -42,6 +42,24 @@ const requireGymAccess = asyncHandler(async (req, res, next) => {
   next();
 });
 
+// The money/configuration line inside a single gym.
+//
+// 'owner' and 'staff' were interchangeable until this existed: requireGymAccess
+// only asks whether a gym_staff row exists. The front desk needs to run the
+// gym day to day — register a member, mark them present, take their renewal —
+// without seeing what the gym earns or being able to change what it charges.
+//
+// So: anything that reveals totals, or sets prices and payout credentials, goes
+// through here. Per-member facts stay open to staff, because "has this member
+// paid, and until when" is the desk's job to answer.
+//
+// Must run after requireGymAccess, which is what sets req.staffRole.
+const requireGymOwner = (req, res, next) => {
+  if (req.staffRole === 'owner' || req.staffRole === 'platform_admin') return next();
+  res.status(403);
+  return next(new Error("Only the gym's owner can see or change this."));
+};
+
 // Creating gyms and issuing owner accounts — the platform operator, not any
 // one gym's owner.
 const requirePlatformAdmin = (req, res, next) => {
@@ -55,12 +73,15 @@ const requirePlatformAdmin = (req, res, next) => {
 // Ready-made chains, so a route cannot accidentally apply authentication
 // without tenancy.
 const gymStaffOnly = [requireGymAccount, requireGymAccess];
+const gymOwnerOnly = [requireGymAccount, requireGymAccess, requireGymOwner];
 const platformAdminOnly = [requireGymAccount, requirePlatformAdmin];
 
 module.exports = {
   requireGymAccount,
   requireGymAccess,
   requirePlatformAdmin,
+  requireGymOwner,
   gymStaffOnly,
+  gymOwnerOnly,
   platformAdminOnly,
 };

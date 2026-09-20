@@ -218,9 +218,16 @@ exports.markManual = asyncHandler(async (req, res) => {
 // --- dashboard -------------------------------------------------------------
 
 // @route   GET /api/gym/gyms/:gymId/dashboard
+//
+// The response is narrower for staff: no takings, no payments-to-confirm count.
+// staffRole rides along so the console can lay the screen out to match instead
+// of rendering an empty tile.
 exports.dashboard = asyncHandler(async (req, res) => {
-  const summary = await gymService.dashboardSummary({ gymId: req.gym.id });
-  res.status(200).json({ success: true, data: summary });
+  const summary = await gymService.dashboardSummary({
+    gymId: req.gym.id,
+    includeFinancials: req.staffRole !== 'staff',
+  });
+  res.status(200).json({ success: true, data: { ...summary, staffRole: req.staffRole } });
 });
 
 // @desc    The renewal worklist: lapsed, about to lapse, never started
@@ -245,14 +252,31 @@ const gymCheckoutService = require('../services/gymCheckoutService');
 // of the server.
 exports.getPaymentProvider = asyncHandler(async (req, res) => {
   const provider = await gymGatewayService.getProviderPublic(req.gym.id);
+
+  // Prefer a configured public URL over the request's host. Derived from the
+  // request, this reads "http://localhost:3000/..." in development — which a
+  // gateway can never reach, and which an owner would paste into Razorpay in
+  // good faith and then wonder why nothing arrived.
+  const base = process.env.GYM_PUBLIC_API_URL
+    || `${req.protocol}://${req.get('host')}`;
+  const webhookUrl = `${base.replace(/\/$/, '')}/api/gym/webhooks/razorpay`;
+
   res.status(200).json({
     success: true,
     data: {
       provider,
-      // The URL the owner pastes into their Razorpay dashboard.
-      webhookUrl: `${req.protocol}://${req.get('host')}/api/gym/webhooks/razorpay`,
+      webhookUrl,
+      // Lets the screen warn instead of handing over a URL that cannot work.
+      webhookReachable: !/localhost|127\.0\.0\.1/.test(webhookUrl),
     },
   });
+});
+
+// @desc    Check the saved keys actually work, before a member relies on them
+// @route   POST /api/gym/gyms/:gymId/payment-provider/test
+exports.testPaymentProvider = asyncHandler(async (req, res) => {
+  const result = await gymGatewayService.testConnection(req.gym.id);
+  res.status(200).json({ success: true, data: result });
 });
 
 // @desc    Connect or update this gym's gateway account
@@ -280,5 +304,20 @@ exports.savePaymentProvider = asyncHandler(async (req, res) => {
 // of when, not if.
 exports.reconcilePayments = asyncHandler(async (req, res) => {
   const result = await gymCheckoutService.reconcile({ gymId: req.gym.id });
+  res.status(200).json({ success: true, data: result });
+});
+
+// @desc    Owner resets one of their members' passwords
+// @route   POST /api/gym/gyms/:gymId/members/:memberId/reset-password
+//
+// The fallback for a member who has lost their member code too — the only route
+// that needs the member to remember nothing at all.
+exports.resetMemberPassword = asyncHandler(async (req, res) => {
+  const gymMemberAccountService = require('../services/gymMemberAccountService');
+  const result = await gymMemberAccountService.resetPasswordByOwner({
+    gymId: req.gym.id,
+    memberId: req.params.memberId,
+    newPassword: req.body.newPassword,
+  });
   res.status(200).json({ success: true, data: result });
 });

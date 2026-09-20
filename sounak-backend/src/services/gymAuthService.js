@@ -275,6 +275,22 @@ exports.assertGymAccess = async (account, gymId) => {
     err.statusCode = 404;
     throw err;
   }
+
+  // A suspended gym is closed to its own staff too — that is the point of
+  // suspending it. Checked AFTER the gym_staff lookup above so the 404 for a
+  // stranger still comes first: someone guessing ids must not be able to tell
+  // a suspended gym from one that was never theirs.
+  //
+  // The platform admin returned earlier is deliberately exempt, or suspending a
+  // gym would lock away the only screen that can un-suspend it.
+  if (gym.status !== 'active') {
+    const err = new Error(
+      'This gym has been suspended by the platform administrator. Contact support to restore access.'
+    );
+    err.statusCode = 403;
+    throw err;
+  }
+
   return { gym, staffRole: staffResult.rows[0].role };
 };
 
@@ -324,6 +340,37 @@ exports.listGyms = async () => {
   return result.rows;
 };
 
+/**
+ * Suspend or reactivate a gym — for a gym that has stopped doing business with
+ * the platform.
+ *
+ * Suspending is not a delete: every member, subscription, payment and
+ * attendance row stays exactly as it is, so reactivating restores the gym
+ * whole and the records survive for whatever is still owed. What stops is
+ * access:
+ *
+ *   - the printed door QR stops working, because requireGymByCode already
+ *     filters on status = 'active' (gymAttendanceService)
+ *   - the owner's console stops loading, via assertGymAccess above
+ *
+ * Nothing is billed or cancelled here; this is an access switch only.
+ */
+exports.setGymStatus = async ({ gymId, status }) => {
+  if (!['active', 'suspended'].includes(status)) {
+    throw badRequest("status must be 'active' or 'suspended'.");
+  }
+  const result = await pgPool.query(
+    `UPDATE gyms SET status = $2, updated_at = now() WHERE id = $1 RETURNING *`,
+    [gymId, status]
+  );
+  if (!result.rows[0]) {
+    const err = new Error('Gym not found.');
+    err.statusCode = 404;
+    throw err;
+  }
+  return result.rows[0];
+};
+
 exports.addStaff = async ({ gymId, accountId, role = 'owner' }) => {
   if (!['owner', 'staff'].includes(role)) throw badRequest("role must be 'owner' or 'staff'.");
   const result = await pgPool.query(
@@ -354,4 +401,39 @@ exports.removeStaff = async ({ gymId, accountId }) => {
     [gymId, accountId]
   );
   return { removed: result.rowCount };
+};
+
+/**
+ * Platform admin resetting a gym owner's or staff member's password.
+ *
+ * Gym staff have no member code, so the self-service reset cannot help them —
+ * without this, a locked-out owner needs someone running SQL by hand, which is
+ * exactly the hole that made this whole feature necessary.
+ */
+exports.resetAccountPassword = async ({ accountId, newPassword }) => {
+  if (!newPassword || String(newPassword).length < 8) {
+    throw badRequest('The new password must be at least 8 characters.');
+  }
+  const result = await pgPool.query(
+    'UPDATE gym_accounts SET password_hash = $1, updated_at = now() WHERE id = $2 RETURNING id, name, email, phone',
+    [await bcrypt.hash(newPassword, 10), accountId]
+  );
+  if (!result.rows[0]) {
+    const e = new Error('Account not found.');
+    e.statusCode = 404;
+    throw e;
+  }
+  return result.rows[0];
+};
+
+/** So the platform admin can find the account to reset. */
+exports.listAccounts = async () => {
+  const result = await pgPool.query(
+    `SELECT a.id, a.name, a.email, a.phone, a.platform_admin, a.status,
+            (SELECT COUNT(*)::int FROM gym_staff s WHERE s.account_id = a.id) AS staffs_gyms,
+            (SELECT COUNT(*)::int FROM gym_members m WHERE m.account_id = a.id) AS memberships
+       FROM gym_accounts a
+      ORDER BY a.created_at DESC`
+  );
+  return result.rows;
 };
