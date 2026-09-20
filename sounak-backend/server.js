@@ -26,6 +26,15 @@ const configurePassport = require('./src/config/passport');
 const { startConsumers, addSSEClient, removeSSEClient } = require('./src/consumers/notificationConsumer');
 
 const app = express();
+
+// Render (and any reverse proxy) terminates TLS and forwards the real client
+// IP in X-Forwarded-For. Without this, req.ip is the proxy's address, so
+// express-rate-limit buckets EVERY user together — one busy client would rate
+// limit everyone — and it logs an ERR_ERL_UNEXPECTED_X_FORWARDED_FOR warning.
+//
+// 1, not `true`: trust only the single proxy directly in front of us. Blanket
+// trust would let a client spoof X-Forwarded-For and evade rate limiting.
+app.set('trust proxy', 1);
 const server = http.createServer(app); // HTTP server — required for Socket.IO
 
 // --- Attach Socket.IO to HTTP server ---
