@@ -80,6 +80,10 @@ const medicalCenterRoutes = require('./src/routes/medicalCenterRoutes');
 const doctorRoutes = require('./src/routes/doctorRoutes');
 const labRoutes = require('./src/routes/labRoutes');
 const testRoutes = require('./src/routes/testRoutes');
+// Gym Management portal — see docs/gym-management-requirements.md. Multi-tenant
+// (many independent gyms) and fully self-contained: its own tables, its own
+// accounts, and no overlap with the portals above.
+const gymRoutes = require('./src/routes/gymRoutes');
 
 app.use('/api/auth/register', registerLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
@@ -96,6 +100,7 @@ app.use('/api/medical-centers', medicalCenterRoutes);
 app.use('/api/doctors', doctorRoutes);
 app.use('/api/labs', labRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/gym', gymRoutes);
 
 // Uploaded product images and the payment QR (NFR-3). Registered before the
 // production catch-all below so it isn't swallowed by the Angular SPA route.

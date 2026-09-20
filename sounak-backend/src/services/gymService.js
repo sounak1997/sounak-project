@@ -1,0 +1,525 @@
+// src/services/gymService.js
+//
+// The owner's side of one gym: its settings, plans, members, subscriptions,
+// payments and expiry worklist. Attendance lives in gymAttendanceService.js;
+// accounts, logins and gym/staff administration live in gymAuthService.js.
+//
+// EVERY function here takes a gymId and filters on it. That is not politeness
+// about data hygiene — with ~100 gyms sharing these tables, a query that
+// forgets its gym_id hands one owner another's members. Callers get gymId from
+// req.gym.id, which requireGymAccess has already verified they may use.
+//
+// Nothing in this file touches the Mongo `users` collection or any table
+// belonging to the grocery or doctors portals. Members are rows here, not
+// accounts elsewhere: an owner adds a walk-in with a name and a phone number.
+const crypto = require('crypto');
+const pgPool = require('../config/pg.config');
+const { genId } = require('../utils/id');
+
+const notFound = (message) => {
+  const err = new Error(message);
+  err.statusCode = 404;
+  return err;
+};
+
+const badRequest = (message) => {
+  const err = new Error(message);
+  err.statusCode = 400;
+  return err;
+};
+
+const newGymCode = () => crypto.randomBytes(9).toString('base64url');
+const newMemberCode = () => crypto.randomBytes(6).toString('base64url');
+
+// --- this gym's settings ---------------------------------------------------
+
+exports.updateGym = async ({ gymId, name, address, phone, timezone, closedWeekdays, rescanGraceSeconds, paymentQrUrl }) => {
+  if (closedWeekdays !== undefined) {
+    const ok = Array.isArray(closedWeekdays)
+      && closedWeekdays.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
+    if (!ok) throw badRequest('closedWeekdays must be an array of weekday numbers, 0 (Sunday) to 6.');
+  }
+
+  const result = await pgPool.query(
+    `UPDATE gyms
+        SET name                 = COALESCE($1, name),
+            address              = COALESCE($2, address),
+            phone                = COALESCE($3, phone),
+            timezone             = COALESCE($4, timezone),
+            closed_weekdays      = COALESCE($5::jsonb, closed_weekdays),
+            rescan_grace_seconds = COALESCE($6, rescan_grace_seconds),
+            payment_qr_url       = COALESCE($7, payment_qr_url),
+            updated_at           = now()
+      WHERE id = $8
+      RETURNING *`,
+    [
+      name ?? null,
+      address ?? null,
+      phone ?? null,
+      timezone ?? null,
+      closedWeekdays === undefined ? null : JSON.stringify(closedWeekdays),
+      rescanGraceSeconds ?? null,
+      paymentQrUrl ?? null,
+      gymId,
+    ]
+  );
+  if (!result.rows[0]) throw notFound('Gym not found.');
+  return result.rows[0];
+};
+
+// Reissuing the code invalidates every printed copy of this gym's poster, which
+// is the point — so it is a separate, explicit action rather than something an
+// ordinary settings save can trigger by accident.
+exports.regenerateGymCode = async (gymId) => {
+  const result = await pgPool.query(
+    'UPDATE gyms SET gym_code = $1, updated_at = now() WHERE id = $2 RETURNING *',
+    [newGymCode(), gymId]
+  );
+  if (!result.rows[0]) throw notFound('Gym not found.');
+  return result.rows[0];
+};
+
+// --- plans -----------------------------------------------------------------
+
+exports.listPlans = async ({ gymId, includeInactive = false }) => {
+  const result = await pgPool.query(
+    `SELECT * FROM gym_plans
+      WHERE gym_id = $1 ${includeInactive ? '' : 'AND active = true'}
+      ORDER BY duration_days ASC`,
+    [gymId]
+  );
+  return result.rows;
+};
+
+exports.createPlan = async ({ gymId, name, durationDays, price, description }) => {
+  if (!name) throw badRequest('name is required.');
+  if (!Number.isInteger(durationDays) || durationDays <= 0) {
+    throw badRequest('durationDays must be a positive whole number of days.');
+  }
+  if (!(Number(price) >= 0)) throw badRequest('price must be zero or more.');
+
+  const result = await pgPool.query(
+    `INSERT INTO gym_plans (id, gym_id, name, duration_days, price, description)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+    [genId('PLN'), gymId, name, durationDays, price, description || null]
+  );
+  return result.rows[0];
+};
+
+// Deactivated rather than deleted: past subscriptions reference the plan, and
+// their history must not change because the owner stopped selling it.
+exports.setPlanActive = async ({ gymId, planId, active }) => {
+  const result = await pgPool.query(
+    `UPDATE gym_plans SET active = $1, updated_at = now()
+      WHERE id = $2 AND gym_id = $3 RETURNING *`,
+    [active, planId, gymId]
+  );
+  if (!result.rows[0]) throw notFound(`Plan '${planId}' not found.`);
+  return result.rows[0];
+};
+
+// --- members ---------------------------------------------------------------
+
+// Registers an athlete at this gym. Name and phone are all that is needed —
+// members do not log in, they are recognised at the door by their device.
+//
+// The phone number is not cosmetic: it is how a member identifies themselves on
+// a new phone, and how the owner calls them about a renewal. So it is required.
+exports.createMember = async ({ gymId, fullName, phone, emergencyContact, notes, joinedOn }) => {
+  if (!fullName) throw badRequest('fullName is required.');
+  if (!phone) {
+    throw badRequest('phone is required — it is how members identify themselves at check-in.');
+  }
+
+  const digits = String(phone).replace(/\D/g, '');
+  if (digits.length < 10) throw badRequest('Enter a full 10-digit mobile number.');
+
+  // Warn rather than block: two members legitimately sharing a number is rare
+  // but real (a parent and child), and the check-in screen already handles it
+  // by asking which of them is scanning. Blocking it would be wrong.
+  const duplicate = await pgPool.query(
+    `SELECT id, full_name FROM gym_members
+      WHERE gym_id = $1 AND right(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 10) = $2`,
+    [gymId, digits.slice(-10)]
+  );
+
+  const result = await pgPool.query(
+    `INSERT INTO gym_members
+       (id, gym_id, member_code, full_name, phone, emergency_contact, notes, joined_on)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::date, CURRENT_DATE))
+     RETURNING *`,
+    [
+      genId('MEM'),
+      gymId,
+      newMemberCode(),
+      fullName,
+      phone,
+      emergencyContact || null,
+      notes || null,
+      joinedOn || null,
+    ]
+  );
+  return {
+    member: result.rows[0],
+    sharesPhoneWith: duplicate.rows.map((r) => r.full_name),
+  };
+};
+
+exports.updateMember = async ({ gymId, memberId, fullName, phone, emergencyContact, notes, status }) => {
+  if (status !== undefined && !['active', 'inactive'].includes(status)) {
+    throw badRequest("status must be 'active' or 'inactive'.");
+  }
+  const result = await pgPool.query(
+    `UPDATE gym_members
+        SET full_name         = COALESCE($1, full_name),
+            phone             = COALESCE($2, phone),
+            emergency_contact = COALESCE($3, emergency_contact),
+            notes             = COALESCE($4, notes),
+            status            = COALESCE($5, status),
+            updated_at        = now()
+      WHERE id = $6 AND gym_id = $7
+      RETURNING *`,
+    [
+      fullName ?? null,
+      phone ?? null,
+      emergencyContact ?? null,
+      notes ?? null,
+      status ?? null,
+      memberId,
+      gymId,
+    ]
+  );
+  if (!result.rows[0]) throw notFound(`Member '${memberId}' not found.`);
+  return result.rows[0];
+};
+
+// The owner's member list. Every row carries its current subscription and
+// derived expiry state, because that is what the list is for — a name with no
+// membership status beside it answers nothing.
+//
+// `expiry` is one of none / expired / expiring / active, computed from end_date
+// against this gym's own timezone. Never read from a stored flag.
+exports.listMembers = async ({ gymId, search, status, expiry, expiringWithinDays = 7, limit = 200, offset = 0 }) => {
+  const result = await pgPool.query(
+    `WITH tz AS (SELECT timezone FROM gyms WHERE id = $1),
+     today AS (SELECT (now() AT TIME ZONE (SELECT timezone FROM tz))::date AS d),
+     current_sub AS (
+       SELECT DISTINCT ON (member_id)
+              member_id, id AS subscription_id, plan_name, start_date, end_date, amount
+         FROM gym_subscriptions
+        WHERE gym_id = $1 AND status = 'active'
+        ORDER BY member_id, end_date DESC
+     )
+     SELECT m.*,
+            s.subscription_id, s.plan_name, s.start_date, s.end_date,
+            (s.end_date - t.d) AS days_remaining,
+            CASE
+              WHEN s.end_date IS NULL            THEN 'none'
+              WHEN s.end_date <  t.d             THEN 'expired'
+              WHEN s.end_date <= t.d + $2::int   THEN 'expiring'
+              ELSE 'active'
+            END AS expiry,
+            (SELECT COUNT(*)::int FROM gym_device_tokens d
+              WHERE d.member_id = m.id AND d.revoked = false) AS device_count
+       FROM gym_members m
+       CROSS JOIN today t
+       LEFT JOIN current_sub s ON s.member_id = m.id
+      WHERE m.gym_id = $1
+        AND ($3::text IS NULL OR m.full_name ILIKE '%' || $3 || '%'
+                              OR m.phone     ILIKE '%' || $3 || '%')
+        AND ($4::text IS NULL OR m.status = $4)
+      ORDER BY m.full_name ASC
+      LIMIT $5 OFFSET $6`,
+    [gymId, expiringWithinDays, search || null, status || null, limit, offset]
+  );
+
+  // Filtered in Node rather than SQL because `expiry` is a derived column and
+  // referencing it in the same query's WHERE would mean repeating the whole
+  // CASE expression. The page size is already bounded by LIMIT.
+  return expiry ? result.rows.filter((r) => r.expiry === expiry) : result.rows;
+};
+
+exports.getMember = async ({ gymId, memberId }) => {
+  const result = await pgPool.query('SELECT * FROM gym_members WHERE id = $1 AND gym_id = $2', [
+    memberId,
+    gymId,
+  ]);
+  if (!result.rows[0]) throw notFound(`Member '${memberId}' not found.`);
+  return result.rows[0];
+};
+
+// Revoking devices is the fix for a member's lost or replaced phone, and the
+// only reason an owner ever needs to know device tokens exist. Their next scan
+// simply asks for their number again.
+exports.revokeMemberDevices = async ({ gymId, memberId }) => {
+  await exports.getMember({ gymId, memberId });
+  const result = await pgPool.query(
+    'UPDATE gym_device_tokens SET revoked = true WHERE member_id = $1 AND revoked = false',
+    [memberId]
+  );
+  return { revoked: result.rowCount };
+};
+
+// --- subscriptions + payments ---------------------------------------------
+
+// Assign or renew a plan. A renewal is always a NEW row, so payment history
+// stays intact and "when did they last renew" remains answerable.
+//
+// A renewal bought before the current membership runs out starts the day AFTER
+// it ends, not today — otherwise renewing early would silently throw away the
+// days the member had already paid for.
+exports.createSubscription = async ({ gymId, memberId, planId, startDate, amount, payment, recordedBy }) => {
+  const member = await exports.getMember({ gymId, memberId });
+
+  const planResult = await pgPool.query('SELECT * FROM gym_plans WHERE id = $1 AND gym_id = $2', [
+    planId,
+    gymId,
+  ]);
+  const plan = planResult.rows[0];
+  if (!plan) throw notFound(`Plan '${planId}' not found.`);
+
+  const method = (payment && payment.method) || 'cash';
+  if (!['cash', 'qr', 'gateway'].includes(method)) {
+    throw badRequest("payment.method must be 'cash', 'qr' or 'gateway'.");
+  }
+  // Cash handed over at the desk is money already in the drawer, so it is
+  // recorded as collected. A QR payment has no gateway callback to trust, so it
+  // waits for the owner to confirm it — the same manual model the grocery
+  // portal uses.
+  const status = (payment && payment.status) || (method === 'cash' ? 'collected' : 'pending_verification');
+
+  const client = await pgPool.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const tzResult = await client.query('SELECT timezone FROM gyms WHERE id = $1', [gymId]);
+    const gymTimezone = tzResult.rows[0].timezone;
+
+    const currentResult = await client.query(
+      `SELECT end_date FROM gym_subscriptions
+        WHERE member_id = $1 AND status = 'active'
+        ORDER BY end_date DESC LIMIT 1`,
+      [memberId]
+    );
+    const currentEnd = currentResult.rows[0] ? currentResult.rows[0].end_date : null;
+
+    // Resolved in its own statement rather than inside the INSERT. The CTE
+    // version could not have its parameter types inferred (Postgres reports
+    // "inconsistent types deduced" when a placeholder feeds both a CTE
+    // predicate and an INSERT target list), and spelling out a cast per
+    // placeholder to satisfy it made the date rule unreadable. Still one
+    // transaction, so it is equally atomic.
+    const startResult = await client.query(
+      `SELECT COALESCE(
+                $1::date,
+                CASE
+                  WHEN $2::date IS NOT NULL
+                   AND $2::date >= (now() AT TIME ZONE $3)::date
+                  THEN $2::date + 1
+                  ELSE (now() AT TIME ZONE $3)::date
+                END
+              ) AS start_date`,
+      [startDate || null, currentEnd, gymTimezone]
+    );
+    const resolvedStart = startResult.rows[0].start_date;
+
+    const subscriptionId = genId('SUB');
+    const subResult = await client.query(
+      `INSERT INTO gym_subscriptions
+         (id, gym_id, member_id, plan_id, plan_name, start_date, end_date, amount, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6::date, $6::date + ($7::int - 1), $8, $9)
+       RETURNING *`,
+      [
+        subscriptionId,
+        gymId,
+        memberId,
+        plan.id,
+        plan.name,
+        resolvedStart,
+        plan.duration_days,
+        amount ?? plan.price,
+        recordedBy,
+      ]
+    );
+
+    // Every subscription gets a payment row, even an unpaid one, so "who owes
+    // money" is a query over payments rather than an absence of data.
+    // `settled` is decided here rather than with a CASE over the status
+    // placeholder inside the INSERT: a parameter that feeds both a varchar
+    // column and an IN comparison leaves Postgres unable to deduce its type,
+    // and the audit columns read far more plainly as two values than as two
+    // conditionals in SQL.
+    const settled = ['verified', 'collected'].includes(status);
+
+    const payResult = await client.query(
+      `INSERT INTO gym_payments
+         (id, gym_id, subscription_id, member_id, amount, method, status, reference,
+          recorded_by, verified_by, verified_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        genId('PAY'),
+        gymId,
+        subscriptionId,
+        memberId,
+        (payment && payment.amount) ?? amount ?? plan.price,
+        method,
+        status,
+        (payment && payment.reference) || null,
+        recordedBy,
+        settled ? recordedBy : null,
+        settled ? new Date() : null,
+      ]
+    );
+
+    await client.query('COMMIT');
+    return { member, subscription: subResult.rows[0], payment: payResult.rows[0] };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+};
+
+// Cash taken at the desk, or a QR payment the owner has confirmed. There is no
+// gateway callback to trust in v1, so a human says so and is recorded as having
+// said it.
+exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy }) => {
+  if (!['verified', 'collected'].includes(status)) {
+    throw badRequest("status must be 'verified' (QR confirmed) or 'collected' (cash taken).");
+  }
+  const result = await pgPool.query(
+    `UPDATE gym_payments
+        SET status      = $1,
+            reference   = COALESCE($2, reference),
+            verified_by = $3,
+            verified_at = now(),
+            updated_at  = now()
+      WHERE id = $4 AND gym_id = $5
+      RETURNING *`,
+    [status, reference || null, recordedBy, paymentId, gymId]
+  );
+  if (!result.rows[0]) throw notFound(`Payment '${paymentId}' not found.`);
+  return result.rows[0];
+};
+
+exports.listMemberPayments = async ({ gymId, memberId }) => {
+  const result = await pgPool.query(
+    `SELECT p.*, s.plan_name, s.start_date, s.end_date
+       FROM gym_payments p
+       JOIN gym_subscriptions s ON s.id = p.subscription_id
+      WHERE p.member_id = $1 AND p.gym_id = $2
+      ORDER BY p.created_at DESC`,
+    [memberId, gymId]
+  );
+  return result.rows;
+};
+
+exports.listPayments = async ({ gymId, status }) => {
+  const result = await pgPool.query(
+    `SELECT p.*, m.full_name, m.phone, s.plan_name, s.end_date
+       FROM gym_payments p
+       JOIN gym_members m ON m.id = p.member_id
+       JOIN gym_subscriptions s ON s.id = p.subscription_id
+      WHERE p.gym_id = $1 AND ($2::text IS NULL OR p.status = $2)
+      ORDER BY p.created_at DESC
+      LIMIT 500`,
+    [gymId, status || null]
+  );
+  return result.rows;
+};
+
+// --- the owner's dashboard ------------------------------------------------
+
+// The renewal worklist: who has lapsed, and who is about to. Both derive from
+// end_date against today in this gym's timezone, so there is no nightly job
+// keeping it current and it cannot be out of date.
+//
+// Each row carries the member's phone, which the console turns into a `tel:`
+// link so "call them to renew" is one tap on the owner's phone.
+exports.expiryWatchlist = async ({ gymId, withinDays = 7 }) => {
+  const result = await pgPool.query(
+    `WITH today AS (
+       SELECT (now() AT TIME ZONE (SELECT timezone FROM gyms WHERE id = $1))::date AS d
+     ),
+     current_sub AS (
+       SELECT DISTINCT ON (member_id)
+              member_id, id AS subscription_id, plan_name, start_date, end_date, amount
+         FROM gym_subscriptions
+        WHERE gym_id = $1 AND status = 'active'
+        ORDER BY member_id, end_date DESC
+     )
+     SELECT m.id, m.full_name, m.phone, m.member_code, m.joined_on,
+            s.subscription_id, s.plan_name, s.end_date, s.amount,
+            (s.end_date - t.d) AS days_remaining,
+            CASE WHEN s.end_date < t.d THEN 'expired' ELSE 'expiring' END AS bucket
+       FROM gym_members m
+       JOIN current_sub s ON s.member_id = m.id
+       CROSS JOIN today t
+      WHERE m.gym_id = $1
+        AND m.status = 'active'
+        AND s.end_date <= t.d + $2::int
+      ORDER BY s.end_date ASC`,
+    [gymId, withinDays]
+  );
+
+  // Members with no subscription at all are a different problem from a lapsed
+  // one — they were registered and never started — so they are reported
+  // separately rather than mixed into "expired".
+  const neverStarted = await pgPool.query(
+    `SELECT m.id, m.full_name, m.phone, m.joined_on
+       FROM gym_members m
+       LEFT JOIN gym_subscriptions s ON s.member_id = m.id AND s.status = 'active'
+      WHERE m.gym_id = $1 AND m.status = 'active' AND s.id IS NULL
+      ORDER BY m.joined_on DESC`,
+    [gymId]
+  );
+
+  return {
+    withinDays,
+    expired: result.rows.filter((r) => r.bucket === 'expired'),
+    expiring: result.rows.filter((r) => r.bucket === 'expiring'),
+    neverStarted: neverStarted.rows,
+  };
+};
+
+// Headline counts for the top of the owner's dashboard.
+exports.dashboardSummary = async ({ gymId }) => {
+  const result = await pgPool.query(
+    `WITH today AS (
+       SELECT (now() AT TIME ZONE (SELECT timezone FROM gyms WHERE id = $1))::date AS d
+     ),
+     current_sub AS (
+       SELECT DISTINCT ON (member_id) member_id, end_date
+         FROM gym_subscriptions
+        WHERE gym_id = $1 AND status = 'active'
+        ORDER BY member_id, end_date DESC
+     ),
+     tz AS (SELECT timezone FROM gyms WHERE id = $1)
+     SELECT
+       (SELECT COUNT(*)::int FROM gym_members
+         WHERE gym_id = $1 AND status = 'active')                          AS active_members,
+       (SELECT COUNT(*)::int FROM current_sub s, today t
+         WHERE s.end_date >= t.d)                                          AS active_subscriptions,
+       (SELECT COUNT(*)::int FROM current_sub s, today t
+         WHERE s.end_date <  t.d)                                          AS expired_subscriptions,
+       (SELECT COUNT(*)::int FROM gym_attendance a, today t
+         WHERE a.gym_id = $1 AND a.visit_date = t.d)                       AS visits_today,
+       (SELECT COUNT(*)::int FROM gym_attendance a, today t
+         WHERE a.gym_id = $1 AND a.visit_date = t.d
+           AND a.check_out_at IS NULL)                                     AS currently_in,
+       (SELECT COUNT(*)::int FROM gym_payments
+         WHERE gym_id = $1 AND status IN ('pending', 'pending_verification')) AS payments_awaiting,
+       -- Month boundaries in the GYM's timezone, not the server's. Comparing a
+       -- timestamptz against a bare timestamp would have Postgres resolve it
+       -- using the session TimeZone (UTC on Render), which puts payments taken
+       -- late on the last evening of a month into the next one.
+       (SELECT COALESCE(SUM(amount), 0) FROM gym_payments p, today t
+         WHERE p.gym_id = $1 AND p.status IN ('verified', 'collected')
+           AND date_trunc('month', (p.created_at AT TIME ZONE (SELECT timezone FROM tz))::date)
+               = date_trunc('month', t.d)) AS collected_this_month`,
+    [gymId]
+  );
+  return result.rows[0];
+};
