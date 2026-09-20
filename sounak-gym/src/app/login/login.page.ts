@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
 
@@ -14,7 +14,7 @@ import { AuthService } from '../core/auth.service';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, RouterLink],
   templateUrl: './login.page.html',
   styleUrl: './login.page.scss',
 })
@@ -23,18 +23,20 @@ export class LoginPage {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
-  readonly email = signal('');
+  readonly identifier = signal('');
   readonly password = signal('');
   readonly error = signal('');
   readonly busy = signal(false);
 
   async submit(): Promise<void> {
-    if (!this.email().trim() || !this.password()) return;
+    if (!this.identifier().trim() || !this.password()) return;
     this.busy.set(true);
     this.error.set('');
     try {
-      await this.auth.login(this.email().trim(), this.password());
-      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/dashboard';
+      await this.auth.login(this.identifier().trim(), this.password());
+      // Owners land on the console, members on their own record. One account
+      // can be both, in which case homeRoute() picks the console.
+      const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? this.auth.homeRoute();
       await this.router.navigateByUrl(returnUrl);
     } catch (err) {
       this.error.set(

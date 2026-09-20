@@ -138,3 +138,16 @@
   color: var(--purple);
   white-space: nowrap;
 }
+
+.field { margin-bottom: 14px; }
+
+.code {
+  display: inline-block;
+  padding: 2px 8px;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}

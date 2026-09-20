@@ -31,6 +31,7 @@ const {
 
 const checkin = require('../controllers/gymCheckinController');
 const webhooks = require('../controllers/gymWebhookController');
+const member = require('../controllers/gymMemberController');
 const auth = require('../controllers/gymAuthController');
 const gym = require('../controllers/gymController');
 
@@ -56,6 +57,12 @@ router.post('/checkin/pay/start', gymCheckinLimiter, checkin.startPayment);
 router.post('/checkin/pay/confirm', gymCheckinLimiter, checkin.confirmPayment);
 router.get('/checkin/pay/status', gymCheckinLimiter, checkin.paymentStatus);
 
+// OPTIONAL member login. Signing up needs no password and no OTP because the
+// device has already been verified at the door — see gymMemberAccountService.
+// Nothing here is required to check in; scanning remains login-free.
+router.get('/checkin/account/state', gymCheckinLimiter, member.deviceAccountState);
+router.post('/checkin/account', gymIdentifyLimiter, member.signUp);
+
 // ---------------------------------------------------------------------------
 // GATEWAY WEBHOOK
 // ---------------------------------------------------------------------------
@@ -71,8 +78,22 @@ router.post('/webhooks/razorpay', webhooks.razorpay);
 // Gym owner / staff authentication
 // ---------------------------------------------------------------------------
 router.post('/auth/login', auth.login);
+
+// Standalone member sign-up, for someone not standing at the gym. Rate limited
+// with the identify limiter because a member code is a guessing surface.
+router.post('/auth/signup', gymIdentifyLimiter, member.signUpWithCode);
 router.get('/auth/me', requireGymAccount, auth.me);
 router.post('/auth/change-password', requireGymAccount, auth.changePassword);
+
+// ---------------------------------------------------------------------------
+// A signed-in member's OWN record
+// ---------------------------------------------------------------------------
+// requireGymAccount only, never requireGymAccess: a member is not staff of the
+// gym they train at. Scoping is by gym_members.account_id inside the service,
+// so these return the caller's own record and 404 for anyone else's.
+router.post('/me/bind-device', requireGymAccount, member.bindDevice);
+router.get('/me/memberships', requireGymAccount, member.myMemberships);
+router.get('/me/memberships/:memberId', requireGymAccount, member.myMembership);
 
 // ---------------------------------------------------------------------------
 // Owner console — one gym, always tenancy-checked

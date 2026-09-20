@@ -143,8 +143,35 @@ exports.search = async ({ gymCode, query }) => {
   const key = phoneKey(raw);
   const looksLikePhone = key.length >= 10;
 
+  // Member code first. It is what the gym hands out and what this screen
+  // displays back to a recognised member, so it is the thing people naturally
+  // type — and before this was accepted here, typing it fell through to a NAME
+  // search and reported "not on the member list", which is both wrong and
+  // alarming. Exact match only, scoped to this gym.
+  //
+  // Safe as a lookup: finding a candidate is not the same as claiming one.
+  // claim() still demands the last 4 digits of the registered mobile, so a
+  // known code on its own cannot bind a device.
+  const byCode = await pgPool.query(
+    `SELECT id, full_name, phone FROM gym_members
+      WHERE gym_id = $1 AND member_code = $2 AND status = 'active'`,
+    [gym.id, raw]
+  );
+  if (byCode.rows.length > 0) {
+    return {
+      gymName: gym.name,
+      matchedBy: 'code',
+      candidates: byCode.rows.map((m) => ({
+        id: m.id,
+        fullName: m.full_name,
+        phoneHint: phoneHint(m.phone),
+        claimable: phoneKey(m.phone).length >= 4,
+      })),
+    };
+  }
+
   if (!looksLikePhone && raw.length < NAME_SEARCH_MIN_CHARS) {
-    throw err(400, `Enter your full mobile number, or at least ${NAME_SEARCH_MIN_CHARS} letters of your name.`);
+    throw err(400, `Enter your mobile number, your member code, or at least ${NAME_SEARCH_MIN_CHARS} letters of your name.`);
   }
 
   const result = looksLikePhone
@@ -167,6 +194,7 @@ exports.search = async ({ gymCode, query }) => {
       );
 
   if (result.rows.length === 0) throw err(404, NOT_ON_LIST);
+
 
   return {
     gymName: gym.name,
@@ -371,7 +399,11 @@ const recordVisit = async ({ gymId, memberId, gym, at, method, recordedBy = null
   const scanAt = at || new Date();
   const heldForSeconds = (scanAt.getTime() - new Date(existing.check_in_at).getTime()) / 1000;
   if (heldForSeconds < gym.rescan_grace_seconds) {
-    return { outcome: SCAN_OUTCOME.DUPLICATE_IGNORED, visit: existing };
+    return {
+      outcome: SCAN_OUTCOME.DUPLICATE_IGNORED,
+      visit: existing,
+      graceSecondsRemaining: Math.max(0, Math.ceil(gym.rescan_grace_seconds - heldForSeconds)),
+    };
   }
 
   const closed = await pgPool.query(
@@ -411,6 +443,17 @@ exports.getState = async ({ gymCode, deviceToken }) => {
   const subscription = await getCurrentSubscription(member.id, gym.timezone);
   const visit = await todaysVisit(member.id, gym.timezone, null);
 
+  // How much of the re-scan grace window is left on an open visit.
+  //
+  // Sent so the screen can disable the button and count down, instead of
+  // offering "Check out" and then having the server ignore the tap. A button
+  // that promises something the server will refuse is worse than no button.
+  let graceSecondsRemaining = 0;
+  if (visit && !visit.check_out_at) {
+    const elapsed = (Date.now() - new Date(visit.check_in_at).getTime()) / 1000;
+    graceSecondsRemaining = Math.max(0, Math.ceil(gym.rescan_grace_seconds - elapsed));
+  }
+
   return {
     gymName: gym.name,
     recognised: true,
@@ -427,9 +470,11 @@ exports.getState = async ({ gymCode, deviceToken }) => {
       checkInAt: visit.check_in_at,
       checkOutAt: visit.check_out_at,
       method: visit.method,
+      graceSecondsRemaining,
     },
     // What the single button should do. The server decides, never the client.
     nextAction: !visit ? 'check_in' : visit.check_out_at ? 'none' : 'check_out',
+    graceSecondsRemaining,
     summary: await attendanceSummary(member.id, subscription, gym),
   };
 };
@@ -462,7 +507,7 @@ exports.scan = async ({ gymCode, deviceToken, clientTime }) => {
     };
   }
 
-  const { outcome, visit } = await recordVisit({
+  const { outcome, visit, graceSecondsRemaining } = await recordVisit({
     gymId: gym.id,
     memberId: member.id,
     gym,
@@ -472,6 +517,7 @@ exports.scan = async ({ gymCode, deviceToken, clientTime }) => {
 
   return {
     outcome,
+    graceSecondsRemaining: graceSecondsRemaining ?? 0,
     gymName: gym.name,
     member: publicMember(member),
     visit: visit && {

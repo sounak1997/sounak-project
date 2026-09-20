@@ -1,12 +1,14 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, inject, signal, computed, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
+import { AuthService } from '../core/auth.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   Candidate,
   CheckinService,
   CheckinState,
+  MemberAccountService,
   PaymentService,
   Plan,
   ScanResult,
@@ -14,7 +16,7 @@ import {
 
 type Phase =
   | 'loading' | 'ready' | 'identify' | 'choose' | 'verify' | 'result' | 'blocked'
-  | 'plans' | 'paying';
+  | 'plans' | 'paying' | 'signup';
 
 /**
  * The gym door screen — the whole member-facing product.
@@ -40,10 +42,12 @@ type Phase =
   templateUrl: './checkin.page.html',
   styleUrl: './checkin.page.scss',
 })
-export class CheckinPage {
+export class CheckinPage implements OnDestroy {
   private route = inject(ActivatedRoute);
   private api = inject(CheckinService);
   private payments = inject(PaymentService);
+  private accounts = inject(MemberAccountService);
+  private auth = inject(AuthService);
 
   readonly gymCode = signal<string>('');
   readonly phase = signal<Phase>('loading');
@@ -64,6 +68,24 @@ export class CheckinPage {
   readonly onlinePaymentAvailable = signal(false);
   readonly payNotice = signal('');
 
+  // Optional online access
+  readonly canSignUp = signal(false);
+  readonly signupEmail = signal('');
+  readonly signupPassword = signal('');
+  readonly signupDone = signal(false);
+
+  /**
+   * Seconds until check-out is allowed, ticking down locally.
+   *
+   * Exists so the button never offers something the server will refuse: inside
+   * the re-scan grace window a tap is ignored as an accidental double scan, and
+   * a member who was told "Check out" and then got "Already checked in" has
+   * every reason to think the app is broken.
+   */
+  readonly graceLeft = signal(0);
+  private graceTimer?: ReturnType<typeof setInterval>;
+  private returnTimer?: ReturnType<typeof setTimeout>;
+
   readonly gymName = computed(() => this.result()?.gymName ?? this.state()?.gymName ?? 'Gym');
 
   constructor() {
@@ -81,9 +103,31 @@ export class CheckinPage {
   private async load(): Promise<void> {
     this.phase.set('loading');
     try {
-      const state = await this.api.state(this.gymCode());
+      let state = await this.api.state(this.gymCode());
+
+      // Not recognised, but signed in? Their session already proves who they
+      // are — far better evidence than the phone lookup we would otherwise ask
+      // for. Being asked to identify yourself seconds after signing in reads as
+      // the app having forgotten you.
+      if (!state.recognised && this.auth.token) {
+        if (await this.accounts.bindFromSession(this.gymCode())) {
+          state = await this.api.state(this.gymCode());
+        }
+      }
+
       this.state.set(state);
+      this.startGraceCountdown(state.graceSecondsRemaining ?? 0);
       this.phase.set(state.recognised ? 'ready' : 'identify');
+
+      // Only offered to a recognised member who has not already set one up.
+      if (state.recognised) {
+        try {
+          const account = await this.accounts.state(this.gymCode());
+          this.canSignUp.set(account.recognised && !account.hasAccount);
+        } catch {
+          this.canSignUp.set(false);
+        }
+      }
     } catch (err) {
       this.error.set(this.messageFrom(err, 'Could not reach the gym. Please try again.'));
       this.phase.set('blocked');
@@ -156,7 +200,18 @@ export class CheckinPage {
     try {
       const res = await this.api.scan(this.gymCode());
       this.result.set(res);
+      this.startGraceCountdown(res.graceSecondsRemaining ?? 0);
       this.phase.set('result');
+
+      // Return on its own. The member has tapped once and is walking away —
+      // making them tap "Done" to dismiss a confirmation is a tap that exists
+      // only for the app's benefit. Outcomes that need reading or acting on
+      // (an expired membership, the renewal options) stay put.
+      const transient = ['checked_in', 'checked_out', 'duplicate_ignored', 'already_complete'];
+      if (transient.includes(res.outcome)) {
+        clearTimeout(this.returnTimer);
+        this.returnTimer = setTimeout(() => void this.done(), 6000);
+      }
     } catch (err) {
       const status = err instanceof HttpErrorResponse ? err.status : 0;
       if (status === 403) {
@@ -174,6 +229,7 @@ export class CheckinPage {
 
   /** After a result, go back to the live state so the button is right again. */
   async done(): Promise<void> {
+    clearTimeout(this.returnTimer);
     this.result.set(null);
     await this.load();
   }
@@ -185,6 +241,52 @@ export class CheckinPage {
     this.chosen.set(null);
     this.error.set('');
     this.phase.set('identify');
+  }
+
+  /** Ticks the grace window down and re-enables the button when it expires. */
+  private startGraceCountdown(seconds: number): void {
+    clearInterval(this.graceTimer);
+    this.graceLeft.set(Math.max(0, seconds));
+    if (seconds <= 0) return;
+    this.graceTimer = setInterval(() => {
+      const left = this.graceLeft() - 1;
+      this.graceLeft.set(Math.max(0, left));
+      if (left <= 0) clearInterval(this.graceTimer);
+    }, 1000);
+  }
+
+  ngOnDestroy(): void {
+    clearInterval(this.graceTimer);
+    clearTimeout(this.returnTimer);
+  }
+
+  // --- optional online access ----------------------------------------------
+
+  openSignUp(): void {
+    this.signupEmail.set('');
+    this.signupPassword.set('');
+    this.error.set('');
+    this.phase.set('signup');
+  }
+
+  async submitSignUp(): Promise<void> {
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      await this.accounts.signUp(this.gymCode(), this.signupEmail().trim(), this.signupPassword());
+      this.signupDone.set(true);
+      this.canSignUp.set(false);
+      await this.load();
+    } catch (err) {
+      this.error.set(this.messageFrom(err, 'Could not set that up. Please try again.'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  cancelSignUp(): void {
+    this.error.set('');
+    this.phase.set('ready');
   }
 
   // --- renewal --------------------------------------------------------------
@@ -272,7 +374,7 @@ export class CheckinPage {
     switch (outcome) {
       case 'checked_in': return "You're checked in";
       case 'checked_out': return 'Checked out';
-      case 'duplicate_ignored': return 'Already checked in';
+      case 'duplicate_ignored': return "You're already checked in";
       case 'already_complete': return "That's you done for today";
       case 'no_subscription': return 'No active membership';
       case 'subscription_expired': return 'Your membership has expired';

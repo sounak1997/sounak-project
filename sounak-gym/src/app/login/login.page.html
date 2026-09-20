@@ -1,7 +1,7 @@
 <div class="page login">
   <div class="wrap">
     <div class="card">
-      <h2 class="title">Gym Login</h2>
+      <h2 class="title">Sign in</h2>
       <div class="accent-bar accent-bar--left"></div>
 
       @if (error()) {
@@ -9,13 +9,17 @@
       }
 
       <div class="field">
-        <label for="email">Email</label>
+        <label for="identifier">Mobile number or email</label>
         <input
-          id="email"
-          type="email"
+          id="identifier"
+          type="text"
+          inputmode="text"
+          autocapitalize="none"
+          autocorrect="off"
           autocomplete="username"
-          [ngModel]="email()"
-          (ngModelChange)="email.set($event)"
+          placeholder="e.g. 9609987874"
+          [ngModel]="identifier()"
+          (ngModelChange)="identifier.set($event)"
           (keyup.enter)="submit()" />
       </div>
 
@@ -35,7 +39,12 @@
       </button>
 
       <p class="muted small mt">
-        Members don't sign in — scan the QR at the entrance instead.
+        New here? <a routerLink="/signup">Create your login</a> using the member
+        code your gym gave you.
+      </p>
+      <p class="muted small">
+        You never need to sign in just to mark attendance — scanning the QR at
+        the gym is enough on its own.
       </p>
     </div>
   </div>

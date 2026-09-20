@@ -13,6 +13,8 @@ import { AuthService } from './auth.service';
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
+  // /checkin/* is the public door flow and must never carry an owner's or a
+  // member's token. /me/* is the opposite: authenticated by design.
   const isPublicCheckin = req.url.includes('/api/gym/checkin');
   const token = auth.token;
 

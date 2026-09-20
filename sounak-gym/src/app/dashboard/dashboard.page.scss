@@ -86,3 +86,13 @@
 @media (max-width: 720px) {
   .card table { display: block; overflow-x: auto; white-space: nowrap; }
 }
+
+.code {
+  padding: 2px 7px;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}

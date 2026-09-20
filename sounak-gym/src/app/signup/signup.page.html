@@ -1,0 +1,75 @@
+<div class="page login">
+  <div class="wrap">
+    <div class="card">
+      <h2 class="title">Create your login</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      <p class="muted small mb">
+        For members who already train here. Your gym can give you your member
+        code — it's on your membership record. You'll sign in with your mobile
+        number afterwards.
+      </p>
+
+      @if (error()) { <div class="alert alert--error">{{ error() }}</div> }
+
+      <div class="field">
+        <label for="code">Member code</label>
+        <input
+          id="code"
+          type="text"
+          autocapitalize="none"
+          autocorrect="off"
+          placeholder="e.g. lHe-Q1-M"
+          [ngModel]="memberCode()"
+          (ngModelChange)="memberCode.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="phone">Mobile number</label>
+        <input
+          id="phone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="tel"
+          placeholder="The number your gym has"
+          [ngModel]="phone()"
+          (ngModelChange)="phone.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="email">Email <span class="muted">(optional)</span></label>
+        <input
+          id="email"
+          type="email"
+          autocomplete="email"
+          placeholder="Leave blank to sign in with your mobile"
+          [ngModel]="email()"
+          (ngModelChange)="email.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="password">Choose a password</label>
+        <input
+          id="password"
+          type="password"
+          autocomplete="new-password"
+          placeholder="At least 8 characters"
+          [ngModel]="password()"
+          (ngModelChange)="password.set($event)"
+          (keyup.enter)="submit()" />
+      </div>
+
+      <button class="btn" [disabled]="busy() || !canSubmit()" (click)="submit()">
+        {{ busy() ? 'Creating…' : 'Create account' }}
+      </button>
+
+      <p class="muted small mt">
+        Already have a login? <a routerLink="/login">Sign in</a>
+      </p>
+      <p class="muted small">
+        At the gym right now? Scan the QR by the entrance — it recognises you and
+        sets this up with nothing to type.
+      </p>
+    </div>
+  </div>
+</div>

@@ -19,11 +19,32 @@ export const routes: Routes = [
     title: 'Gym login',
   },
 
+  /**
+   * Member sign-up. Public: the whole point is that someone who is not at the
+   * gym, and has no session, can create a login.
+   */
+  {
+    path: 'signup',
+    loadComponent: () => import('./signup/signup.page').then((m) => m.SignupPage),
+    title: 'Create your login',
+  },
+
   {
     path: 'dashboard',
     loadComponent: () => import('./dashboard/dashboard.page').then((m) => m.DashboardPage),
     canActivate: [authGuard],
     title: 'Gym console',
+  },
+
+  /**
+   * A signed-in member's own record. Guarded like the console, but a member is
+   * not staff — the API scopes these reads by gym_members.account_id.
+   */
+  {
+    path: 'me',
+    loadComponent: () => import('./member/member.page').then((m) => m.MemberPage),
+    canActivate: [authGuard],
+    title: 'My membership',
   },
 
   { path: '', redirectTo: 'login', pathMatch: 'full' },

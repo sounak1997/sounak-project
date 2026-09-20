@@ -420,3 +420,47 @@ CREATE TABLE IF NOT EXISTS gym_webhook_events (
 
 CREATE INDEX IF NOT EXISTS gym_webhook_events_received_idx
   ON gym_webhook_events (received_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- MEMBER ACCOUNTS (added 2026-09-20)
+--
+-- Members still do not NEED an account — scanning the door QR stays the
+-- everyday path and requires no login, which is the whole point of the device
+-- token. But a member may now optionally create one, to sign in and see their
+-- own attendance history, payments and renewals from anywhere.
+--
+-- No new table: a member's login is a `gym_accounts` row, the same table gym
+-- staff use. What someone IS follows from what points at their account —
+--
+--   a gym_staff row      -> they administer that gym
+--   gym_members.account_id -> they train at that gym
+--   both                 -> an owner who also trains, which works naturally
+--
+-- A second "members" credential table would have duplicated password hashing,
+-- login, lockout and reset for no gain.
+-- ---------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS gym_members_account_idx
+  ON gym_members (account_id) WHERE account_id IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- SIGN IN WITH EMAIL *OR* MOBILE (added 2026-09-20)
+--
+-- Members remember their mobile number; many will not have an email they use.
+-- Worse, the number is already on their membership record, so demanding an
+-- email at sign-up was asking for something we neither needed nor could check.
+--
+-- So `email` becomes optional and the phone becomes a login identifier in its
+-- own right. An account must still carry at least one of the two, or there
+-- would be no way to sign in to it at all.
+-- ---------------------------------------------------------------------------
+ALTER TABLE gym_accounts ALTER COLUMN email DROP NOT NULL;
+
+-- Uniqueness on the NORMALISED number, so "+91 96099 87874", "09609987874" and
+-- "9609987874" cannot become three accounts that all answer to the same phone.
+CREATE UNIQUE INDEX IF NOT EXISTS gym_accounts_phone_uq
+  ON gym_accounts (right(regexp_replace(phone, '\D', '', 'g'), 10))
+  WHERE phone IS NOT NULL;
+
+ALTER TABLE gym_accounts DROP CONSTRAINT IF EXISTS gym_accounts_identifier_ck;
+ALTER TABLE gym_accounts ADD CONSTRAINT gym_accounts_identifier_ck
+  CHECK (email IS NOT NULL OR phone IS NOT NULL);

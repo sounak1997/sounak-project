@@ -10,7 +10,12 @@ const gymAuthService = require('../services/gymAuthService');
 // @route   POST /api/gym/auth/login
 // @access  Public
 exports.login = asyncHandler(async (req, res) => {
-  const result = await gymAuthService.login({ email: req.body.email, password: req.body.password });
+  // `identifier` is either an email or a mobile number; `email` is still
+  // accepted so any existing caller keeps working.
+  const result = await gymAuthService.login({
+    identifier: req.body.identifier || req.body.email,
+    password: req.body.password,
+  });
   res.status(200).json({ success: true, data: result });
 });
 
@@ -18,10 +23,15 @@ exports.login = asyncHandler(async (req, res) => {
 // @route   GET /api/gym/auth/me
 // @access  Gym account
 exports.me = asyncHandler(async (req, res) => {
-  const gyms = await gymAuthService.accessibleGyms(req.gymAccount);
+  // Both, for the same reason login returns both: an account may staff gyms,
+  // train at gyms, or do both, and the client decides its home screen from this.
+  const [gyms, memberships] = await Promise.all([
+    gymAuthService.accessibleGyms(req.gymAccount),
+    gymAuthService.accessibleMemberships(req.gymAccount),
+  ]);
   res.status(200).json({
     success: true,
-    data: { account: gymAuthService.publicAccount(req.gymAccount), gyms },
+    data: { account: gymAuthService.publicAccount(req.gymAccount), gyms, memberships },
   });
 });
 

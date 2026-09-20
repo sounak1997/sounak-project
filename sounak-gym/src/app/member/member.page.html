@@ -1,0 +1,119 @@
+<div class="page">
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div>
+        <div class="topbar__gym">{{ overview()?.membership?.gymName ?? 'My membership' }}</div>
+        <div class="topbar__who">{{ auth.account()?.name }}</div>
+      </div>
+      <div class="topbar__right">
+        @if (auth.isStaff()) {
+          <a class="btn btn--ghost btn--sm" routerLink="/dashboard">Owner console</a>
+        }
+        <button class="btn btn--ghost btn--sm" (click)="auth.signOut()">Sign out</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    @if (error()) { <div class="alert alert--error">{{ error() }}</div> }
+
+    @if (auth.memberships().length > 1) {
+      <div class="card">
+        <h2>Your gyms</h2>
+        @for (m of auth.memberships(); track m.member_id) {
+          <button
+            class="choice"
+            [class.choice--on]="m.member_id === activeMemberId()"
+            (click)="select(m.member_id)">
+            <span class="choice__name">{{ m.gym_name }}</span>
+          </button>
+        }
+      </div>
+    }
+
+    @if (loading()) {
+      <div class="card center"><p class="muted">Loading…</p></div>
+    } @else if (overview(); as o) {
+
+      <div class="card">
+        <p class="muted">Membership</p>
+        <h2 class="name">{{ o.membership.fullName }}</h2>
+
+        @if (o.subscription) {
+          @if (o.subscription.isExpired) {
+            <div class="alert alert--warn mt-s">
+              Your {{ o.subscription.planName }} ended on {{ day(o.subscription.endDate) }}.
+            </div>
+          } @else {
+            <p class="muted small">
+              {{ o.subscription.planName }} · valid to {{ day(o.subscription.endDate) }}
+              <span class="pill" [class]="o.subscription.daysRemaining <= 7 ? 'pill pill--warn' : 'pill pill--ok'">
+                {{ o.subscription.daysRemaining }} days left
+              </span>
+            </p>
+          }
+        } @else {
+          <div class="alert alert--warn mt-s">No active membership yet.</div>
+        }
+
+        <!-- Checking in is still a scan. The account never replaces it. -->
+        <button class="btn mt" (click)="goToCheckin()">Open check-in screen</button>
+        @if (o.membership.gymPhone) {
+          <a class="btn btn--ghost mt-s" [href]="'tel:' + o.membership.gymPhone">Call the gym</a>
+        }
+      </div>
+
+      @if (o.summary && o.summary.percentage !== null) {
+        <div class="card">
+          <h2>Your attendance</h2>
+          <div class="pct">{{ o.summary.percentage }}%</div>
+          <div class="bar"><div class="bar__fill" [style.width.%]="o.summary.percentage"></div></div>
+          <p class="muted small">
+            {{ o.summary.attendedDays }} of {{ o.summary.openDays }} days this membership
+          </p>
+        </div>
+      }
+
+      <div class="card">
+        <h2>Recent visits</h2>
+        @if (!o.visits.length) {
+          <p class="muted">No visits recorded yet.</p>
+        } @else {
+          <table>
+            <thead><tr><th>Date</th><th>In</th><th>Out</th></tr></thead>
+            <tbody>
+              @for (v of o.visits; track v.visit_date) {
+                <tr>
+                  <td><strong>{{ day(v.visit_date) }}</strong></td>
+                  <td>{{ time(v.check_in_at) }}</td>
+                  <td>{{ v.check_out_at ? time(v.check_out_at) : '—' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+
+      <div class="card">
+        <h2>Payments</h2>
+        @if (!o.payments.length) {
+          <p class="muted">No payments recorded yet.</p>
+        } @else {
+          <table>
+            <thead><tr><th>Plan</th><th>Valid to</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody>
+              @for (p of o.payments; track p.id) {
+                <tr>
+                  <td><strong>{{ p.plan_name }}</strong></td>
+                  <td>{{ day(p.end_date) }}</td>
+                  <td>₹{{ p.amount }}</td>
+                  <td><span class="pill" [class]="'pill ' + payPill(p.status)">{{ payLabel(p.status) }}</span></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        }
+      </div>
+    }
+  </div>
+</div>

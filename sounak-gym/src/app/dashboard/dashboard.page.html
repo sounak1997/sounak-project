@@ -155,15 +155,19 @@
         <h2>Members</h2>
         <p class="muted mb">
           "Mark present" is for members without a smartphone — it records the same visit a scan would.
+          The <strong>code</strong> is what a member needs to create their own login at
+          <em>/signup</em>; read it out when they ask.
         </p>
         <table>
           <thead>
-            <tr><th>Name</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
+            <tr><th>Name</th><th>Code</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
             @for (m of members(); track m.id) {
               <tr>
                 <td><strong>{{ m.full_name }}</strong></td>
+                <!-- What a member needs to create a login from their own device. -->
+                <td><code class="code">{{ m.member_code }}</code></td>
                 <td class="muted">{{ m.phone }}</td>
                 <td>{{ m.plan_name ?? '—' }}</td>
                 <td>{{ day(m.end_date) }}</td>

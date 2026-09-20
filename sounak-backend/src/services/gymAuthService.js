@@ -65,14 +65,25 @@ exports.publicAccount = publicAccount;
 // explicit gym_staff row. So this is safe to call from the platform admin's
 // "add an owner" screen and from the seed script alike.
 exports.createAccount = async ({ name, email, password, phone, platformAdmin = false }) => {
-  if (!name || !email || !password) throw badRequest('name, email and password are required.');
+  if (!name || !password) throw badRequest('name and password are required.');
+  // Either identifier will do, but one of them must exist or the account could
+  // never be signed in to.
+  if (!email && !phone) throw badRequest('An email address or a mobile number is required.');
   if (String(password).length < 8) throw badRequest('Password must be at least 8 characters.');
 
-  const normalizedEmail = String(email).trim().toLowerCase();
-  const existing = await pgPool.query('SELECT id FROM gym_accounts WHERE email = $1', [
-    normalizedEmail,
-  ]);
-  if (existing.rows[0]) throw badRequest(`An account already exists for ${normalizedEmail}.`);
+  const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+  if (normalizedEmail) {
+    const existing = await pgPool.query('SELECT id FROM gym_accounts WHERE email = $1', [normalizedEmail]);
+    if (existing.rows[0]) throw badRequest(`An account already exists for ${normalizedEmail}.`);
+  }
+  if (phone) {
+    const existingPhone = await pgPool.query(
+      `SELECT id FROM gym_accounts
+        WHERE right(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10) = $1`,
+      [phoneKey(phone)]
+    );
+    if (existingPhone.rows[0]) throw badRequest('An account already exists for that mobile number.');
+  }
 
   const passwordHash = await bcrypt.hash(password, 10);
   const result = await pgPool.query(
@@ -84,12 +95,30 @@ exports.createAccount = async ({ name, email, password, phone, platformAdmin = f
   return publicAccount(result.rows[0]);
 };
 
-exports.login = async ({ email, password }) => {
-  if (!email || !password) throw badRequest('Email and password are required.');
+// 10+ digits once punctuation is stripped: treated as a mobile number rather
+// than an email. Nobody's email address is ten digits and nothing else.
+const phoneKey = (value) => String(value || '').replace(/\D/g, '').slice(-10);
+const looksLikePhone = (value) => phoneKey(value).length >= 10 && !String(value).includes('@');
 
-  const result = await pgPool.query('SELECT * FROM gym_accounts WHERE email = $1', [
-    String(email).trim().toLowerCase(),
-  ]);
+/**
+ * Sign in with EITHER an email or a mobile number.
+ *
+ * `identifier` is the field to use; `email` is still accepted so nothing that
+ * called this before has to change.
+ */
+exports.login = async ({ identifier, email, phone, password }) => {
+  const given = identifier || email || phone;
+  if (!given || !password) throw badRequest('Enter your email or mobile number, and your password.');
+
+  const result = looksLikePhone(given)
+    ? await pgPool.query(
+        `SELECT * FROM gym_accounts
+          WHERE right(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10) = $1`,
+        [phoneKey(given)]
+      )
+    : await pgPool.query('SELECT * FROM gym_accounts WHERE email = $1', [
+        String(given).trim().toLowerCase(),
+      ]);
   const account = result.rows[0];
 
   // Same message and a real bcrypt comparison whether or not the account
@@ -98,14 +127,22 @@ exports.login = async ({ email, password }) => {
   const hash = account ? account.password_hash : '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
   const matches = await bcrypt.compare(password, hash);
 
-  if (!account || !matches) throw unauthorized('Incorrect email or password.');
+  if (!account || !matches) throw unauthorized('Incorrect email/mobile number or password.');
   if (account.status !== 'active') throw forbidden('This account has been suspended.');
 
-  const gyms = await exports.accessibleGyms(account);
+  // Both are returned because one account can be either, or both: a gym owner
+  // who also trains is an ordinary case, not an edge case. The client decides
+  // which home screen to show from what comes back.
+  const [gyms, memberships] = await Promise.all([
+    exports.accessibleGyms(account),
+    exports.accessibleMemberships(account),
+  ]);
+
   return {
     token: jwt.sign({ sub: account.id, kind: TOKEN_KIND }, secret(), { expiresIn: TOKEN_TTL }),
     account: publicAccount(account),
     gyms,
+    memberships,
   };
 };
 
@@ -170,6 +207,45 @@ exports.accessibleGyms = async (account) => {
     [account.id]
   );
   return result.rows;
+};
+
+// The memberships this account holds — the member-side counterpart of
+// accessibleGyms. A member of two gyms on the platform gets both, each with its
+// own subscription state.
+//
+// Note this deliberately does NOT go through gym_staff: being a member of a gym
+// grants a view of your OWN record there and nothing else. Administering it is
+// a separate grant.
+exports.accessibleMemberships = async (account) => {
+  const result = await pgPool.query(
+    `SELECT m.id AS member_id, m.full_name, m.member_code, m.joined_on, m.status,
+            g.id AS gym_id, g.name AS gym_name, g.gym_code, g.timezone, g.phone AS gym_phone
+       FROM gym_members m
+       JOIN gyms g ON g.id = m.gym_id
+      WHERE m.account_id = $1 AND m.status = 'active'
+      ORDER BY g.name ASC`,
+    [account.id]
+  );
+  return result.rows;
+};
+
+// Resolves one of this account's own memberships. The member-side equivalent of
+// assertGymAccess: it is what stops a signed-in member reading someone else's
+// record by passing a different member id.
+exports.assertMembership = async (account, memberId) => {
+  const result = await pgPool.query(
+    `SELECT m.*, g.name AS gym_name, g.timezone, g.phone AS gym_phone, g.gym_code
+       FROM gym_members m
+       JOIN gyms g ON g.id = m.gym_id
+      WHERE m.id = $1 AND m.account_id = $2 AND m.status = 'active'`,
+    [memberId, account.id]
+  );
+  if (!result.rows[0]) {
+    const e = new Error('Membership not found.');
+    e.statusCode = 404;
+    throw e;
+  }
+  return result.rows[0];
 };
 
 // THE tenancy boundary. Every owner-side route resolves its gym through this,

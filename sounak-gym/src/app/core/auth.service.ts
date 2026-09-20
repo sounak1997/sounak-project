@@ -12,6 +12,17 @@ export interface GymSummary {
   staff_role: string;
 }
 
+export interface Membership {
+  member_id: string;
+  full_name: string;
+  member_code: string;
+  joined_on: string;
+  gym_id: string;
+  gym_name: string;
+  gym_code: string;
+  gym_phone: string | null;
+}
+
 export interface GymAccount {
   id: string;
   name: string;
@@ -38,12 +49,24 @@ export class AuthService {
 
   readonly account = signal<GymAccount | null>(null);
   readonly gyms = signal<GymSummary[]>([]);
+  readonly memberships = signal<Membership[]>([]);
   readonly activeGymId = signal<string | null>(this.read(GYM_KEY));
   readonly isSignedIn = computed(() => !!this.account());
 
   readonly activeGym = computed(
     () => this.gyms().find((g) => g.id === this.activeGymId()) ?? this.gyms()[0] ?? null,
   );
+
+  /** One account can be both — a gym owner who also trains is an ordinary case. */
+  readonly isStaff = computed(() => this.gyms().length > 0);
+  readonly isMember = computed(() => this.memberships().length > 0);
+
+  /**
+   * Where to send someone after they sign in. Members are the common case, so
+   * an account that is both lands on the console — an owner opening the app is
+   * almost always there to work, and their own record is one tap away.
+   */
+  readonly homeRoute = computed(() => (this.isStaff() ? '/dashboard' : '/me'));
 
   /** Every read is wrapped: storage throws in a private window or when site data is blocked. */
   private read(key: string): string | null {
@@ -67,16 +90,43 @@ export class AuthService {
     return this.read(TOKEN_KEY);
   }
 
-  async login(email: string, password: string): Promise<void> {
+  /** `identifier` is an email address or a mobile number — either works. */
+  async login(identifier: string, password: string): Promise<void> {
     const res = await firstValueFrom(
-      this.http.post<{ data: { token: string; account: GymAccount; gyms: GymSummary[] } }>(
-        '/api/gym/auth/login',
-        { email, password },
-      ),
+      this.http.post<{
+        data: { token: string; account: GymAccount; gyms: GymSummary[]; memberships: Membership[] };
+      }>('/api/gym/auth/login', { identifier, password }),
     );
     this.write(TOKEN_KEY, res.data.token);
     this.account.set(res.data.account);
     this.gyms.set(res.data.gyms);
+    this.memberships.set(res.data.memberships ?? []);
+    this.selectGym(res.data.gyms[0]?.id ?? null);
+  }
+
+  /**
+   * Standalone sign-up: member code + mobile, then email and password.
+   *
+   * For a member who is not at the gym. The response is a full session, so they
+   * land signed in rather than being bounced to a login form to retype the
+   * password they just chose.
+   */
+  async signUp(fields: {
+    memberCode: string;
+    phone: string;
+    /** Optional: the mobile number doubles as the login identifier. */
+    email?: string;
+    password: string;
+  }): Promise<void> {
+    const res = await firstValueFrom(
+      this.http.post<{
+        data: { token: string; account: GymAccount; gyms: GymSummary[]; memberships: Membership[] };
+      }>('/api/gym/auth/signup', fields),
+    );
+    this.write(TOKEN_KEY, res.data.token);
+    this.account.set(res.data.account);
+    this.gyms.set(res.data.gyms);
+    this.memberships.set(res.data.memberships ?? []);
     this.selectGym(res.data.gyms[0]?.id ?? null);
   }
 
@@ -88,10 +138,13 @@ export class AuthService {
     if (!this.token) return false;
     try {
       const res = await firstValueFrom(
-        this.http.get<{ data: { account: GymAccount; gyms: GymSummary[] } }>('/api/gym/auth/me'),
+        this.http.get<{
+          data: { account: GymAccount; gyms: GymSummary[]; memberships: Membership[] };
+        }>('/api/gym/auth/me'),
       );
       this.account.set(res.data.account);
       this.gyms.set(res.data.gyms);
+      this.memberships.set(res.data.memberships ?? []);
       if (!this.activeGymId() && res.data.gyms.length) this.selectGym(res.data.gyms[0].id);
       return true;
     } catch {
@@ -111,6 +164,7 @@ export class AuthService {
     this.write(GYM_KEY, null);
     this.account.set(null);
     this.gyms.set([]);
+    this.memberships.set([]);
     this.activeGymId.set(null);
     if (redirect) this.router.navigate(['/login']);
   }

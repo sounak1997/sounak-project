@@ -32,13 +32,13 @@
         <p class="muted mb">
           Just this once — after this, your phone is remembered and check-in is one tap.
         </p>
-        <label for="q">Mobile number or name</label>
+        <label for="q">Mobile number, member code, or name</label>
         <input
           id="q"
           type="text"
           inputmode="text"
           autocomplete="tel"
-          placeholder="e.g. 9876543210 or Arjun"
+          placeholder="e.g. 9609987874, 123456, or your name"
           [ngModel]="query()"
           (ngModelChange)="query.set($event)"
           (keyup.enter)="search()" />
@@ -118,9 +118,20 @@
           </button>
         }
         @if (s.nextAction === 'check_out') {
-          <button class="btn btn--action btn--out mt" [disabled]="busy()" (click)="mark()">
-            @if (busy()) { <span class="spinner"></span> } @else { Check out }
+          <button
+            class="btn btn--action btn--out mt"
+            [disabled]="busy() || graceLeft() > 0"
+            (click)="mark()">
+            @if (busy()) { <span class="spinner"></span> }
+            @else if (graceLeft() > 0) { Check out in {{ graceLeft() }}s }
+            @else { Check out }
           </button>
+          @if (graceLeft() > 0) {
+            <p class="muted small center mt-s">
+              You've only just arrived. Check-out unlocks shortly — this stops an
+              accidental second scan ending your visit straight away.
+            </p>
+          }
         }
         @if (s.nextAction === 'none') {
           <div class="alert alert--success mt">
@@ -143,6 +154,31 @@
           <div class="bar"><div class="bar__fill" [style.width.%]="s.summary.percentage"></div></div>
           <p class="muted small">
             {{ s.summary.attendedDays }} of {{ s.summary.openDays }} days this membership
+          </p>
+        </div>
+      }
+
+      @if (signupDone()) {
+        <div class="alert alert--success">
+          Online access is set up. You can sign in from any device — though you'll
+          never need to just to check in here.
+        </div>
+      }
+
+      <!-- Strictly optional: scanning already works without any of this. -->
+      @if (canSignUp()) {
+        <div class="card">
+          <h2>Want to see your history?</h2>
+          <p class="muted mb">
+            Set up a password to sign in from any device and see your attendance,
+            payments and renewals. Checking in here will still just be a tap.
+          </p>
+          <button class="btn btn--ghost" (click)="openSignUp()">Set up online access</button>
+          <!-- Shown so a member can also sign up later from a laptop, where
+               this phone's stored token is not available to prove who they are. -->
+          <p class="muted small mt-s">
+            Your member code is <code class="code">{{ s.member?.memberCode }}</code> —
+            you'll need it if you sign up from another device.
           </p>
         </div>
       }
@@ -174,7 +210,15 @@
           <p class="big">{{ time(r.visit?.checkInAt) }} → {{ time(r.visit?.checkOutAt) }}</p>
         }
         @if (r.outcome === 'duplicate_ignored') {
-          <p class="muted">You're already checked in at {{ time(r.visit?.checkInAt) }}.</p>
+          <p class="big">since {{ time(r.visit?.checkInAt) }}</p>
+          @if (graceLeft() > 0) {
+            <p class="muted">
+              You can check out in {{ graceLeft() }}s — that pause stops an accidental
+              second scan ending your visit the moment it starts.
+            </p>
+          } @else {
+            <p class="muted">Tap Done, then check out.</p>
+          }
         }
         @if (r.outcome === 'already_complete') {
           <p class="muted">
@@ -207,8 +251,50 @@
         }
 
         <button class="btn btn--ghost mt" (click)="done()">Done</button>
+        <p class="muted small mt-s">This screen returns on its own in a few seconds.</p>
       </div>
     }
+    @if (phase() === 'signup') {
+      <div class="card">
+        <h2>Set up online access</h2>
+        <p class="muted mb">
+          We already know who you are on this phone, so there's nothing to verify —
+          just pick a password. You'll sign in with your mobile number.
+        </p>
+
+        <div class="field">
+          <label for="su-email">Email <span class="muted">(optional)</span></label>
+          <input
+            id="su-email"
+            type="email"
+            autocomplete="email"
+            placeholder="Leave blank to sign in with your mobile"
+            [ngModel]="signupEmail()"
+            (ngModelChange)="signupEmail.set($event)" />
+        </div>
+
+        <div class="field">
+          <label for="su-pass">Password</label>
+          <input
+            id="su-pass"
+            type="password"
+            autocomplete="new-password"
+            placeholder="At least 8 characters"
+            [ngModel]="signupPassword()"
+            (ngModelChange)="signupPassword.set($event)"
+            (keyup.enter)="submitSignUp()" />
+        </div>
+
+        <button
+          class="btn"
+          [disabled]="busy() || signupPassword().length < 8"
+          (click)="submitSignUp()">
+          {{ busy() ? 'Setting up…' : 'Create my login' }}
+        </button>
+        <button class="btn btn--ghost mt-s" (click)="cancelSignUp()">Not now</button>
+      </div>
+    }
+
     <!-- Plan picker: the member renews on their own phone, at the door. -->
     @if (phase() === 'plans') {
       <div class="card">

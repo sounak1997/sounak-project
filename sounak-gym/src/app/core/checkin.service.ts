@@ -21,8 +21,16 @@ export interface CheckinState {
     isExpired: boolean;
     daysRemaining: number;
   } | null;
-  today?: { visitDate: string; checkInAt: string; checkOutAt: string | null; method: string } | null;
+  today?: {
+    visitDate: string;
+    checkInAt: string;
+    checkOutAt: string | null;
+    method: string;
+    graceSecondsRemaining: number;
+  } | null;
   nextAction?: 'check_in' | 'check_out' | 'none';
+  /** Seconds before check-out is allowed; 0 when it is available now. */
+  graceSecondsRemaining?: number;
   summary?: CheckinSummary | null;
 }
 
@@ -49,6 +57,7 @@ export interface ScanResult {
   subscription?: { planName: string; endDate: string; daysRemaining?: number } | null;
   summary?: CheckinSummary | null;
   gymPhone?: string | null;
+  graceSecondsRemaining?: number;
 }
 
 /**
@@ -75,7 +84,8 @@ export class CheckinService {
     }
   }
 
-  private rememberDevice(gymCode: string, token: string): void {
+  /** Called by MemberAccountService too, when a session binds the device. */
+  rememberDevice(gymCode: string, token: string): void {
     try {
       localStorage.setItem(this.key(gymCode), token);
     } catch {
@@ -302,5 +312,62 @@ export class PaymentService {
       if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
     }
     return 'pending';
+  }
+}
+
+/**
+ * Optional member accounts.
+ *
+ * Nothing here is needed to check in — scanning stays login-free. This is for
+ * the member who wants to sign in from another device and see their own
+ * history, payments and renewals.
+ *
+ * Sign-up needs no OTP because the device has already been verified at the
+ * door: binding it required the last 4 digits of the mobile the gym registered,
+ * so that proof is simply reused.
+ */
+@Injectable({ providedIn: 'root' })
+export class MemberAccountService {
+  private http = inject(HttpClient);
+  private checkin = inject(CheckinService);
+
+  state(gymCode: string): Promise<{ recognised: boolean; hasAccount: boolean; suggestedName?: string }> {
+    return firstValueFrom(
+      this.http.get<{ data: { recognised: boolean; hasAccount: boolean; suggestedName?: string } }>(
+        '/api/gym/checkin/account/state',
+        { params: { g: gymCode, deviceToken: this.checkin.deviceToken(gymCode) ?? '' } },
+      ),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Recognises this browser using the signed-in session, with nothing typed.
+   *
+   * Returns false when there is no session or the account holds no membership
+   * at this gym, in which case the screen falls back to asking who they are.
+   */
+  async bindFromSession(gymCode: string): Promise<boolean> {
+    try {
+      const res = await firstValueFrom(
+        this.http.post<{ data: { deviceToken: string } }>('/api/gym/me/bind-device', { gymCode }),
+      );
+      this.checkin.rememberDevice(gymCode, res.data.deviceToken);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** `email` may be blank — the member's mobile becomes their login identifier. */
+  signUp(gymCode: string, email: string, password: string, name?: string): Promise<void> {
+    return firstValueFrom(
+      this.http.post('/api/gym/checkin/account', {
+        gymCode,
+        deviceToken: this.checkin.deviceToken(gymCode),
+        email: email || undefined,
+        password,
+        name,
+      }),
+    ).then(() => undefined);
   }
 }
