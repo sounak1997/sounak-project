@@ -6,7 +6,9 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "deploy": "ng build --configuration production && wrangler deploy",
+    "preview": "ng build --configuration production && wrangler dev"
   },
   "private": true,
   "packageManager": "npm@11.12.1",

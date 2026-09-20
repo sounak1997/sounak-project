@@ -1,6 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sounak-gym",
+  // Must stay "suvidhaa-gym": that is the worker already published, and the
+  // name fixes the URL (suvidhaa-gym.sounak-project.workers.dev). Matches the
+  // Ionic app's "suvidhaa" naming. Changing it publishes a SECOND worker on a
+  // new URL and leaves whatever is on the old one still live.
+  "name": "suvidhaa-gym",
   "compatibility_date": "2026-09-20",
   "observability": { "enabled": true },
   "assets": {
