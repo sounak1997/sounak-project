@@ -30,6 +30,7 @@ const {
 } = require('../middleware/gymAuthMiddleware');
 
 const checkin = require('../controllers/gymCheckinController');
+const webhooks = require('../controllers/gymWebhookController');
 const auth = require('../controllers/gymAuthController');
 const gym = require('../controllers/gymController');
 
@@ -46,6 +47,25 @@ router.post('/checkin', gymCheckinLimiter, checkin.scan);
 // member's identity, so it is the enumeration surface.
 router.post('/checkin/search', gymIdentifyLimiter, checkin.search);
 router.post('/checkin/claim', gymIdentifyLimiter, checkin.claim);
+
+// Online renewal by UPI. Public in the same sense as the rest of /checkin: no
+// login, the member identified by their device token. That token can start a
+// payment for its OWN membership and read that payment's status — nothing else.
+router.get('/checkin/plans', gymCheckinLimiter, checkin.plans);
+router.post('/checkin/pay/start', gymCheckinLimiter, checkin.startPayment);
+router.post('/checkin/pay/confirm', gymCheckinLimiter, checkin.confirmPayment);
+router.get('/checkin/pay/status', gymCheckinLimiter, checkin.paymentStatus);
+
+// ---------------------------------------------------------------------------
+// GATEWAY WEBHOOK
+// ---------------------------------------------------------------------------
+// No auth middleware, deliberately: a payment gateway cannot sign in. It is
+// authenticated by an HMAC signature over the RAW body, which is why server.js
+// mounts express.raw() for this path ahead of express.json().
+//
+// Not rate limited either — throttling a gateway's retries would drop payment
+// confirmations, and the signature check is what keeps it safe.
+router.post('/webhooks/razorpay', webhooks.razorpay);
 
 // ---------------------------------------------------------------------------
 // Gym owner / staff authentication
@@ -75,6 +95,10 @@ router.get('/gyms/:gymId/members/:memberId', gymStaffOnly, gym.getMember);
 router.put('/gyms/:gymId/members/:memberId', gymStaffOnly, gym.updateMember);
 router.post('/gyms/:gymId/members/:memberId/revoke-devices', gymStaffOnly, gym.revokeMemberDevices);
 router.post('/gyms/:gymId/members/:memberId/subscriptions', gymStaffOnly, gym.createSubscription);
+
+router.get('/gyms/:gymId/payment-provider', gymStaffOnly, gym.getPaymentProvider);
+router.put('/gyms/:gymId/payment-provider', gymStaffOnly, gym.savePaymentProvider);
+router.post('/gyms/:gymId/payments/reconcile', gymStaffOnly, gym.reconcilePayments);
 
 router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
 router.post('/gyms/:gymId/payments/:paymentId/settle', gymStaffOnly, gym.settlePayment);

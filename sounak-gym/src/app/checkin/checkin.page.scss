@@ -110,3 +110,31 @@
   border-color: rgba(27, 30, 32, 0.15);
   border-top-color: var(--purple);
 }
+
+/* Plan picker — full-width rows, priced on the right, thumb-sized. */
+.plan {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 18px 16px;
+  margin-bottom: 10px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan:hover:not(:disabled) { border-color: var(--purple); background: #faf9ff; }
+.plan:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.plan__name { display: block; font-weight: 700; font-size: 17px; }
+.plan__desc { display: block; font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+.plan__price {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--purple);
+  white-space: nowrap;
+}

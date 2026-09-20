@@ -41,6 +41,14 @@ connectDB();
 })();
 
 // --- Core Middleware ---
+// The gym payment webhook is authenticated by an HMAC over the EXACT bytes the
+// gateway sent, so it must see the raw body. This is mounted BEFORE
+// express.json() because once the JSON parser has consumed the stream the
+// original bytes are gone, and re-serialising the parsed object changes
+// whitespace and key order — every signature would then fail. Scoped to this
+// one path so nothing else changes.
+app.use('/api/gym/webhooks', express.raw({ type: 'application/json', limit: '1mb' }));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 // Comma-separated list so both frontends (sounak-project's web app and

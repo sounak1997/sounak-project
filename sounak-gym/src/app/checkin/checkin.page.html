@@ -185,16 +185,17 @@
         @if (r.outcome === 'subscription_expired') {
           <div class="alert alert--warn mt">
             Your {{ r.subscription?.planName }} ended on {{ day(r.subscription?.endDate) }}.
-            Please renew at the desk to keep training.
           </div>
+          <button class="btn" (click)="showPlans()">Renew now — pay by UPI</button>
           @if (r.gymPhone) {
-            <a class="btn btn--ghost" [href]="'tel:' + r.gymPhone">Call the gym</a>
+            <a class="btn btn--ghost mt-s" [href]="'tel:' + r.gymPhone">Or call the gym</a>
           }
         }
         @if (r.outcome === 'no_subscription') {
           <div class="alert alert--warn mt">
-            There's no active membership on your name yet. Please see the gym desk.
+            There's no active membership on your name yet.
           </div>
+          <button class="btn" (click)="showPlans()">Buy a membership — pay by UPI</button>
         }
 
         @if (r.summary && r.summary.percentage !== null) {
@@ -206,6 +207,45 @@
         }
 
         <button class="btn btn--ghost mt" (click)="done()">Done</button>
+      </div>
+    }
+    <!-- Plan picker: the member renews on their own phone, at the door. -->
+    @if (phase() === 'plans') {
+      <div class="card">
+        <h2>Choose a membership</h2>
+        @if (payNotice()) { <div class="alert alert--warn mt-s">{{ payNotice() }}</div> }
+
+        @if (!onlinePaymentAvailable()) {
+          <div class="alert alert--warn">
+            This gym hasn't set up online payment yet — please pay at the desk.
+          </div>
+        }
+
+        @for (p of plans(); track p.id) {
+          <button
+            class="plan"
+            [disabled]="!onlinePaymentAvailable() || busy()"
+            (click)="payWith(p)">
+            <span>
+              <span class="plan__name">{{ p.name }}</span>
+              @if (p.description) { <span class="plan__desc">{{ p.description }}</span> }
+            </span>
+            <span class="plan__price">₹{{ rupees(p.price) }}</span>
+          </button>
+        }
+
+        <button class="btn btn--ghost mt" (click)="backFromPlans()">Back</button>
+      </div>
+    }
+
+    <!-- Checkout is open, or we are waiting on confirmation. -->
+    @if (phase() === 'paying') {
+      <div class="card center">
+        <div class="spinner spinner--dark"></div>
+        <p class="muted mt">Waiting for your payment…</p>
+        <p class="muted small">
+          Finish in your UPI app. Don't close this page — we'll confirm it here.
+        </p>
       </div>
     }
   </div>

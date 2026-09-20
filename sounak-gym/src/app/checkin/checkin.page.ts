@@ -7,10 +7,14 @@ import {
   Candidate,
   CheckinService,
   CheckinState,
+  PaymentService,
+  Plan,
   ScanResult,
 } from '../core/checkin.service';
 
-type Phase = 'loading' | 'ready' | 'identify' | 'choose' | 'verify' | 'result' | 'blocked';
+type Phase =
+  | 'loading' | 'ready' | 'identify' | 'choose' | 'verify' | 'result' | 'blocked'
+  | 'plans' | 'paying';
 
 /**
  * The gym door screen — the whole member-facing product.
@@ -39,6 +43,7 @@ type Phase = 'loading' | 'ready' | 'identify' | 'choose' | 'verify' | 'result' |
 export class CheckinPage {
   private route = inject(ActivatedRoute);
   private api = inject(CheckinService);
+  private payments = inject(PaymentService);
 
   readonly gymCode = signal<string>('');
   readonly phase = signal<Phase>('loading');
@@ -53,6 +58,11 @@ export class CheckinPage {
   readonly matchedBy = signal<'phone' | 'name'>('phone');
   readonly chosen = signal<Candidate | null>(null);
   readonly verifyDigits = signal('');
+
+  // Renewal
+  readonly plans = signal<Plan[]>([]);
+  readonly onlinePaymentAvailable = signal(false);
+  readonly payNotice = signal('');
 
   readonly gymName = computed(() => this.result()?.gymName ?? this.state()?.gymName ?? 'Gym');
 
@@ -175,6 +185,67 @@ export class CheckinPage {
     this.chosen.set(null);
     this.error.set('');
     this.phase.set('identify');
+  }
+
+  // --- renewal --------------------------------------------------------------
+
+  /** Opens the plan list so an expired member can pay without leaving the door. */
+  async showPlans(): Promise<void> {
+    this.busy.set(true);
+    this.error.set('');
+    this.payNotice.set('');
+    try {
+      const res = await this.payments.plans(this.gymCode());
+      this.plans.set(res.plans);
+      this.onlinePaymentAvailable.set(res.onlinePaymentAvailable);
+      this.phase.set('plans');
+    } catch (err) {
+      this.error.set(this.messageFrom(err, 'Could not load the plans. Please ask at the desk.'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /**
+   * Runs the UPI payment and then reloads.
+   *
+   * 'pending' is its own outcome, not an error: the member may well have paid
+   * while the confirmation was still in flight, and telling someone the payment
+   * failed when their account was debited is the worst thing this screen could
+   * do. So it says "we're checking" and the reconciliation poll settles it.
+   */
+  async payWith(plan: Plan): Promise<void> {
+    this.phase.set('paying');
+    this.error.set('');
+    this.payNotice.set('');
+    try {
+      const outcome = await this.payments.pay(this.gymCode(), plan.id);
+      if (outcome === 'paid') {
+        this.payNotice.set(`Payment received — your ${plan.name} membership is active.`);
+        await this.load();
+      } else if (outcome === 'pending') {
+        this.payNotice.set(
+          "We haven't had confirmation yet. If money has left your account it will be applied " +
+          'automatically — check back in a minute, or show this to the gym desk.',
+        );
+        this.phase.set('plans');
+      } else {
+        this.phase.set('plans');
+      }
+    } catch (err) {
+      this.error.set(this.messageFrom(err, 'Could not start the payment. Please pay at the desk.'));
+      this.phase.set('plans');
+    }
+  }
+
+  backFromPlans(): void {
+    this.payNotice.set('');
+    this.error.set('');
+    void this.load();
+  }
+
+  rupees(price: string): string {
+    return Number(price).toLocaleString('en-IN');
   }
 
   // --- presentation helpers -------------------------------------------------

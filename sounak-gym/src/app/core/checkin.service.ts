@@ -149,3 +149,158 @@ export class CheckinService {
     ).then((r) => r.data);
   }
 }
+
+export interface Plan {
+  id: string;
+  name: string;
+  duration_days: number;
+  price: string;
+  description: string | null;
+}
+
+export interface CheckoutParams {
+  keyId: string;
+  orderId: string;
+  amount: number;
+  currency: string;
+  gymName: string;
+  planName: string;
+  memberName: string;
+  memberPhone: string | null;
+}
+
+/** Razorpay's Checkout widget, loaded from their CDN at runtime. */
+declare const Razorpay: new (options: Record<string, unknown>) => { open(): void };
+
+/**
+ * Online renewal by UPI.
+ *
+ * Confirmation reaches the server three independent ways — this class drives
+ * two of them. `confirm()` is the fast path (the signed receipt Checkout hands
+ * back). `pollStatus()` is the safety net for when the browser never gets that
+ * far, or when the webhook could not be delivered because the free-tier backend
+ * was asleep. Both are idempotent server-side, so racing them is safe.
+ */
+@Injectable({ providedIn: 'root' })
+export class PaymentService {
+  private http = inject(HttpClient);
+  private checkin = inject(CheckinService);
+  private scriptLoaded?: Promise<void>;
+
+  plans(gymCode: string): Promise<{ plans: Plan[]; onlinePaymentAvailable: boolean }> {
+    return firstValueFrom(
+      this.http.get<{ data: { plans: Plan[]; onlinePaymentAvailable: boolean } }>(
+        '/api/gym/checkin/plans',
+        { params: { g: gymCode } },
+      ),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Loaded on demand rather than in index.html: the door screen is opened on a
+   * phone by someone in a hurry, and the overwhelming majority of visits are a
+   * check-in, not a payment. No reason to make everyone download a payment SDK.
+   */
+  private loadCheckout(): Promise<void> {
+    if (!this.scriptLoaded) {
+      this.scriptLoaded = new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => resolve();
+        script.onerror = () => {
+          this.scriptLoaded = undefined; // let a later attempt retry
+          reject(new Error('Could not load the payment window. Check your connection.'));
+        };
+        document.head.appendChild(script);
+      });
+    }
+    return this.scriptLoaded;
+  }
+
+  private start(gymCode: string, planId: string): Promise<{ paymentId: string; checkout: CheckoutParams }> {
+    return firstValueFrom(
+      this.http.post<{ data: { paymentId: string; checkout: CheckoutParams } }>(
+        '/api/gym/checkin/pay/start',
+        { gymCode, deviceToken: this.checkin.deviceToken(gymCode), planId },
+      ),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Runs the whole payment. Resolves 'paid' only once the SERVER says so —
+   * never on the widget's word alone, since the client cannot be trusted about
+   * whether money moved.
+   */
+  async pay(gymCode: string, planId: string): Promise<'paid' | 'pending' | 'cancelled'> {
+    const { paymentId, checkout } = await this.start(gymCode, planId);
+    await this.loadCheckout();
+
+    const outcome = await new Promise<'success' | 'dismissed'>((resolve) => {
+      const rzp = new Razorpay({
+        key: checkout.keyId,
+        order_id: checkout.orderId,
+        amount: checkout.amount,
+        currency: checkout.currency,
+        name: checkout.gymName,
+        description: `${checkout.planName} membership`,
+        prefill: { name: checkout.memberName, contact: checkout.memberPhone ?? '' },
+        // UPI first: on a phone this offers GPay / PhonePe / Paytm directly
+        // rather than burying them under card entry.
+        config: { display: { blocks: {}, sequence: ['block.upi'], preferences: { show_default_blocks: true } } },
+        handler: async (response: Record<string, string>) => {
+          try {
+            await firstValueFrom(
+              this.http.post('/api/gym/checkin/pay/confirm', {
+                gymCode,
+                deviceToken: this.checkin.deviceToken(gymCode),
+                paymentId,
+                orderId: response['razorpay_order_id'],
+                gatewayPaymentId: response['razorpay_payment_id'],
+                signature: response['razorpay_signature'],
+              }),
+            );
+          } catch {
+            // Confirmation failed, but the money may well have moved. Say
+            // nothing here and let the status poll below decide — telling the
+            // member "failed" when their account was debited is the worst
+            // possible outcome.
+          }
+          resolve('success');
+        },
+        modal: { ondismiss: () => resolve('dismissed') },
+      });
+      rzp.open();
+    });
+
+    // Ask the server regardless of what the widget reported. On 'dismissed' the
+    // member may still have completed the payment in their UPI app and closed
+    // the window before it returned.
+    const status = await this.pollStatus(gymCode, paymentId, outcome === 'success' ? 5 : 2);
+    if (status === 'verified') return 'paid';
+    return outcome === 'dismissed' ? 'cancelled' : 'pending';
+  }
+
+  /**
+   * Polls until the payment is settled, or gives up.
+   *
+   * The endpoint reconciles against the gateway before answering, so this is
+   * authoritative rather than a read of whatever the webhook happened to have
+   * delivered by now.
+   */
+  async pollStatus(gymCode: string, paymentId: string, attempts = 5): Promise<string> {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const res = await firstValueFrom(
+          this.http.get<{ data: { status: string } }>('/api/gym/checkin/pay/status', {
+            params: { g: gymCode, deviceToken: this.checkin.deviceToken(gymCode) ?? '', paymentId },
+          }),
+        );
+        if (res.data.status !== 'pending') return res.data.status;
+      } catch {
+        /* keep trying — a cold-starting backend fails the first call or two */
+      }
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2000));
+    }
+    return 'pending';
+  }
+}

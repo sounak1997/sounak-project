@@ -322,3 +322,101 @@ CREATE TABLE IF NOT EXISTS gym_device_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS gym_device_tokens_member_idx ON gym_device_tokens (member_id);
+
+-- ===========================================================================
+-- ONLINE PAYMENTS (UPI via a payment gateway)
+--
+-- Why any of this is needed: a static UPI QR produces NO callback. Money moves
+-- bank -> NPCI -> bank and this server is not in that path, so it never learns
+-- the payment happened. That is why `qr` payments are verified by hand. To get
+-- a confirmation there must be a provider in the loop who created the order and
+-- therefore knows what the money was for.
+--
+-- Multi-tenant consequence: each gym is paid into ITS OWN bank account, so each
+-- gym brings its own gateway account and its own API keys. The platform never
+-- holds anyone's money, which also keeps it clear of payment-aggregator
+-- licensing — a deliberate choice over collecting centrally and paying gyms out.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- Per-gym gateway credentials.
+--
+-- `key_secret_enc` and `webhook_secret_enc` are AES-256-GCM ciphertext (see
+-- src/utils/secretBox.js), never plaintext: these are credentials that can move
+-- another business's money, and they belong to the gym owner rather than to us.
+-- `key_id` is NOT encrypted — it is public by design and ships to the browser
+-- to open the checkout.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gym_payment_providers (
+  gym_id             VARCHAR PRIMARY KEY REFERENCES gyms(id) ON DELETE CASCADE,
+  provider           VARCHAR NOT NULL DEFAULT 'razorpay' CHECK (provider IN ('razorpay')),
+  key_id             VARCHAR NOT NULL,
+  key_secret_enc     VARCHAR NOT NULL,
+  webhook_secret_enc VARCHAR,
+  enabled            BOOLEAN NOT NULL DEFAULT true,
+  updated_by         VARCHAR,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------------------------------------------------------------------------
+-- A subscription bought online is NOT active until the money arrives.
+--
+-- 'pending_payment' is added rather than creating the subscription only on
+-- success, so an abandoned checkout leaves a visible row instead of vanishing.
+-- Everything that grants access already filters on status = 'active', so a
+-- pending row cannot let anyone train — the default is safe without touching
+-- those queries.
+-- ---------------------------------------------------------------------------
+ALTER TABLE gym_subscriptions DROP CONSTRAINT IF EXISTS gym_subscriptions_status_check;
+ALTER TABLE gym_subscriptions ADD CONSTRAINT gym_subscriptions_status_check
+  CHECK (status IN ('active', 'cancelled', 'pending_payment'));
+
+-- A checkout can fail or be abandoned, and that must be distinguishable from
+-- "not paid yet".
+ALTER TABLE gym_payments DROP CONSTRAINT IF EXISTS gym_payments_status_check;
+ALTER TABLE gym_payments ADD CONSTRAINT gym_payments_status_check
+  CHECK (status IN ('pending', 'pending_verification', 'verified', 'collected', 'failed'));
+
+ALTER TABLE gym_payments
+  ADD COLUMN IF NOT EXISTS gateway_order_id VARCHAR;
+
+-- THE idempotency guard. Gateways deliver webhooks at-least-once and retry, so
+-- the same payment arrives repeatedly; without this a replayed webhook could
+-- activate a subscription twice. Partial, because the column stays NULL for
+-- every cash and manual-QR payment.
+CREATE UNIQUE INDEX IF NOT EXISTS gym_payments_gateway_payment_uq
+  ON gym_payments (gateway_payment_id)
+  WHERE gateway_payment_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS gym_payments_gateway_order_idx
+  ON gym_payments (gateway_order_id)
+  WHERE gateway_order_id IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Every webhook received, stored raw.
+--
+-- Kept because money is involved: when a member says they paid and the system
+-- disagrees, the question is always "what did the gateway actually send us",
+-- and a parsed summary cannot answer it. Also makes a missed event replayable
+-- rather than lost.
+--
+-- `event_id` is the provider's own id and is UNIQUE, which is the second
+-- idempotency guard — a duplicate delivery is rejected at insert, before any
+-- money logic runs.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gym_webhook_events (
+  id           VARCHAR PRIMARY KEY,
+  provider     VARCHAR NOT NULL,
+  event_id     VARCHAR NOT NULL UNIQUE,
+  event_type   VARCHAR,
+  gym_id       VARCHAR REFERENCES gyms(id) ON DELETE SET NULL,
+  payload      JSONB NOT NULL,
+  signature_ok BOOLEAN NOT NULL,
+  processed_at TIMESTAMPTZ,
+  error        VARCHAR,
+  received_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS gym_webhook_events_received_idx
+  ON gym_webhook_events (received_at DESC);

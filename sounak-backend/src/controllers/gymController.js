@@ -232,3 +232,53 @@ exports.expiryWatchlist = asyncHandler(async (req, res) => {
   });
   res.status(200).json({ success: true, data: watchlist });
 });
+
+// --- online payment setup (owner) -----------------------------------------
+
+const gymGatewayService = require('../services/gymGatewayService');
+const gymCheckoutService = require('../services/gymCheckoutService');
+
+// @desc    Is online payment connected, and with which key
+// @route   GET /api/gym/gyms/:gymId/payment-provider
+//
+// Never returns the secrets. Once stored they have no reason to travel back out
+// of the server.
+exports.getPaymentProvider = asyncHandler(async (req, res) => {
+  const provider = await gymGatewayService.getProviderPublic(req.gym.id);
+  res.status(200).json({
+    success: true,
+    data: {
+      provider,
+      // The URL the owner pastes into their Razorpay dashboard.
+      webhookUrl: `${req.protocol}://${req.get('host')}/api/gym/webhooks/razorpay`,
+    },
+  });
+});
+
+// @desc    Connect or update this gym's gateway account
+// @route   PUT /api/gym/gyms/:gymId/payment-provider
+//
+// The keys belong to the gym owner's own Razorpay account, so their money
+// settles directly to their bank. The platform never holds it.
+exports.savePaymentProvider = asyncHandler(async (req, res) => {
+  const provider = await gymGatewayService.saveProvider({
+    gymId: req.gym.id,
+    keyId: req.body.keyId,
+    keySecret: req.body.keySecret,
+    webhookSecret: req.body.webhookSecret,
+    enabled: req.body.enabled,
+    updatedBy: req.gymAccount.id,
+  });
+  res.status(200).json({ success: true, data: provider });
+});
+
+// @desc    Ask the gateway about anything still pending and settle what paid
+// @route   POST /api/gym/gyms/:gymId/payments/reconcile
+//
+// Called when the owner opens their payments screen. Catches the payments whose
+// webhook never arrived — which on a free-tier backend that sleeps is a matter
+// of when, not if.
+exports.reconcilePayments = asyncHandler(async (req, res) => {
+  const result = await gymCheckoutService.reconcile({ gymId: req.gym.id });
+  res.status(200).json({ success: true, data: result });
+});
