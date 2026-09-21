@@ -14,9 +14,16 @@ node_modules/
 
 # General ignores (for both projects and your local setup)
 .env
-.DS_Store          # macOS specific
-.idea/             # IntelliJ IDEA specific
-.vscode/           # VS Code specific (if you don't want settings committed)
+# gitignore only treats '#' as a comment at the START of a line. These three
+# carried trailing comments, which made the patterns literally
+# ".DS_Store          # macOS specific" and match nothing — which is why
+# .DS_Store kept reappearing as untracked.
+# macOS
+.DS_Store
+# IntelliJ IDEA
+.idea/
+# VS Code (drop this line if you do want settings committed)
+.vscode/
 *.log
 npm-debug.log*
 yarn-error.log*

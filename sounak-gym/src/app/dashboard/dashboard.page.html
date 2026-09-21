@@ -86,11 +86,11 @@
         @if (myCash(); as mine) {
           @if (mine.cash_payments > 0) {
             <div class="card cash-mine">
-              <h2>Cash with you</h2>
+              <h2>Cash you are holding</h2>
               <div class="cash-mine__amount">₹{{ mine.cash_in_hand }}</div>
               <p class="muted">
-                From {{ mine.cash_payments }} payment(s) you marked as paid in cash.
-                Hand it to the owner and they'll clear this.
+                You took this in cash from {{ mine.cash_payments }} member(s). Give it to the
+                owner and this goes back to zero.
               </p>
             </div>
           }
@@ -279,27 +279,40 @@
         <div class="card">
           <h2>Where your money is</h2>
           <p class="muted mb">
-            Everything the gym has taken, by where it currently sits. UPI goes straight
-            to your account; cash stays with whoever took it until they hand it over.
+            Every rupee this gym has taken, and where it is right now.
           </p>
+          <!-- Each figure says what it is in plain words underneath. This screen is
+               read by a gym owner between sets, not by an accountant. -->
           <div class="stat-grid">
             <div class="stat">
               <div class="stat__value">₹{{ pos.in_bank }}</div>
-              <div class="stat__label">In your account (UPI)</div>
+              <div class="stat__label">Already in your bank</div>
+              <div class="stat__hint">Members paid by UPI, so it went to you directly.</div>
             </div>
             <div class="stat">
               <div class="stat__value">₹{{ pos.cash_with_owner }}</div>
-              <div class="stat__label">Cash with you</div>
+              <div class="stat__label">Cash that reached you</div>
+              <div class="stat__hint">
+                Cash you took yourself, plus everything staff has handed over.
+              </div>
             </div>
             <div class="stat">
               <div class="stat__value" [class.stat__value--danger]="+pos.cash_with_staff > 0">
                 ₹{{ pos.cash_with_staff }}
               </div>
-              <div class="stat__label">Cash with staff</div>
+              <div class="stat__label">Cash to collect from staff</div>
+              <div class="stat__hint">
+                @if (+pos.cash_with_staff > 0) {
+                  Staff took this cash at the desk. Collect it from them — see below.
+                } @else {
+                  Nothing pending. Staff are not holding any cash.
+                }
+              </div>
             </div>
             <div class="stat">
               <div class="stat__value">₹{{ pos.still_owed }}</div>
-              <div class="stat__label">Still owed</div>
+              <div class="stat__label">Not paid yet</div>
+              <div class="stat__hint">Members owe this. No money has come in for it.</div>
             </div>
           </div>
         </div>
@@ -309,13 +322,11 @@
         <div class="card">
           <h2>Cash with staff</h2>
           <p class="muted mb">
-            What to collect from whom on your next visit. The cash column is what they
-            owe you; the UPI column is money that already reached your account, shown
-            so you can see what each person has taken in total.
+            Who to collect from, and how much.
             @if (cashOutstanding() > 0) {
               <strong>Collect ₹{{ cashOutstanding() }} in total.</strong>
             } @else {
-              Nothing to collect — everyone has settled up.
+              Nothing to collect right now.
             }
           </p>
 
@@ -324,9 +335,9 @@
               <tr>
                 <th>Who</th>
                 <th>Cash to collect</th>
-                <th>Held since</th>
-                <th>UPI (already yours)</th>
-                <th>Handed over to date</th>
+                <th>Holding it since</th>
+                <th>Paid to you by UPI</th>
+                <th>Cash given to you before</th>
                 <th class="right"></th>
               </tr>
             </thead>

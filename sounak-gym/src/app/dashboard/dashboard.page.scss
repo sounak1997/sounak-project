@@ -193,3 +193,12 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-s);
 }
+
+/* One plain sentence under each figure. A gym owner reads this screen between
+   sets — the label alone ("cash with you") does not say which cash. */
+.stat__hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
