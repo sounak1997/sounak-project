@@ -385,20 +385,40 @@ exports.createSubscription = async ({ gymId, memberId, planId, startDate, amount
 // Cash taken at the desk, or a QR payment the owner has confirmed. There is no
 // gateway callback to trust in v1, so a human says so and is recorded as having
 // said it.
-exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy }) => {
+//
+// `method` is settable here, not just at creation. What a payment was BOOKED as
+// is a guess — a renewal entered as cash may be paid by UPI when the member
+// actually reaches the desk — and the method is what decides where the money
+// ends up: cash stays with whoever took it, UPI lands in the gym's bank. So the
+// person marking it paid says how it was paid, and that is the figure the
+// owner's cash position is built from.
+exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy, method }) => {
   if (!['verified', 'collected'].includes(status)) {
     throw badRequest("status must be 'verified' (QR confirmed) or 'collected' (cash taken).");
+  }
+  if (method && !['cash', 'qr'].includes(method)) {
+    throw badRequest("method must be 'cash' or 'qr'.");
+  }
+  // The two must agree, or the money would be filed in one place and counted in
+  // another: 'collected' means notes changed hands, 'verified' means a transfer
+  // was confirmed. A mismatch is a caller bug, not something to reconcile later.
+  if (method === 'cash' && status !== 'collected') {
+    throw badRequest("A cash payment settles as 'collected'.");
+  }
+  if (method === 'qr' && status !== 'verified') {
+    throw badRequest("A UPI payment settles as 'verified'.");
   }
   const result = await pgPool.query(
     `UPDATE gym_payments
         SET status      = $1,
+            method      = COALESCE($6, method),
             reference   = COALESCE($2, reference),
             verified_by = $3,
             verified_at = now(),
             updated_at  = now()
       WHERE id = $4 AND gym_id = $5
       RETURNING *`,
-    [status, reference || null, recordedBy, paymentId, gymId]
+    [status, reference || null, recordedBy, paymentId, gymId, method || null]
   );
   if (!result.rows[0]) throw notFound(`Payment '${paymentId}' not found.`);
   return result.rows[0];
@@ -416,18 +436,150 @@ exports.listMemberPayments = async ({ gymId, memberId }) => {
   return result.rows;
 };
 
-exports.listPayments = async ({ gymId, status }) => {
+// `unsettledOnly` is what a staff caller gets: the rows still owed or awaiting
+// confirmation, which is the desk's worklist. Settled rows are withheld, because
+// a full list of everything ever collected is the gym's takings in another
+// shape — and the whole point of the owner/staff split is that staff do not see
+// those. Staff can still act on what they can see: taking the cash is their job.
+exports.listPayments = async ({ gymId, status, unsettledOnly = false }) => {
   const result = await pgPool.query(
     `SELECT p.*, m.full_name, m.phone, s.plan_name, s.end_date
        FROM gym_payments p
        JOIN gym_members m ON m.id = p.member_id
        JOIN gym_subscriptions s ON s.id = p.subscription_id
       WHERE p.gym_id = $1 AND ($2::text IS NULL OR p.status = $2)
+        AND ($3::boolean IS NOT TRUE OR p.status IN ('pending', 'pending_verification'))
       ORDER BY p.created_at DESC
       LIMIT 500`,
-    [gymId, status || null]
+    [gymId, status || null, unsettledOnly]
   );
   return result.rows;
+};
+
+// --- cash in staff hands ---------------------------------------------------
+
+// Who is holding the gym's money, and how much.
+//
+// Attribution is COALESCE(verified_by, recorded_by), not recorded_by alone.
+// verified_by is who confirmed the money arrived — for cash, the person who put
+// the note in their pocket — and that is not always who opened the row: a member
+// can start a payment at the door and settle it in cash at the desk days later.
+// recorded_by is the fallback for rows nobody has confirmed. Rows with neither
+// are the member paying for themselves online, reported under a null account
+// rather than dropped, so these figures still reconcile with the gym's takings.
+//
+// Cash is the only column that means "in their pocket". QR/UPI lands in the
+// gym's bank directly, so it is shown per person for credit, not as a debt.
+exports.staffCollections = async ({ gymId }) => {
+  const result = await pgPool.query(
+    `SELECT COALESCE(p.verified_by, p.recorded_by)       AS account_id,
+            a.name                                       AS account_name,
+            s.role                                       AS staff_role,
+            COALESCE(SUM(CASE WHEN p.method = 'cash' AND p.status = 'collected'
+                               AND p.handed_over_at IS NULL
+                              THEN p.amount END), 0)      AS cash_in_hand,
+            COUNT(CASE WHEN p.method = 'cash' AND p.status = 'collected'
+                        AND p.handed_over_at IS NULL
+                       THEN 1 END)::int                   AS cash_payments,
+            COALESCE(SUM(CASE WHEN p.method = 'cash' AND p.handed_over_at IS NOT NULL
+                              THEN p.amount END), 0)      AS cash_handed_over,
+            COALESCE(SUM(CASE WHEN p.method IN ('qr', 'gateway')
+                               AND p.status IN ('verified', 'collected')
+                              THEN p.amount END), 0)      AS upi_confirmed,
+            COALESCE(SUM(CASE WHEN p.method = 'qr' AND p.status = 'pending_verification'
+                              THEN p.amount END), 0)      AS upi_awaiting,
+            MAX(CASE WHEN p.method = 'cash' AND p.status = 'collected'
+                      AND p.handed_over_at IS NULL
+                     THEN p.created_at END)               AS oldest_unsettled_at
+       FROM gym_payments p
+       LEFT JOIN gym_accounts a ON a.id = COALESCE(p.verified_by, p.recorded_by)
+       LEFT JOIN gym_staff s ON s.account_id = COALESCE(p.verified_by, p.recorded_by)
+                            AND s.gym_id = p.gym_id
+      WHERE p.gym_id = $1
+      GROUP BY COALESCE(p.verified_by, p.recorded_by), a.name, s.role
+     HAVING COALESCE(SUM(CASE WHEN p.method = 'cash' AND p.status = 'collected'
+                               AND p.handed_over_at IS NULL THEN p.amount END), 0) > 0
+         OR COALESCE(SUM(CASE WHEN p.method IN ('qr', 'gateway') THEN p.amount END), 0) > 0
+         OR COALESCE(SUM(CASE WHEN p.method = 'cash' THEN p.amount END), 0) > 0
+      ORDER BY cash_in_hand DESC, a.name ASC`,
+    [gymId]
+  );
+  return result.rows;
+};
+
+// The owner's one-line answer to "where is my money": in the bank, in my hands,
+// or still in someone's pocket.
+//
+// Buckets are mutually exclusive and together cover every settled payment, so
+// the four figures add up to what the gym has taken — a report that did not add
+// up would be worse than none.
+//
+// Cash whose holder is not a 'staff' row — the owner's own takings, a platform
+// admin's, or an unattributed row — counts as with the owner. Somebody has to be
+// accountable for it and it is not the front desk.
+exports.cashPosition = async ({ gymId }) => {
+  const result = await pgPool.query(
+    `SELECT
+       -- UPI and gateway payments: straight into the gym's bank account.
+       COALESCE(SUM(CASE WHEN p.method IN ('qr', 'gateway')
+                          AND p.status IN ('verified', 'collected')
+                         THEN p.amount END), 0)                          AS in_bank,
+       -- Cash the owner holds: taken by them, or handed over to them since.
+       COALESCE(SUM(CASE WHEN p.method = 'cash' AND p.status = 'collected'
+                          AND (p.handed_over_at IS NOT NULL OR COALESCE(s.role, 'owner') <> 'staff')
+                         THEN p.amount END), 0)                          AS cash_with_owner,
+       -- Cash still in a staff member's pocket.
+       COALESCE(SUM(CASE WHEN p.method = 'cash' AND p.status = 'collected'
+                          AND p.handed_over_at IS NULL AND s.role = 'staff'
+                         THEN p.amount END), 0)                          AS cash_with_staff,
+       -- Not money yet: owed, or a UPI transfer nobody has confirmed.
+       COALESCE(SUM(CASE WHEN p.status IN ('pending', 'pending_verification')
+                         THEN p.amount END), 0)                          AS still_owed
+     FROM gym_payments p
+     LEFT JOIN gym_staff s ON s.account_id = COALESCE(p.verified_by, p.recorded_by)
+                          AND s.gym_id = p.gym_id
+    WHERE p.gym_id = $1`,
+    [gymId]
+  );
+  return result.rows[0];
+};
+
+// One person's outstanding cash — what a staff account sees about itself, so the
+// desk knows what it owes the owner at the end of a shift. Same arithmetic as
+// the owner's report, scoped to one account and with nobody else's figures.
+exports.myCashInHand = async ({ gymId, accountId }) => {
+  const result = await pgPool.query(
+    `SELECT COALESCE(SUM(amount), 0)::text AS cash_in_hand,
+            COUNT(*)::int                  AS cash_payments
+       FROM gym_payments
+      WHERE gym_id = $1 AND COALESCE(verified_by, recorded_by) = $2
+        AND method = 'cash' AND status = 'collected'
+        AND handed_over_at IS NULL`,
+    [gymId, accountId]
+  );
+  return result.rows[0];
+};
+
+// The owner says "I have taken Ravi's cash". Stamps every outstanding cash row
+// he holds, so the report goes to zero and the trail records who received it.
+//
+// Deliberately settles ALL of that person's outstanding cash rather than an
+// amount the owner types: a partial figure could not say WHICH payments it
+// covered, and the owner counting notes at the desk is not doing part of a
+// drawer. If a count comes up short, that is a conversation, not a data model.
+exports.recordCashHandover = async ({ gymId, accountId, receivedBy }) => {
+  if (!accountId) throw badRequest('An account must be specified.');
+  const result = await pgPool.query(
+    `UPDATE gym_payments
+        SET handed_over_at = now(), handed_over_to = $3, updated_at = now()
+      WHERE gym_id = $1 AND COALESCE(verified_by, recorded_by) = $2
+        AND method = 'cash' AND status = 'collected'
+        AND handed_over_at IS NULL
+      RETURNING amount`,
+    [gymId, accountId, receivedBy]
+  );
+  const total = result.rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  return { payments: result.rowCount, total };
 };
 
 // --- the owner's dashboard ------------------------------------------------

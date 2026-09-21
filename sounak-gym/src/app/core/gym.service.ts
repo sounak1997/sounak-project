@@ -24,6 +24,35 @@ export interface Plan {
   active: boolean;
 }
 
+/**
+ * Where the gym's money is. The four figures are mutually exclusive and together
+ * cover everything the gym has taken.
+ */
+export interface CashPosition {
+  /** UPI and gateway payments — already in the gym's bank account. */
+  in_bank: string;
+  /** Cash the owner holds: their own takings, plus anything handed over to them. */
+  cash_with_owner: string;
+  /** Cash still in a staff member's pocket. */
+  cash_with_staff: string;
+  /** Not money yet: owed, or a transfer nobody has confirmed. */
+  still_owed: string;
+}
+
+/** One person's collections for a gym. `account_id` is null for a member who paid for themselves. */
+export interface StaffCollection {
+  account_id: string | null;
+  account_name: string | null;
+  staff_role: 'owner' | 'staff' | null;
+  /** Cash taken and not yet handed to the owner — literally in their pocket. */
+  cash_in_hand: string;
+  cash_payments: number;
+  cash_handed_over: string;
+  upi_confirmed: string;
+  upi_awaiting: string;
+  oldest_unsettled_at: string | null;
+}
+
 export interface CreatedMember {
   member: { id: string; full_name: string; member_code: string; phone: string | null };
 }
@@ -196,11 +225,14 @@ export class GymService {
     paymentId: string,
     status: 'collected' | 'verified',
     reference?: string,
+    /** How it was actually paid — overrides how the renewal was booked. */
+    method?: 'cash' | 'qr',
   ): Promise<PaymentRow> {
     return firstValueFrom(
       this.http.post<{ data: PaymentRow }>(`${this.base(gymId)}/payments/${paymentId}/settle`, {
         status,
         reference: reference || undefined,
+        method,
       }),
     ).then((r) => r.data);
   }
@@ -257,6 +289,39 @@ export class GymService {
     return firstValueFrom(
       this.http.post<{ data: { checked: number; settled: string[] } }>(
         `${this.base(gymId)}/payments/reconcile`,
+        {},
+      ),
+    ).then((r) => r.data);
+  }
+
+  /** Owner only: who is holding the gym's cash. */
+  collections(gymId: string): Promise<StaffCollection[]> {
+    return firstValueFrom(
+      this.http.get<{ data: StaffCollection[] }>(`${this.base(gymId)}/collections`),
+    ).then((r) => r.data);
+  }
+
+  /** Owner only: bank vs own hands vs staff pockets. */
+  cashPosition(gymId: string): Promise<CashPosition> {
+    return firstValueFrom(
+      this.http.get<{ data: CashPosition }>(`${this.base(gymId)}/cash-position`),
+    ).then((r) => r.data);
+  }
+
+  /** What the signed-in account is holding — its own figure, staff included. */
+  myCashInHand(gymId: string): Promise<{ cash_in_hand: string; cash_payments: number }> {
+    return firstValueFrom(
+      this.http.get<{ data: { cash_in_hand: string; cash_payments: number } }>(
+        `${this.base(gymId)}/my-collections`,
+      ),
+    ).then((r) => r.data);
+  }
+
+  /** Owner only: "I have taken their cash." Settles everything they hold. */
+  handover(gymId: string, accountId: string): Promise<{ payments: number; total: number }> {
+    return firstValueFrom(
+      this.http.post<{ data: { payments: number; total: number } }>(
+        `${this.base(gymId)}/collections/${accountId}/handover`,
         {},
       ),
     ).then((r) => r.data);

@@ -145,9 +145,21 @@ router.put('/gyms/:gymId/payment-provider', gymOwnerOnly, gym.savePaymentProvide
 router.post('/gyms/:gymId/payment-provider/test', gymOwnerOnly, gym.testPaymentProvider);
 router.post('/gyms/:gymId/payments/reconcile', gymOwnerOnly, gym.reconcilePayments);
 
-// The ledger, and confirming money said to have arrived. Owner's books.
-router.get('/gyms/:gymId/payments', gymOwnerOnly, gym.listPayments);
-router.post('/gyms/:gymId/payments/:paymentId/settle', gymOwnerOnly, gym.settlePayment);
+// Cash the desk is holding. The report and the handover are the owner's, but a
+// staff account can see its OWN outstanding total — it is the money in their
+// pocket, and they cannot hand it over without knowing the amount.
+router.get('/gyms/:gymId/collections', gymOwnerOnly, gym.staffCollections);
+router.get('/gyms/:gymId/cash-position', gymOwnerOnly, gym.cashPosition);
+router.post('/gyms/:gymId/collections/:accountId/handover', gymOwnerOnly, gym.recordCashHandover);
+router.get('/gyms/:gymId/my-collections', gymStaffOnly, gym.myCashInHand);
+
+// Taking the money is the desk's job, so both of these are open to staff — but
+// the answers differ by role. listPayments gives staff only what is still owed,
+// never the settled history (see gymController.listPayments), and settling
+// stamps verified_by with whoever did it, which is what puts the cash on their
+// name in the collections report above.
+router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
+router.post('/gyms/:gymId/payments/:paymentId/settle', gymStaffOnly, gym.settlePayment);
 
 router.get('/gyms/:gymId/attendance/today', gymStaffOnly, gym.attendanceToday);
 router.post('/gyms/:gymId/attendance/manual', gymStaffOnly, gym.markManual);

@@ -464,3 +464,35 @@ CREATE UNIQUE INDEX IF NOT EXISTS gym_accounts_phone_uq
 ALTER TABLE gym_accounts DROP CONSTRAINT IF EXISTS gym_accounts_identifier_ck;
 ALTER TABLE gym_accounts ADD CONSTRAINT gym_accounts_identifier_ck
   CHECK (email IS NOT NULL OR phone IS NOT NULL);
+
+-- ---------------------------------------------------------------------------
+-- CASH HANDOVERS (added 2026-09-21)
+--
+-- Staff take renewals at the desk, so cash accumulates in their pocket before
+-- it reaches the owner. `recorded_by` already says who took each payment, which
+-- makes "what has Ravi collected" answerable — but on its own that total only
+-- ever grows, and the question the owner actually asks is "how much is still
+-- WITH him", which needs a second event: the money changing hands again.
+--
+-- Stamped on the payment rows themselves rather than kept as a separate
+-- handovers table with a running balance. A handover is then exact — these
+-- specific notes, for these specific payments, received at this moment — and
+-- there is no second source of truth to drift from gym_payments, no way for a
+-- partial handover to leave an ambiguous balance, and the audit trail reads off
+-- one table.
+--
+-- Only cash is ever outstanding. A QR/UPI payment goes straight to the gym's
+-- own bank account, so it is attributed to whoever recorded it but is never
+-- "with" them.
+-- ---------------------------------------------------------------------------
+ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS handed_over_at TIMESTAMPTZ;
+-- The owner (or platform admin) who took delivery of the cash.
+ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS handed_over_to VARCHAR;
+
+-- The owner's dashboard asks "who is holding cash right now" on every load, so
+-- the outstanding rows are the ones that must be cheap to find. Partial index:
+-- settled-up cash is the overwhelming majority over time and is never scanned
+-- by this question.
+CREATE INDEX IF NOT EXISTS gym_payments_cash_outstanding_idx
+  ON gym_payments (gym_id, recorded_by)
+  WHERE method = 'cash' AND handed_over_at IS NULL;

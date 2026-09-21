@@ -5,6 +5,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
 import { FormsModule } from '@angular/forms';
 import {
+  CashPosition,
   CreatedMember,
   DashboardSummary,
   GymService,
@@ -12,6 +13,7 @@ import {
   PaymentProvider,
   PaymentRow,
   Plan,
+  StaffCollection,
   Today,
   Watchlist,
 } from '../core/gym.service';
@@ -62,6 +64,15 @@ export class DashboardPage {
   readonly settling = signal<string | null>(null);
   readonly notice = signal('');
 
+  // --- cash the desk is holding ---
+  /** Owner's view: who holds cash. Never fetched for staff. */
+  readonly collections = signal<StaffCollection[]>([]);
+  /** Every account's own outstanding cash, staff included — what they owe the owner. */
+  readonly myCash = signal<{ cash_in_hand: string; cash_payments: number } | null>(null);
+  readonly handingOver = signal<string | null>(null);
+  /** Owner's view: bank vs own hands vs staff pockets. */
+  readonly position = signal<CashPosition | null>(null);
+
   // UPI auto-payment setup
   readonly provider = signal<PaymentProvider | null>(null);
   readonly webhookUrl = signal('');
@@ -94,7 +105,11 @@ export class DashboardPage {
       // missed (the backend was asleep) shows as paid rather than as something
       // the owner is about to chase for no reason. Failures are ignored: the
       // gateway may not be configured, which is not an error here.
-      await this.api.reconcile(gymId).catch(() => undefined);
+      // Owner-only, so staff must not even ask: a 403 in their console is noise
+      // that looks like a fault, and reconciling talks to the gateway on the
+      // owner's credentials. isOwner() is the same line the server enforces.
+      const owner = this.auth.isOwner();
+      if (owner) await this.api.reconcile(gymId).catch(() => undefined);
 
       const [summary, watchlist, members, today, plans, payments, provider] = await Promise.all([
         this.api.dashboard(gymId),
@@ -102,10 +117,15 @@ export class DashboardPage {
         this.api.members(gymId),
         this.api.today(gymId),
         this.api.plans(gymId),
-        this.api.payments(gymId),
-        this.api
-          .paymentProvider(gymId)
-          .catch(() => ({ provider: null, webhookUrl: '', webhookReachable: true })),
+        // Staff get only the unsettled rows from this; the server narrows it.
+        // Tolerant of failure because a backend that predates that change
+        // refuses it outright, and the rest of the console is still useful.
+        this.api.payments(gymId).catch(() => []),
+        owner
+          ? this.api
+              .paymentProvider(gymId)
+              .catch(() => ({ provider: null, webhookUrl: '', webhookReachable: true }))
+          : Promise.resolve({ provider: null, webhookUrl: '', webhookReachable: true }),
       ]);
       this.summary.set(summary);
       this.watchlist.set(watchlist);
@@ -117,12 +137,54 @@ export class DashboardPage {
       this.webhookUrl.set(provider.webhookUrl);
       this.webhookReachable.set(provider.webhookReachable ?? true);
       if (provider.provider) this.keyId.set(provider.provider.key_id);
+
+      // Cash figures last, each swallowing its own failure: they are an extra,
+      // and must never be what stops the console rendering. The owner-only
+      // report is skipped for staff rather than fetched and refused.
+      this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
+      if (owner) {
+        const [rows, pos] = await Promise.all([
+          this.api.collections(gymId).catch(() => []),
+          this.api.cashPosition(gymId).catch(() => null),
+        ]);
+        this.collections.set(rows);
+        this.position.set(pos);
+      } else {
+        this.collections.set([]);
+        this.position.set(null);
+      }
     } catch {
       this.error.set('Could not load this gym. Please try again.');
     } finally {
       this.loading.set(false);
     }
   }
+
+  /**
+   * "I have taken their cash." Settles every outstanding cash payment on that
+   * person's name, so the report drops to zero and the trail records who
+   * received it.
+   */
+  async takeCash(row: StaffCollection): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym || !row.account_id) return;
+    this.handingOver.set(row.account_id);
+    this.error.set('');
+    try {
+      const done = await this.api.handover(gym.id, row.account_id);
+      this.notice.set(`Recorded ₹${done.total} received from ${row.account_name}.`);
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not record that handover.'));
+    } finally {
+      this.handingOver.set(null);
+    }
+  }
+
+  /** Total cash the gym is waiting on, across everyone who holds any. */
+  readonly cashOutstanding = computed(() =>
+    this.collections().reduce((sum, r) => sum + Number(r.cash_in_hand), 0),
+  );
 
   /** Everything still owed or awaiting the owner's confirmation. */
   readonly outstanding = computed(() =>
@@ -137,18 +199,26 @@ export class DashboardPage {
    * human overrides what the system can see for itself, so it has to be
    * attributable.
    */
-  async markPaid(payment: PaymentRow): Promise<void> {
+  async markPaid(payment: PaymentRow, method: 'cash' | 'qr'): Promise<void> {
     const gym = this.auth.activeGym();
     if (!gym) return;
     this.settling.set(payment.id);
     this.error.set('');
     try {
+      // The method decides where the money ends up, so it is what was chosen at
+      // the desk — not how the renewal happened to be booked earlier.
       await this.api.settlePayment(
         gym.id,
         payment.id,
-        payment.method === 'cash' ? 'collected' : 'verified',
+        method === 'cash' ? 'collected' : 'verified',
+        undefined,
+        method,
       );
-      this.notice.set(`Marked ₹${payment.amount} from ${payment.full_name} as paid.`);
+      this.notice.set(
+        method === 'cash'
+          ? `₹${payment.amount} cash from ${payment.full_name} — it is with you now.`
+          : `₹${payment.amount} from ${payment.full_name} marked as received by UPI.`,
+      );
       await this.load(gym.id, gym.gym_code);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not mark that as paid. Please try again.'));

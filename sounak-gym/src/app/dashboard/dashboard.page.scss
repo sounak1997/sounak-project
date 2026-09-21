@@ -166,3 +166,18 @@
 .block { display: block; font-size: 12px; }
 .mt-s { margin-top: 10px; }
 .field { margin-bottom: 14px; }
+
+/* What the front desk is holding. Its own card, and prominent, because it is
+   money they are personally accountable for at the end of a shift. */
+.cash-mine {
+  border-left: 3px solid var(--warn);
+}
+
+.cash-mine h2 { margin-bottom: 2px; }
+
+.cash-mine__amount {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin-bottom: 4px;
+}

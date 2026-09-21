@@ -178,6 +178,10 @@ exports.settlePayment = asyncHandler(async (req, res) => {
   const payment = await gymService.settlePayment({
     gymId: req.gym.id,
     paymentId: req.params.paymentId,
+    // Optional: how it was ACTUALLY paid, which may differ from how the
+    // renewal was booked. Decides whether the money is in the bank or in a
+    // pocket, so the desk gets to say.
+    method: req.body.method,
     status: req.body.status,
     reference: req.body.reference,
     recordedBy: req.gymAccount.id,
@@ -186,8 +190,16 @@ exports.settlePayment = asyncHandler(async (req, res) => {
 });
 
 // @route   GET /api/gym/gyms/:gymId/payments?status=
+//
+// Staff get only the unsettled rows — their worklist — while the owner gets the
+// full ledger. Same route, narrower answer, decided from the verified role
+// rather than from anything the caller sends.
 exports.listPayments = asyncHandler(async (req, res) => {
-  const payments = await gymService.listPayments({ gymId: req.gym.id, status: req.query.status });
+  const payments = await gymService.listPayments({
+    gymId: req.gym.id,
+    status: req.query.status,
+    unsettledOnly: req.staffRole === 'staff',
+  });
   res.status(200).json({ success: true, count: payments.length, data: payments });
 });
 
@@ -211,6 +223,51 @@ exports.markManual = asyncHandler(async (req, res) => {
     memberId: req.body.memberId,
     recordedBy: req.gymAccount.id,
     clientTime: req.body.clientTime,
+  });
+  res.status(200).json({ success: true, data: result });
+});
+
+// --- cash in staff hands ---------------------------------------------------
+
+// @desc    Who is holding the gym's cash, and how much
+// @route   GET /api/gym/gyms/:gymId/collections
+// @access  Gym owner
+exports.staffCollections = asyncHandler(async (req, res) => {
+  const rows = await gymService.staffCollections({ gymId: req.gym.id });
+  res.status(200).json({ success: true, count: rows.length, data: rows });
+});
+
+// @desc    Where the gym's money is: bank, owner's hands, or staff pockets
+// @route   GET /api/gym/gyms/:gymId/cash-position
+// @access  Gym owner
+exports.cashPosition = asyncHandler(async (req, res) => {
+  const position = await gymService.cashPosition({ gymId: req.gym.id });
+  res.status(200).json({ success: true, data: position });
+});
+
+// @desc    What the signed-in account is holding — its own figure only
+// @route   GET /api/gym/gyms/:gymId/my-collections
+// @access  Gym staff or owner
+//
+// Staff can see this about themselves without being able to see the gym's
+// takings: it is the money in their own pocket, and they cannot hand it over
+// without knowing the amount.
+exports.myCashInHand = asyncHandler(async (req, res) => {
+  const mine = await gymService.myCashInHand({
+    gymId: req.gym.id,
+    accountId: req.gymAccount.id,
+  });
+  res.status(200).json({ success: true, data: mine });
+});
+
+// @desc    Record that the owner has taken delivery of a staff member's cash
+// @route   POST /api/gym/gyms/:gymId/collections/:accountId/handover
+// @access  Gym owner
+exports.recordCashHandover = asyncHandler(async (req, res) => {
+  const result = await gymService.recordCashHandover({
+    gymId: req.gym.id,
+    accountId: req.params.accountId,
+    receivedBy: req.gymAccount.id,
   });
   res.status(200).json({ success: true, data: result });
 });
