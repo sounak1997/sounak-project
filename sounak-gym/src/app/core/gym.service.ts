@@ -24,6 +24,22 @@ export interface Plan {
   active: boolean;
 }
 
+/** A payment already marked paid — what the owner reviews for mistakes. */
+export interface SettledPayment {
+  id: string;
+  amount: string;
+  method: 'cash' | 'qr' | 'gateway';
+  status: 'verified' | 'collected';
+  verified_at: string | null;
+  /** Once handed over, the cash has physically moved and this cannot be undone. */
+  handed_over_at: string | null;
+  full_name: string;
+  plan_name: string;
+  end_date: string;
+  marked_by_name: string | null;
+  marked_by_role: 'owner' | 'staff' | null;
+}
+
 /**
  * Where the gym's money is. The four figures are mutually exclusive and together
  * cover everything the gym has taken.
@@ -178,9 +194,16 @@ export class GymService {
   /**
    * Sell or renew a membership and record how it was paid for.
    *
-   * 'cash' is booked as already collected — the note has changed hands at the
-   * desk. 'qr' is booked as awaiting verification, because only the owner can
-   * see the bank and confirm the money actually landed.
+   * Both methods are booked as RECEIVED, because in both cases the person at the
+   * desk has just seen the money arrive: cash in their hand, or the member's UPI
+   * confirmation on their phone. 'cash' settles as collected, 'qr' as verified —
+   * exactly what the Paid cash / Paid UPI buttons on the payments list do.
+   *
+   * These two paths used to disagree: renewing by UPI booked
+   * 'pending_verification', so a membership staff had just sold and been paid for
+   * showed up under "Not paid yet" and the money appeared nowhere. Selling a
+   * membership and confirming a payment are the same act by the same person, so
+   * they must land in the same state.
    */
   createSubscription(
     gymId: string,
@@ -192,7 +215,7 @@ export class GymService {
         planId: fields.planId,
         payment: {
           method: fields.method,
-          status: fields.method === 'cash' ? 'collected' : 'pending_verification',
+          status: fields.method === 'cash' ? 'collected' : 'verified',
         },
       }),
     ).then((r) => r.data);
@@ -311,6 +334,28 @@ export class GymService {
   savePaymentQr(gymId: string, paymentQrUrl: string): Promise<unknown> {
     return firstValueFrom(
       this.http.put<{ data: unknown }>(`${this.base(gymId)}`, { paymentQrUrl }),
+    ).then((r) => r.data);
+  }
+
+  /** Owner only: recently settled payments, newest first. */
+  recentPayments(gymId: string): Promise<SettledPayment[]> {
+    return firstValueFrom(
+      this.http.get<{ data: SettledPayment[] }>(`${this.base(gymId)}/payments/recent`),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Owner only: undo a payment marked paid by mistake.
+   *
+   * Also suspends the membership it activated — the member is back to unpaid, so
+   * the door refuses them until it is settled properly.
+   */
+  reversePayment(gymId: string, paymentId: string): Promise<{ membership_suspended: boolean }> {
+    return firstValueFrom(
+      this.http.post<{ data: { membership_suspended: boolean } }>(
+        `${this.base(gymId)}/payments/${paymentId}/reverse`,
+        {},
+      ),
     ).then((r) => r.data);
   }
 

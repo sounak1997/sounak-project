@@ -202,3 +202,9 @@
   color: var(--text-muted);
   margin-top: 6px;
 }
+
+
+/* Undoing a payment locks a member out, so its confirm button is red like the
+   gym-suspend one on the admin screen. */
+.btn--danger { background: var(--danger); color: #fff; }
+.btn--danger:hover:not(:disabled) { background: #a5322a; }

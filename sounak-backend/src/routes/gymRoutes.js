@@ -163,6 +163,11 @@ router.get('/gyms/:gymId/my-collections', gymStaffOnly, gym.myCashInHand);
 // stamps verified_by with whoever did it, which is what puts the cash on their
 // name in the collections report above.
 router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
+// Reviewing and undoing settled payments is the owner's: staff make the marks,
+// so staff erasing their own marks would defeat the point. Declared before the
+// ':paymentId' routes so 'recent' is not read as a payment id.
+router.get('/gyms/:gymId/payments/recent', gymOwnerOnly, gym.recentSettledPayments);
+router.post('/gyms/:gymId/payments/:paymentId/reverse', gymOwnerOnly, gym.reversePayment);
 router.post('/gyms/:gymId/payments/:paymentId/settle', gymStaffOnly, gym.settlePayment);
 
 router.get('/gyms/:gymId/attendance/today', gymStaffOnly, gym.attendanceToday);

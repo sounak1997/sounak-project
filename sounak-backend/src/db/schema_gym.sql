@@ -496,3 +496,18 @@ ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS handed_over_to VARCHAR;
 CREATE INDEX IF NOT EXISTS gym_payments_cash_outstanding_idx
   ON gym_payments (gym_id, recorded_by)
   WHERE method = 'cash' AND handed_over_at IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- UNDOING A PAYMENT (added 2026-09-21)
+--
+-- Staff mark payments as received, so staff will sometimes mark the wrong one.
+-- The owner needs to put that back, and a correction has to be visible: simply
+-- flipping the status to 'pending' again would erase the fact that the money was
+-- ever claimed, which is the one thing worth keeping about a mistake.
+--
+-- So a reversal is recorded rather than hidden. The row goes back to 'pending'
+-- and these two columns say who undid it and when, which is also what makes a
+-- pattern — one person's marks being reversed again and again — visible at all.
+-- ---------------------------------------------------------------------------
+ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ;
+ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS reversed_by VARCHAR;

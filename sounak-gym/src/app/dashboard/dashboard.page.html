@@ -279,33 +279,35 @@
         <div class="card">
           <h2>Where your money is</h2>
           <p class="muted mb">
-            Every rupee this gym has taken, and where it is right now.
+            There are only two places money can be: your bank, if they paid by UPI, or
+            with your staff, if they paid cash.
           </p>
-          <!-- Each figure says what it is in plain words underneath. This screen is
-               read by a gym owner between sets, not by an accountant. -->
+          <!-- Three figures, because there are only three answers the owner needs:
+               what arrived on its own, what someone is holding for me, and what has
+               not been paid at all.
+               There is deliberately no "cash with the owner" figure. The owner is not
+               at the gym and never takes cash at the desk, so a tile for it would be
+               inventing a place money does not sit. Cash they have already collected
+               from staff shows per person in the table below, as history. -->
           <div class="stat-grid">
             <div class="stat">
               <div class="stat__value">₹{{ pos.in_bank }}</div>
-              <div class="stat__label">Already in your bank</div>
-              <div class="stat__hint">Members paid by UPI, so it went to you directly.</div>
-            </div>
-            <div class="stat">
-              <div class="stat__value">₹{{ pos.cash_with_owner }}</div>
-              <div class="stat__label">Cash that reached you</div>
+              <div class="stat__label">In your bank (UPI)</div>
               <div class="stat__hint">
-                Cash you took yourself, plus everything staff has handed over.
+                Paid by UPI, straight into your account. Nothing for you to collect.
               </div>
             </div>
             <div class="stat">
               <div class="stat__value" [class.stat__value--danger]="+pos.cash_with_staff > 0">
                 ₹{{ pos.cash_with_staff }}
               </div>
-              <div class="stat__label">Cash to collect from staff</div>
+              <div class="stat__label">Cash held by staff</div>
               <div class="stat__hint">
                 @if (+pos.cash_with_staff > 0) {
-                  Staff took this cash at the desk. Collect it from them — see below.
+                  Paid in cash at the desk, so your staff has it. Collect this on your
+                  next visit — who has what is listed below.
                 } @else {
-                  Nothing pending. Staff are not holding any cash.
+                  Your staff is not holding any cash right now.
                 }
               </div>
             </div>
@@ -318,15 +320,15 @@
         </div>
       }
 
-      @if (auth.isOwner() && collections().length) {
+      @if (auth.isOwner() && staffHoldingCash().length) {
         <div class="card">
-          <h2>Cash with staff</h2>
+          <h2>Collect from staff</h2>
           <p class="muted mb">
-            Who to collect from, and how much.
+            Who is holding your cash, and how much.
             @if (cashOutstanding() > 0) {
-              <strong>Collect ₹{{ cashOutstanding() }} in total.</strong>
+              <strong>₹{{ cashOutstanding() }} to collect in total.</strong>
             } @else {
-              Nothing to collect right now.
+              Everyone has handed over — nothing to collect.
             }
           </p>
 
@@ -342,13 +344,10 @@
               </tr>
             </thead>
             <tbody>
-              @for (c of collections(); track c.account_id) {
+              @for (c of staffHoldingCash(); track c.account_id) {
                 <tr>
                   <td>
-                    <strong>{{ c.account_name ?? 'Members paying online' }}</strong>
-                    @if (c.staff_role) {
-                      <span class="pill pill--neutral">{{ c.staff_role }}</span>
-                    }
+                    <strong>{{ c.account_name }}</strong>
                   </td>
                   <td>
                     @if (+c.cash_in_hand > 0) {
@@ -366,8 +365,7 @@
                   <td class="muted">₹{{ c.upi_confirmed }}</td>
                   <td class="muted">₹{{ c.cash_handed_over }}</td>
                   <td class="right">
-                    <!-- No button for online payments: there is no one to collect from. -->
-                    @if (c.account_id && +c.cash_in_hand > 0) {
+                    @if (+c.cash_in_hand > 0) {
                       <button
                         class="btn btn--sm"
                         [disabled]="handingOver() === c.account_id"
@@ -383,22 +381,86 @@
         </div>
       }
 
-      <!-- Money owed, and the one-tap way to say it has arrived. -->
-      <div class="card">
-        <h2>Payments to collect</h2>
-        <p class="muted mb">
-          Tap how they paid and the membership activates straight away.
-          <strong>Paid cash</strong> means the notes are with whoever taps it;
-          <strong>Paid UPI</strong> means it has landed in the gym's account.
-        </p>
-
-        @if (!outstanding().length) {
-          <p class="muted">Nothing outstanding. Every membership is paid up.</p>
-        } @else {
+      <!-- The owner's check on what staff marked paid. Owner only: staff make the
+           marks, so staff erasing their own marks would leave the person
+           accountable for the money unable to see anything had changed. -->
+      @if (auth.isOwner() && recentPaid().length) {
+        <div class="card">
+          <h2>Recently marked paid</h2>
+          <p class="muted mb">
+            Every payment your staff has confirmed. If one was marked paid by mistake,
+            undo it — the member goes back to unpaid and their membership is put on hold
+            until it is settled properly.
+          </p>
           <table>
             <thead>
-              <tr><th>Member</th><th>Plan</th><th>Amount</th><th>How</th><th></th></tr>
+              <tr>
+                <th>Member</th>
+                <th>Amount</th>
+                <th>How</th>
+                <th>Marked by</th>
+                <th>When</th>
+                <th class="right"></th>
+              </tr>
             </thead>
+            <tbody>
+              @for (p of recentPaid(); track p.id) {
+                <tr>
+                  <td>
+                    <strong>{{ p.full_name }}</strong>
+                    <span class="muted block">{{ p.plan_name }}</span>
+                  </td>
+                  <td><strong>₹{{ p.amount }}</strong></td>
+                  <td>
+                    <span class="pill" [class.pill--ok]="p.method !== 'cash'"
+                          [class.pill--warn]="p.method === 'cash'">
+                      {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                    </span>
+                  </td>
+                  <td>{{ p.marked_by_name ?? '—' }}</td>
+                  <td class="muted">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
+                  <td class="right">
+                    <!-- Handed-over cash has physically moved to the owner, so the
+                         server refuses it: an enabled button that always fails
+                         would be worse than saying why. -->
+                    @if (p.handed_over_at) {
+                      <span class="muted small">cash collected</span>
+                    } @else {
+                      <button
+                        class="btn btn--sm btn--ghost"
+                        [disabled]="reversing() === p.id"
+                        (click)="confirmReverse.set(p)">
+                        {{ reversing() === p.id ? '…' : 'Undo' }}
+                      </button>
+                    }
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+
+      <!-- Only what nobody has confirmed yet.
+           A renewal taken at the desk is recorded as paid the moment staff pick
+           cash or UPI, so it never lands here — showing the same two buttons for
+           something already settled would just look like being asked twice. What
+           does land here is a payment raised somewhere nobody could confirm it:
+           a member scanning the door QR, or a membership given out unpaid.
+           Hidden entirely when empty, which is the normal state. -->
+      @if (outstanding().length) {
+      <div class="card">
+        <h2>Waiting for you to confirm</h2>
+        <p class="muted mb">
+          These members say they have paid, or were let in without paying — nobody at the
+          gym has confirmed the money yet. Renewals you take at the desk are already
+          recorded and never appear here.
+        </p>
+
+        <table>
+          <thead>
+            <tr><th>Member</th><th>Plan</th><th>Amount</th><th>How</th><th></th></tr>
+          </thead>
             <tbody>
               @for (p of outstanding(); track p.id) {
                 <tr>
@@ -434,9 +496,9 @@
                 </tr>
               }
             </tbody>
-          </table>
-        }
+        </table>
       </div>
+      }
 
       <!-- The gym's UPI QR. This is the payment method today: the member scans
            it at the door, pays in their own app, shows the desk, and staff
@@ -579,6 +641,36 @@
   </div>
 </div>
 
+<!-- Undoing a payment takes away access a member currently has, so it is
+     confirmed with the consequence spelled out. -->
+@if (confirmReverse(); as p) {
+  <div class="modal-backdrop" (click)="confirmReverse.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Undo ₹{{ p.amount }} from {{ p.full_name }}?</h2>
+      <div class="accent-bar accent-bar--left"></div>
+      <p class="modal__body">
+        Marked {{ p.method === 'cash' ? 'paid in cash' : 'paid by UPI' }}@if (p.marked_by_name) { by {{ p.marked_by_name }}}@if (p.verified_at) {, {{ since(p.verified_at) }}}.
+      </p>
+      <ul class="modal__list">
+        <li>the payment goes back to unpaid</li>
+        <li>{{ p.full_name }}'s membership is put on hold — the door will refuse them</li>
+        @if (p.method === 'cash') {
+          <li>it stops counting as cash held by staff</li>
+        } @else {
+          <li>it stops counting as money in your account</li>
+        }
+      </ul>
+      <p class="muted small">The correction is recorded, including that you made it.</p>
+      <div class="modal__actions">
+        <button class="btn btn--ghost" (click)="confirmReverse.set(null)">Cancel</button>
+        <button class="btn btn--danger" [disabled]="reversing() === p.id" (click)="undoPaid()">
+          {{ reversing() === p.id ? 'Undoing…' : 'Yes, undo it' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
 <!-- Taking a renewal at the desk. Staff can do this: it is money coming IN
      against one member, not a view of the gym's books. -->
 @if (renewing(); as m) {
@@ -610,9 +702,9 @@
           </select>
           <p class="muted small">
             @if (renewMethod() === 'cash') {
-              Recorded as collected — the money is in the drawer.
+              You are holding this cash until the owner collects it.
             } @else {
-              Recorded as awaiting confirmation. The owner verifies it against the bank.
+              Straight to the owner's account — nothing for you to hold.
             }
           </p>
         </div>

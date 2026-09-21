@@ -13,6 +13,7 @@ import {
   PaymentProvider,
   PaymentRow,
   Plan,
+  SettledPayment,
   StaffCollection,
   Today,
   Watchlist,
@@ -70,6 +71,12 @@ export class DashboardPage {
   /** Every account's own outstanding cash, staff included — what they owe the owner. */
   readonly myCash = signal<{ cash_in_hand: string; cash_payments: number } | null>(null);
   readonly handingOver = signal<string | null>(null);
+
+  // --- undoing a wrong "paid" (owner only) ---
+  readonly recentPaid = signal<SettledPayment[]>([]);
+  readonly reversing = signal<string | null>(null);
+  /** Held for confirmation: undoing locks a member out, so it is never one tap. */
+  readonly confirmReverse = signal<SettledPayment | null>(null);
   /** Owner's view: bank vs own hands vs staff pockets. */
   readonly position = signal<CashPosition | null>(null);
 
@@ -148,15 +155,18 @@ export class DashboardPage {
       this.payQrUrl.set(this.auth.activeGym()?.payment_qr_url ?? '');
       this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
       if (owner) {
-        const [rows, pos] = await Promise.all([
+        const [rows, pos, recent] = await Promise.all([
           this.api.collections(gymId).catch(() => []),
           this.api.cashPosition(gymId).catch(() => null),
+          this.api.recentPayments(gymId).catch(() => []),
         ]);
         this.collections.set(rows);
         this.position.set(pos);
+        this.recentPaid.set(recent);
       } else {
         this.collections.set([]);
         this.position.set(null);
+        this.recentPaid.set([]);
       }
     } catch {
       this.error.set('Could not load this gym. Please try again.');
@@ -205,9 +215,49 @@ export class DashboardPage {
     }
   }
 
-  /** Total cash the gym is waiting on, across everyone who holds any. */
+  /**
+   * Undo a payment marked paid by mistake, and lock the member out again.
+   *
+   * Owner only, and confirmed first: this takes away access someone currently
+   * has, so it must never happen on a mis-tap.
+   */
+  async undoPaid(): Promise<void> {
+    const gym = this.auth.activeGym();
+    const row = this.confirmReverse();
+    if (!gym || !row) return;
+    this.reversing.set(row.id);
+    this.error.set('');
+    try {
+      const done = await this.api.reversePayment(gym.id, row.id);
+      this.notice.set(
+        done.membership_suspended
+          ? `₹${row.amount} for ${row.full_name} is back to unpaid, and their membership is on hold.`
+          : `₹${row.amount} for ${row.full_name} is back to unpaid.`,
+      );
+      this.confirmReverse.set(null);
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not undo that payment.'));
+    } finally {
+      this.reversing.set(null);
+    }
+  }
+
+  /**
+   * The people the owner collects cash from: staff, and only staff.
+   *
+   * The owner is not at the gym and never takes cash at the desk, so their own
+   * row is not something to collect — and a row for members paying online is
+   * nobody to collect from at all. Both are dropped rather than shown with a
+   * disabled button, which would only raise the question of why it is there.
+   */
+  readonly staffHoldingCash = computed(() =>
+    this.collections().filter((r) => r.staff_role === 'staff' && r.account_id),
+  );
+
+  /** Total cash out with staff — what the owner should leave with on a visit. */
   readonly cashOutstanding = computed(() =>
-    this.collections().reduce((sum, r) => sum + Number(r.cash_in_hand), 0),
+    this.staffHoldingCash().reduce((sum, r) => sum + Number(r.cash_in_hand), 0),
   );
 
   /** Everything still owed or awaiting the owner's confirmation. */

@@ -227,6 +227,33 @@ exports.markManual = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: result });
 });
 
+// @desc    Recently settled payments — the owner's check on what staff marked paid
+// @route   GET /api/gym/gyms/:gymId/payments/recent
+// @access  Gym owner
+exports.recentSettledPayments = asyncHandler(async (req, res) => {
+  const rows = await gymService.recentSettledPayments({
+    gymId: req.gym.id,
+    limit: Math.min(Number(req.query.limit) || 20, 100),
+  });
+  res.status(200).json({ success: true, count: rows.length, data: rows });
+});
+
+// @desc    Undo a payment marked paid by mistake, and suspend what it activated
+// @route   POST /api/gym/gyms/:gymId/payments/:paymentId/reverse
+// @access  Gym owner
+//
+// Owner only on purpose: staff make the marks, so letting them also erase their
+// own marks would leave the one person accountable for the money unable to see
+// that anything had changed.
+exports.reversePayment = asyncHandler(async (req, res) => {
+  const payment = await gymService.reversePayment({
+    gymId: req.gym.id,
+    paymentId: req.params.paymentId,
+    reversedBy: req.gymAccount.id,
+  });
+  res.status(200).json({ success: true, data: payment });
+});
+
 // --- cash in staff hands ---------------------------------------------------
 
 // @desc    Who is holding the gym's cash, and how much

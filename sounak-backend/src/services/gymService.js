@@ -455,6 +455,98 @@ exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy
   }
 };
 
+// Put a payment back to unpaid — the owner correcting a mistaken "paid".
+//
+// The inverse of settlePayment, and it has to undo BOTH halves or it would leave
+// a member training on a membership nobody paid for: the payment returns to
+// 'pending' and the subscription it activated returns to 'pending_payment'. One
+// transaction, for the same reason settling is.
+//
+// Refused once the cash has been handed over. At that point the money has
+// physically moved to the owner, and silently un-marking it would misstate what
+// staff are holding — the count at handover is where a mistake like that should
+// have surfaced, and quietly rewriting it afterwards helps nobody.
+//
+// The reversal is recorded (reversed_at / reversed_by) rather than wiped, so a
+// correction is visible and a pattern of them is findable.
+exports.reversePayment = async ({ gymId, paymentId, reversedBy }) => {
+  const client = await pgPool.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const payment = (await client.query(
+      'SELECT * FROM gym_payments WHERE id = $1 AND gym_id = $2 FOR UPDATE',
+      [paymentId, gymId]
+    )).rows[0];
+    if (!payment) throw notFound(`Payment '${paymentId}' not found.`);
+
+    if (!['verified', 'collected'].includes(payment.status)) {
+      throw badRequest('That payment is not marked as paid, so there is nothing to undo.');
+    }
+    if (payment.handed_over_at) {
+      throw badRequest(
+        'That cash has already been handed over to you, so it cannot be undone here.'
+      );
+    }
+
+    const updated = await client.query(
+      `UPDATE gym_payments
+          SET status      = 'pending',
+              verified_by = NULL,
+              verified_at = NULL,
+              reversed_at = now(),
+              reversed_by = $2,
+              updated_at  = now()
+        WHERE id = $1
+        RETURNING *`,
+      [paymentId, reversedBy]
+    );
+
+    // Back to pending_payment, so the door refuses them until it is actually
+    // paid. Scoped to 'active' so a subscription that was never activated by
+    // this payment is left alone.
+    const sub = await client.query(
+      `UPDATE gym_subscriptions
+          SET status = 'pending_payment', updated_at = now()
+        WHERE id = $1 AND status = 'active'
+        RETURNING *`,
+      [payment.subscription_id]
+    );
+
+    await client.query('COMMIT');
+    return { ...updated.rows[0], membership_suspended: sub.rowCount > 0 };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+};
+
+// Recently settled payments — what the owner scans to spot a wrong "paid".
+// Newest first, and each row carries who marked it so a correction can be aimed
+// at the right person rather than just at the row.
+exports.recentSettledPayments = async ({ gymId, limit = 20 }) => {
+  const result = await pgPool.query(
+    `SELECT p.id, p.amount, p.method, p.status, p.verified_at, p.handed_over_at,
+            m.full_name, s.plan_name, s.end_date,
+            a.name AS marked_by_name,
+            st.role AS marked_by_role
+       FROM gym_payments p
+       JOIN gym_members m ON m.id = p.member_id
+       JOIN gym_subscriptions s ON s.id = p.subscription_id
+       LEFT JOIN gym_accounts a ON a.id = COALESCE(p.verified_by, p.recorded_by)
+       LEFT JOIN gym_staff st ON st.account_id = COALESCE(p.verified_by, p.recorded_by)
+                             AND st.gym_id = p.gym_id
+      WHERE p.gym_id = $1
+        AND p.status IN ('verified', 'collected')
+      ORDER BY COALESCE(p.verified_at, p.created_at) DESC
+      LIMIT $2`,
+    [gymId, limit]
+  );
+  return result.rows;
+};
+
 exports.listMemberPayments = async ({ gymId, memberId }) => {
   const result = await pgPool.query(
     `SELECT p.*, s.plan_name, s.start_date, s.end_date
