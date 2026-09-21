@@ -683,6 +683,77 @@ exports.myCashInHand = async ({ gymId, accountId }) => {
   return result.rows[0];
 };
 
+// What the owner has actually collected, grouped by day, week or month.
+//
+// A handover stamps every settled cash row it covers with the same
+// handed_over_at, so the history is already in the payments table — no separate
+// ledger to keep in step. Grouping by that timestamp in the GYM's timezone, not
+// the server's, or a Monday-morning collection in Kolkata would land in the
+// previous week.
+//
+// The period is whitelisted rather than interpolated: it goes into date_trunc,
+// which takes a literal, so a caller-supplied value must never reach the SQL.
+exports.handoverHistory = async ({ gymId, period = 'week', method = 'cash', limit = 26 }) => {
+  const units = { day: 'day', week: 'week', month: 'month' };
+  const unit = units[period];
+  if (!unit) throw badRequest("period must be 'day', 'week' or 'month'.");
+  if (!['cash', 'qr', 'all'].includes(method)) {
+    throw badRequest("method must be 'cash', 'qr' or 'all'.");
+  }
+
+  const result = await pgPool.query(
+    `SELECT date_trunc($2, (p.handed_over_at AT TIME ZONE g.timezone))::date AS period_start,
+            SUM(p.amount)                                     AS total,
+            COUNT(*)::int                                     AS payments,
+            MAX(p.handed_over_at)                             AS last_at,
+            string_agg(DISTINCT a.name, ', ')                 AS from_whom
+       FROM gym_payments p
+       JOIN gyms g ON g.id = p.gym_id
+       LEFT JOIN gym_accounts a ON a.id = COALESCE(p.verified_by, p.recorded_by)
+      WHERE p.gym_id = $1
+        AND ($4::text = 'all' OR p.method = $4)
+        AND p.handed_over_at IS NOT NULL
+      GROUP BY 1
+      ORDER BY 1 DESC
+      LIMIT $3`,
+    [gymId, unit, limit, method === 'qr' ? 'qr' : method]
+  );
+  return result.rows;
+};
+
+// Close one payment off: the owner has accounted for this money.
+//
+// The counterpart of a cash handover, for money that was never in anyone's
+// hands. A UPI payment is already in the owner's account, so there is nothing to
+// collect — but until they have seen it on their statement it is still just
+// staff's word, and while it is open the Undo button has to stay. Ticking it off
+// is what closes it, and a closed payment cannot be reversed, exactly like cash
+// that has been handed over.
+//
+// Deliberately the same two columns as a handover rather than a third timestamp:
+// both answer one question — has the owner accounted for this money yet — and
+// two ways of recording the same fact would eventually disagree.
+exports.closePayment = async ({ gymId, paymentId, closedBy }) => {
+  const payment = (await pgPool.query(
+    'SELECT * FROM gym_payments WHERE id = $1 AND gym_id = $2',
+    [paymentId, gymId]
+  )).rows[0];
+  if (!payment) throw notFound(`Payment '${paymentId}' not found.`);
+  if (!['verified', 'collected'].includes(payment.status)) {
+    throw badRequest('That payment is not marked as paid yet.');
+  }
+  if (payment.handed_over_at) return payment; // already closed; nothing to do
+
+  const result = await pgPool.query(
+    `UPDATE gym_payments
+        SET handed_over_at = now(), handed_over_to = $2, updated_at = now()
+      WHERE id = $1
+      RETURNING *`,
+    [paymentId, closedBy]
+  );
+  return result.rows[0];
+};
+
 // The owner says "I have taken Ravi's cash". Stamps every outstanding cash row
 // he holds, so the report goes to zero and the trail records who received it.
 //

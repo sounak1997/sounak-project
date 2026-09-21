@@ -5,7 +5,7 @@
 }
 
 .topbar__inner {
-  max-width: 1040px;
+  max-width: 1400px;
   margin: 0 auto;
   display: flex;
   justify-content: space-between;
@@ -83,8 +83,102 @@
 }
 
 /* Tables are wide; let them scroll rather than squeezing a phone layout. */
+/* ---------------------------------------------------------------------------
+   Phone layout.
+
+   These tables used to scroll sideways, which on a phone means the owner reads
+   a name and then drags the row to find out anything about it. So below 720px
+   each row becomes its own stacked block: the column headings are hidden and
+   every cell carries its own label from `data-label`, which keeps the semantic
+   table for a desktop and for screen readers while reading as a list on a
+   phone. The desk works one-handed, standing up.
+   --------------------------------------------------------------------------- */
 @media (max-width: 720px) {
-  .card table { display: block; overflow-x: auto; white-space: nowrap; }
+  .card table,
+  .card tbody,
+  .card tr,
+  .card td {
+    display: block;
+    width: 100%;
+  }
+
+  /* The headings live on each cell instead. */
+  .card thead { display: none; }
+
+  .card tr {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .card tr:last-child { border-bottom: 0; }
+
+  .card td {
+    border: 0;
+    padding: 3px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 14px;
+    text-align: left;
+  }
+
+  /* The label, from data-label. Cells without one (a name, an action) span the
+     full width instead, so the row reads as a heading followed by details. */
+  .card td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+  }
+
+  /* The first cell is the row's subject — give it the weight of a heading. */
+  .card td:first-child {
+    display: block;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  .card td:first-child::before { content: none; }
+
+  /* Actions go full width and side by side: thumb-sized, not squeezed into a
+     right-hand column that no longer exists. */
+  .card td.actions,
+  .card td.right {
+    display: flex;
+    justify-content: stretch;
+    gap: 8px;
+    margin-top: 8px;
+    text-align: left;
+  }
+
+  .card td.actions::before,
+  .card td.right::before { content: none; }
+
+  .card td.actions .btn,
+  .card td.right .btn { flex: 1; }
+
+  /* Two figures per row rather than one wide one. */
+  .stat-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .stat { padding: 14px 15px; }
+  .stat__value { font-size: 24px; }
+
+  /* Name, phone and button stack instead of cramming onto one line. */
+  .add-row input,
+  .add-row .btn { flex: 1 1 100%; }
+}
+
+/* Very narrow phones: stop the label and value colliding. */
+@media (max-width: 380px) {
+  .card td[data-label] {
+    display: block;
+  }
+  .card td[data-label]::before {
+    display: block;
+    margin-bottom: 1px;
+  }
 }
 
 .code {
@@ -127,41 +221,10 @@
 
 /* --- renewal dialog ------------------------------------------------------ */
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(27, 30, 32, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  z-index: 50;
-}
-
-.modal {
-  background: var(--surface);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 24px 22px;
-  width: 100%;
-  max-width: 440px;
-}
-
-.modal h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
-
 .accent-bar--left { margin: 0 0 14px; }
 
-.field { margin-bottom: 14px; }
 .small { font-size: 13px; }
 .mt { margin-top: 10px; }
-
-.modal__actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.modal__actions .btn { flex: 1; }
 
 .block { display: block; font-size: 12px; }
 .mt-s { margin-top: 10px; }
@@ -203,8 +266,69 @@
   margin-top: 6px;
 }
 
-
 /* Undoing a payment locks a member out, so its confirm button is red like the
    gym-suspend one on the admin screen. */
-.btn--danger { background: var(--danger); color: #fff; }
-.btn--danger:hover:not(:disabled) { background: #a5322a; }
+
+/* Two figures read better side by side than stretched across a wide row. */
+.stat-grid--two {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  max-width: 720px;
+}
+
+/* Day / week / month switch. Buttons rather than a select: three options that
+   are all worth seeing at once, and a tap is quicker than a dropdown. */
+.period-switch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+
+/* ---------------------------------------------------------------------------
+   Full-width console.
+
+   The money work is the wide column; the chase list sits beside it on a desktop
+   instead of being a screen-length scroll away. The side column is sticky on a
+   tall screen, so "who has lapsed" stays in view while the owner works down the
+   payments.
+   --------------------------------------------------------------------------- */
+.console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (min-width: 1080px) {
+  .console {
+    /* minmax(0, …) so a wide table cannot force the column past its share. */
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+
+  .console__side {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+/* The aside is denser than the main column: it is read, not worked in. */
+.console__side .card { padding: 18px 16px; }
+.console__side h2 { font-size: 16px; }
+.console__side table { font-size: 13px; }
+.console__side td { padding: 9px 6px; }
+
+/* The worklist lives in the narrow side column, so its rows get tighter cells
+   and the renew button stays on one line rather than wrapping under the name. */
+.console__side .btn--sm {
+  padding: 6px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.console__side .call { font-size: 13px; }
+
+/* The worklist sits in the narrow side column, so its rows get tighter cells and
+   the renew button stays on one line rather than wrapping under the name. */
+.console__side .btn--sm { padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+.console__side .call { font-size: 13px; }

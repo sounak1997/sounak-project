@@ -75,122 +75,474 @@
         </div>
       }
 
-      @if (!auth.isOwner()) {
-        <p class="muted role-note">
-          Signed in as front desk. You can register members, mark attendance, take
-          renewals and mark payments received. The gym's takings are the owner's to see.
-        </p>
+      <!-- Two columns on a wide screen, one on a phone.
 
-        <!-- Their own drawer, not the gym's books: what they have taken in cash
-             and not yet handed over. They need the figure to hand it over. -->
-        @if (myCash(); as mine) {
-          @if (mine.cash_payments > 0) {
-            <div class="card cash-mine">
-              <h2>Cash you are holding</h2>
-              <div class="cash-mine__amount">₹{{ mine.cash_in_hand }}</div>
-              <p class="muted">
-                You took this in cash from {{ mine.cash_payments }} member(s). Give it to the
-                owner and this goes back to zero.
-              </p>
-            </div>
+           The main column is what the owner came to do: the money, and the
+           memberships it is paid for. The side column is what they need to
+           SEE rather than act on right now — who has lapsed and who is in the
+           gym today. Below 1080px it collapses to one column in that same
+           order, so a phone reads money first and the chase list after. -->
+      <div class="console">
+        <div class="console__main">
+        <!-- MONEY FIRST. Everything below this is running the gym; this is the
+             owner checking on it, which is what they open the console for. The
+             figures, who owes them cash, what they have collected, and anything
+             still unconfirmed — before the day-to-day. -->
+        @if (!auth.isOwner()) {
+          <p class="muted role-note">
+            Signed in as front desk. You can register members, mark attendance, take
+            renewals and mark payments received. The gym's takings are the owner's to see.
+          </p>
+
+          <!-- Their own drawer, not the gym's books: what they have taken in cash
+               and not yet handed over. They need the figure to hand it over. -->
+          @if (myCash(); as mine) {
+            @if (mine.cash_payments > 0) {
+              <div class="card cash-mine">
+                <h2>Cash you are holding</h2>
+                <div class="cash-mine__amount">₹{{ mine.cash_in_hand }}</div>
+                <p class="muted">
+                  You took this in cash from {{ mine.cash_payments }} member(s). Give it to the
+                  owner and this goes back to zero.
+                </p>
+              </div>
+            }
           }
         }
-      }
+        <!-- Who is holding the gym's money. Owner only: this is the answer to
+             "how much is still with the desk", which is the whole reason staff
+             payments are attributed. -->
+        @if (auth.isOwner() && position(); as pos) {
+          <div class="card">
+            <h2>Where your money is</h2>
+            <p class="muted mb">
+              There are only two places money can be: your bank, if they paid by UPI, or
+              with your staff, if they paid cash.
+            </p>
+            <!-- Two figures, because there are only two places the money can be.
+                 No "cash with the owner": the owner is not at the gym and never takes
+                 cash at the desk, so a tile for it would invent a place money does not
+                 sit. Cash they have already collected shows per person below, as
+                 history. -->
+            <div class="stat-grid stat-grid--two">
+              <div class="stat">
+                <div class="stat__value">₹{{ pos.in_bank }}</div>
+                <div class="stat__label">In your bank (UPI)</div>
+                <div class="stat__hint">
+                  Paid by UPI, straight into your account. Nothing for you to collect.
+                </div>
+              </div>
+              <div class="stat">
+                <div class="stat__value" [class.stat__value--danger]="+pos.cash_with_staff > 0">
+                  ₹{{ pos.cash_with_staff }}
+                </div>
+                <div class="stat__label">Cash held by staff</div>
+                <div class="stat__hint">
+                  @if (+pos.cash_with_staff > 0) {
+                    Paid in cash at the desk, so your staff has it. Collect this on your
+                    next visit — who has what is listed below.
+                  } @else {
+                    Your staff is not holding any cash right now.
+                  }
+                </div>
+              </div>
+            </div>
+            <!-- Money that has NOT been paid deliberately has no tile here. This
+                 card answers "where is my money", and an unpaid amount is not
+                 anywhere — it is the absence of money. Standing beside "in your
+                 bank" it read as a third place the money sits. It now lives in the
+                 confirm-payments card below, which is where it can be acted on and
+                 which only appears when there is something outstanding. -->
+          </div>
+        }
+        @if (auth.isOwner() && staffHoldingCash().length) {
+          <div class="card">
+            <h2>Collect from staff</h2>
+            <p class="muted mb">
+              Who is holding your cash, and how much.
+              @if (cashOutstanding() > 0) {
+                <strong>₹{{ cashOutstanding() }} to collect in total.</strong>
+              } @else {
+                Everyone has handed over — nothing to collect.
+              }
+            </p>
 
-      <!-- The renewal worklist: the reason the owner opens this screen. -->
-      @if (watchlist(); as w) {
-        <div class="card">
-          <h2>Needs a call</h2>
-          <p class="muted mb">Tap a number to ring them about renewing.</p>
-
-          @if (!w.expired.length && !w.expiring.length && !w.neverStarted.length) {
-            <p class="muted">Nothing to chase — every membership is current.</p>
-          }
-
-          @if (w.expired.length) {
-            <h3 class="sub">Expired</h3>
-            <table>
-              <tbody>
-                @for (m of w.expired; track m.id) {
-                  <tr>
-                    <td><strong>{{ m.full_name }}</strong></td>
-                    <td>{{ m.plan_name }}</td>
-                    <td><span class="pill pill--danger">{{ -(m.days_remaining ?? 0) }}d ago</span></td>
-                    <td class="right">
-                      @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          @if (w.expiring.length) {
-            <h3 class="sub">Expiring within {{ w.withinDays }} days</h3>
-            <table>
-              <tbody>
-                @for (m of w.expiring; track m.id) {
-                  <tr>
-                    <td><strong>{{ m.full_name }}</strong></td>
-                    <td>{{ m.plan_name }}</td>
-                    <td><span class="pill pill--warn">{{ m.days_remaining }}d left</span></td>
-                    <td class="right">
-                      @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-
-          @if (w.neverStarted.length) {
-            <h3 class="sub">Registered but never started</h3>
-            <table>
-              <tbody>
-                @for (m of w.neverStarted; track m.id) {
-                  <tr>
-                    <td><strong>{{ m.full_name }}</strong></td>
-                    <td class="muted">joined {{ day(m.joined_on) }}</td>
-                    <td></td>
-                    <td class="right">
-                      @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-        </div>
-      }
-
-      @if (today(); as t) {
-        <div class="card">
-          <h2>Today — {{ day(t.visitDate) }}</h2>
-          <p class="muted mb">{{ t.present }} in the gym now, {{ t.total }} visits so far.</p>
-          @if (!t.visits.length) {
-            <p class="muted">Nobody has checked in yet.</p>
-          } @else {
             <table>
               <thead>
-                <tr><th>Member</th><th>In</th><th>Out</th><th>How</th></tr>
+                <tr>
+                  <th>Who</th>
+                  <th>Cash to collect</th>
+                  <th>Holding it since</th>
+                  <th>Paid to you by UPI</th>
+                  <th>Cash given to you before</th>
+                  <th class="right"></th>
+                </tr>
               </thead>
               <tbody>
-                @for (v of t.visits; track v.member_id) {
+                @for (c of staffHoldingCash(); track c.account_id) {
                   <tr>
-                    <td><strong>{{ v.full_name }}</strong></td>
-                    <td>{{ time(v.check_in_at) }}</td>
                     <td>
-                      @if (v.check_out_at) { {{ time(v.check_out_at) }} }
-                      @else { <span class="pill pill--ok">In now</span> }
+                      <strong>{{ c.account_name }}</strong>
                     </td>
-                    <td class="muted">{{ v.method === 'manual' ? 'By desk' : 'Scanned' }}</td>
+                    <td data-label="Cash to collect">
+                      @if (+c.cash_in_hand > 0) {
+                        <strong>₹{{ c.cash_in_hand }}</strong>
+                        <span class="muted small">({{ c.cash_payments }})</span>
+                      } @else { <span class="muted">—</span> }
+                    </td>
+                    <!-- How long it has been sitting. The owner comes in once a
+                         week, so "since when" is what tells them whether this is
+                         today's takings or a fortnight of them. -->
+                    <td class="muted" data-label="Holding it since">
+                      @if (c.oldest_unsettled_at) { {{ since(c.oldest_unsettled_at) }} }
+                      @else { — }
+                    </td>
+                    <td class="muted" data-label="Paid to you by UPI">₹{{ c.upi_confirmed }}</td>
+                    <td class="muted" data-label="Given to you before">₹{{ c.cash_handed_over }}</td>
+                    <td class="right">
+                      @if (+c.cash_in_hand > 0) {
+                        <button
+                          class="btn btn--sm"
+                          [disabled]="handingOver() === c.account_id"
+                          (click)="takeCash(c)">
+                          {{ handingOver() === c.account_id ? 'Saving…' : 'Cash received' }}
+                        </button>
+                      }
+                    </td>
                   </tr>
                 }
               </tbody>
             </table>
-          }
+          </div>
+        }
+        <!-- What the owner has actually collected, over time. Each "Cash received"
+             tap stamps the payments it covered, so this history comes out of the
+             payments table itself rather than a second ledger that could drift. -->
+        @if (auth.isOwner()) {
+          <div class="card">
+            <h2>Money you've accounted for</h2>
+            <p class="muted mb">
+              Cash once you tap <strong>Cash received</strong>, and UPI once you have
+              checked it against your account.
+              @if (handoverTotal() > 0) {
+                <strong>₹{{ handoverTotal() }} in total.</strong>
+              }
+            </p>
+
+            <!-- Which money, then over what span. Two switches rather than one
+                 combined list, because those are two separate questions. -->
+            <div class="period-switch">
+              @for (mth of ['cash', 'qr', 'all']; track mth) {
+                <button
+                  class="btn btn--sm"
+                  [class.btn--ghost]="handoverMethod() !== mth"
+                  [disabled]="loadingHandovers()"
+                  (click)="loadHandovers(undefined, $any(mth))">
+                  {{ mth === 'cash' ? 'Cash' : mth === 'qr' ? 'UPI' : 'Both' }}
+                </button>
+              }
+            </div>
+
+            <div class="period-switch">
+              @for (per of ['day', 'week', 'month']; track per) {
+                <button
+                  class="btn btn--sm"
+                  [class.btn--ghost]="handoverPeriod() !== per"
+                  [disabled]="loadingHandovers()"
+                  (click)="loadHandovers($any(per))">
+                  {{ per === 'day' ? 'By day' : per === 'week' ? 'By week' : 'By month' }}
+                </button>
+              }
+            </div>
+
+            @if (loadingHandovers()) {
+              <p class="muted">Loading…</p>
+            } @else if (!handovers().length) {
+              <p class="muted">
+                @if (handoverMethod() === 'qr') {
+                  No UPI checked off yet. Tick payments off under
+                  <strong>Recently marked paid</strong> once you have seen them in your account.
+                } @else {
+                  Nothing collected yet. When staff hand you their cash, tap
+                  <strong>Cash received</strong> above and it will show up here.
+                }
+              </p>
+            } @else {
+              <table>
+                <thead>
+                  <tr>
+                    <th>{{ handoverPeriod() === 'month' ? 'Month' : handoverPeriod() === 'week' ? 'Week of' : 'Day' }}</th>
+                    <th>From</th>
+                    <th>Payments</th>
+                    <th>Collected</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (h of handovers(); track h.period_start) {
+                    <tr>
+                      <td>
+                        <strong>{{ periodLabel(h.period_start) }}</strong>
+                      </td>
+                      <td data-label="From">{{ h.from_whom ?? '—' }}</td>
+                      <td data-label="Payments">{{ h.payments }}</td>
+                      <td data-label="Collected"><strong>₹{{ h.total }}</strong></td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          </div>
+        }
+
+        <!-- The owner's check on what staff marked paid. Owner only: staff make the
+             marks, so staff erasing their own marks would leave the person
+             accountable for the money unable to see anything had changed. -->
+        @if (auth.isOwner() && recentPaid().length) {
+          <div class="card">
+            <h2>Recently marked paid</h2>
+            <p class="muted mb">
+              Every payment your staff has confirmed. Undo one that was marked paid by
+              mistake — the member goes back to unpaid and their membership goes on hold.
+              Tap <strong>Got it</strong> on a UPI payment once you have seen it in your
+              account: that closes it off, and it can no longer be undone.
+            </p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Amount</th>
+                  <th>How</th>
+                  <th>Marked by</th>
+                  <th>When</th>
+                  <th class="right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of recentPaid(); track p.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ p.full_name }}</strong>
+                      <span class="muted block">{{ p.plan_name }}</span>
+                    </td>
+                    <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
+                    <td data-label="How">
+                      <span class="pill" [class.pill--ok]="p.method !== 'cash'"
+                            [class.pill--warn]="p.method === 'cash'">
+                        {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                      </span>
+                    </td>
+                    <td data-label="Marked by">{{ p.marked_by_name ?? '—' }}</td>
+                    <td class="muted" data-label="When">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
+                    <td class="right actions">
+                      <!-- Once the owner has accounted for the money the row is
+                           closed and the server refuses a reversal, so no Undo is
+                           offered: a button that always fails is worse than saying
+                           why. Cash closes when it is handed over; UPI closes when
+                           the owner ticks it off with the button below. Without
+                           that, Undo would hang around for ever and a UPI payment
+                           would never actually be finished with. -->
+                      @if (p.handed_over_at) {
+                        <span class="muted small">
+                          {{ p.method === 'cash' ? 'cash collected' : 'checked off' }}
+                        </span>
+                      } @else {
+                        <button
+                          class="btn btn--sm btn--ghost"
+                          [disabled]="reversing() === p.id || closing() === p.id"
+                          (click)="confirmReverse.set(p)">
+                          {{ reversing() === p.id ? '…' : 'Undo' }}
+                        </button>
+                        @if (p.method !== 'cash') {
+                          <button
+                            class="btn btn--sm"
+                            [disabled]="closing() === p.id || reversing() === p.id"
+                            (click)="closePaid(p)">
+                            {{ closing() === p.id ? '…' : 'Got it' }}
+                          </button>
+                        }
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+        <!-- Only what nobody has confirmed yet.
+             A renewal taken at the desk is recorded as paid the moment staff pick
+             cash or UPI, so it never lands here — showing the same two buttons for
+             something already settled would just look like being asked twice. What
+             does land here is a payment raised somewhere nobody could confirm it:
+             a member scanning the door QR, or a membership given out unpaid.
+             Hidden entirely when empty, which is the normal state. -->
+        @if (outstanding().length) {
+        <div class="card">
+          <h2>Waiting for you to confirm</h2>
+          <p class="muted mb">
+            <strong>₹{{ unconfirmedTotal() }} not confirmed.</strong>
+            These members say they have paid, or were let in without paying — nobody at the
+            gym has confirmed the money yet. Renewals you take at the desk are already
+            recorded and never appear here.
+          </p>
+
+          <table>
+            <thead>
+              <tr><th>Member</th><th>Plan</th><th>Amount</th><th>How</th><th></th></tr>
+            </thead>
+              <tbody>
+                @for (p of outstanding(); track p.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ p.full_name }}</strong>
+                      @if (p.phone) {
+                        <a class="call block" [href]="'tel:' + p.phone">{{ p.phone }}</a>
+                      }
+                    </td>
+                    <td data-label="Plan">{{ p.plan_name }}<span class="muted block">to {{ day(p.end_date) }}</span></td>
+                    <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
+                    <td data-label="How">
+                      <span class="muted">{{ payLabel(p) }}</span>
+                      @if (p.reference) { <span class="muted block">ref {{ p.reference }}</span> }
+                    </td>
+                    <!-- Two buttons, not one: the METHOD is what decides where the
+                         money ends up, so it is chosen here rather than inherited
+                         from however the renewal was first booked. -->
+                    <td class="right actions">
+                      <button
+                        class="btn btn--sm"
+                        [disabled]="settling() === p.id"
+                        (click)="markPaid(p, 'cash')">
+                        {{ settling() === p.id ? '…' : 'Paid cash' }}
+                      </button>
+                      <button
+                        class="btn btn--sm btn--ghost"
+                        [disabled]="settling() === p.id"
+                        (click)="markPaid(p, 'qr')">
+                        {{ settling() === p.id ? '…' : 'Paid UPI' }}
+                      </button>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+          </table>
         </div>
-      }
+        }
+        </div>
+
+        <aside class="console__side">
+        <!-- The renewal worklist: the reason the owner opens this screen. -->
+        @if (watchlist(); as w) {
+          <div class="card">
+            <h2>Needs a call</h2>
+            <p class="muted mb">
+              Ring them, or take the payment here — <strong>Renew</strong> records it the
+              same way the desk does.
+            </p>
+
+            @if (!w.expired.length && !w.expiring.length && !w.neverStarted.length) {
+              <p class="muted">Nothing to chase — every membership is current.</p>
+            }
+
+            @if (w.expired.length) {
+              <h3 class="sub">Expired</h3>
+              <table>
+                <tbody>
+                  @for (m of w.expired; track m.id) {
+                    <tr>
+                      <td><strong>{{ m.full_name }}</strong></td>
+                      <td>{{ m.plan_name }}</td>
+                      <td data-label="Lapsed"><span class="pill pill--danger">{{ -(m.days_remaining ?? 0) }}d ago</span></td>
+                      <td class="right">
+                        @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
+                      </td>
+                      <!-- Renew right here: this list is where the owner decides to
+                           chase someone, so sending them to find the same person
+                           again in the member table below was busywork. -->
+                      <td class="right">
+                        <button class="btn btn--sm" (click)="openRenewal(m)">Renew</button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+
+            @if (w.expiring.length) {
+              <h3 class="sub">Expiring within {{ w.withinDays }} days</h3>
+              <table>
+                <tbody>
+                  @for (m of w.expiring; track m.id) {
+                    <tr>
+                      <td><strong>{{ m.full_name }}</strong></td>
+                      <td>{{ m.plan_name }}</td>
+                      <td data-label="Expires"><span class="pill pill--warn">{{ m.days_remaining }}d left</span></td>
+                      <td class="right">
+                        @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
+                      </td>
+                      <td class="right">
+                        <button class="btn btn--sm" (click)="openRenewal(m)">Renew</button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+
+            @if (w.neverStarted.length) {
+              <h3 class="sub">Registered but never started</h3>
+              <table>
+                <tbody>
+                  @for (m of w.neverStarted; track m.id) {
+                    <tr>
+                      <td><strong>{{ m.full_name }}</strong></td>
+                      <td class="muted" data-label="Joined">joined {{ day(m.joined_on) }}</td>
+                      <td class="right">
+                        @if (m.phone) { <a class="call" [href]="'tel:' + m.phone">{{ m.phone }}</a> }
+                      </td>
+                      <td class="right">
+                        <button class="btn btn--sm"
+                          (click)="openRenewal({ id: m.id, full_name: m.full_name, expiry: 'none' })">
+                          Start plan
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          </div>
+        }
+
+        @if (today(); as t) {
+          <div class="card">
+            <h2>Today — {{ day(t.visitDate) }}</h2>
+            <p class="muted mb">{{ t.present }} in the gym now, {{ t.total }} visits so far.</p>
+            @if (!t.visits.length) {
+              <p class="muted">Nobody has checked in yet.</p>
+            } @else {
+              <table>
+                <thead>
+                  <tr><th>Member</th><th>In</th><th>Out</th><th>How</th></tr>
+                </thead>
+                <tbody>
+                  @for (v of t.visits; track v.member_id) {
+                    <tr>
+                      <td data-label="Member"><strong>{{ v.full_name }}</strong></td>
+                      <td data-label="In">{{ time(v.check_in_at) }}</td>
+                      <td data-label="Out">
+                        @if (v.check_out_at) { {{ time(v.check_out_at) }} }
+                        @else { <span class="pill pill--ok">In now</span> }
+                      </td>
+                      <td class="muted" data-label="How">{{ v.method === 'manual' ? 'By desk' : 'Scanned' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            }
+          </div>
+        }
+        </aside>
+      </div>
 
       <!-- Someone walks in and wants to join. Owner AND staff: registering a
            member is running the gym, not spending its money, so this card is
@@ -248,13 +600,13 @@
           <tbody>
             @for (m of members(); track m.id) {
               <tr>
-                <td><strong>{{ m.full_name }}</strong></td>
+                <td data-label="Name"><strong>{{ m.full_name }}</strong></td>
                 <!-- What a member needs to create a login from their own device. -->
-                <td><code class="code">{{ m.member_code }}</code></td>
-                <td class="muted">{{ m.phone }}</td>
-                <td>{{ m.plan_name ?? '—' }}</td>
-                <td>{{ day(m.end_date) }}</td>
-                <td><span class="pill" [class]="'pill ' + pill(m.expiry)">{{ expiryLabel(m.expiry) }}</span></td>
+                <td data-label="Code"><code class="code">{{ m.member_code }}</code></td>
+                <td class="muted" data-label="Phone">{{ m.phone }}</td>
+                <td data-label="Plan">{{ m.plan_name ?? '—' }}</td>
+                <td data-label="Valid to">{{ day(m.end_date) }}</td>
+                <td data-label="Status"><span class="pill" [class]="'pill ' + pill(m.expiry)">{{ expiryLabel(m.expiry) }}</span></td>
                 <td class="right actions">
                   <button
                     class="btn btn--ghost btn--sm"
@@ -272,233 +624,9 @@
         </table>
       </div>
 
-      <!-- Who is holding the gym's money. Owner only: this is the answer to
-           "how much is still with the desk", which is the whole reason staff
-           payments are attributed. -->
-      @if (auth.isOwner() && position(); as pos) {
-        <div class="card">
-          <h2>Where your money is</h2>
-          <p class="muted mb">
-            There are only two places money can be: your bank, if they paid by UPI, or
-            with your staff, if they paid cash.
-          </p>
-          <!-- Three figures, because there are only three answers the owner needs:
-               what arrived on its own, what someone is holding for me, and what has
-               not been paid at all.
-               There is deliberately no "cash with the owner" figure. The owner is not
-               at the gym and never takes cash at the desk, so a tile for it would be
-               inventing a place money does not sit. Cash they have already collected
-               from staff shows per person in the table below, as history. -->
-          <div class="stat-grid">
-            <div class="stat">
-              <div class="stat__value">₹{{ pos.in_bank }}</div>
-              <div class="stat__label">In your bank (UPI)</div>
-              <div class="stat__hint">
-                Paid by UPI, straight into your account. Nothing for you to collect.
-              </div>
-            </div>
-            <div class="stat">
-              <div class="stat__value" [class.stat__value--danger]="+pos.cash_with_staff > 0">
-                ₹{{ pos.cash_with_staff }}
-              </div>
-              <div class="stat__label">Cash held by staff</div>
-              <div class="stat__hint">
-                @if (+pos.cash_with_staff > 0) {
-                  Paid in cash at the desk, so your staff has it. Collect this on your
-                  next visit — who has what is listed below.
-                } @else {
-                  Your staff is not holding any cash right now.
-                }
-              </div>
-            </div>
-            <div class="stat">
-              <div class="stat__value">₹{{ pos.still_owed }}</div>
-              <div class="stat__label">Not paid yet</div>
-              <div class="stat__hint">Members owe this. No money has come in for it.</div>
-            </div>
-          </div>
-        </div>
-      }
 
-      @if (auth.isOwner() && staffHoldingCash().length) {
-        <div class="card">
-          <h2>Collect from staff</h2>
-          <p class="muted mb">
-            Who is holding your cash, and how much.
-            @if (cashOutstanding() > 0) {
-              <strong>₹{{ cashOutstanding() }} to collect in total.</strong>
-            } @else {
-              Everyone has handed over — nothing to collect.
-            }
-          </p>
 
-          <table>
-            <thead>
-              <tr>
-                <th>Who</th>
-                <th>Cash to collect</th>
-                <th>Holding it since</th>
-                <th>Paid to you by UPI</th>
-                <th>Cash given to you before</th>
-                <th class="right"></th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (c of staffHoldingCash(); track c.account_id) {
-                <tr>
-                  <td>
-                    <strong>{{ c.account_name }}</strong>
-                  </td>
-                  <td>
-                    @if (+c.cash_in_hand > 0) {
-                      <strong>₹{{ c.cash_in_hand }}</strong>
-                      <span class="muted small">({{ c.cash_payments }})</span>
-                    } @else { <span class="muted">—</span> }
-                  </td>
-                  <!-- How long it has been sitting. The owner comes in once a
-                       week, so "since when" is what tells them whether this is
-                       today's takings or a fortnight of them. -->
-                  <td class="muted">
-                    @if (c.oldest_unsettled_at) { {{ since(c.oldest_unsettled_at) }} }
-                    @else { — }
-                  </td>
-                  <td class="muted">₹{{ c.upi_confirmed }}</td>
-                  <td class="muted">₹{{ c.cash_handed_over }}</td>
-                  <td class="right">
-                    @if (+c.cash_in_hand > 0) {
-                      <button
-                        class="btn btn--sm"
-                        [disabled]="handingOver() === c.account_id"
-                        (click)="takeCash(c)">
-                        {{ handingOver() === c.account_id ? 'Saving…' : 'Cash received' }}
-                      </button>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
 
-      <!-- The owner's check on what staff marked paid. Owner only: staff make the
-           marks, so staff erasing their own marks would leave the person
-           accountable for the money unable to see anything had changed. -->
-      @if (auth.isOwner() && recentPaid().length) {
-        <div class="card">
-          <h2>Recently marked paid</h2>
-          <p class="muted mb">
-            Every payment your staff has confirmed. If one was marked paid by mistake,
-            undo it — the member goes back to unpaid and their membership is put on hold
-            until it is settled properly.
-          </p>
-          <table>
-            <thead>
-              <tr>
-                <th>Member</th>
-                <th>Amount</th>
-                <th>How</th>
-                <th>Marked by</th>
-                <th>When</th>
-                <th class="right"></th>
-              </tr>
-            </thead>
-            <tbody>
-              @for (p of recentPaid(); track p.id) {
-                <tr>
-                  <td>
-                    <strong>{{ p.full_name }}</strong>
-                    <span class="muted block">{{ p.plan_name }}</span>
-                  </td>
-                  <td><strong>₹{{ p.amount }}</strong></td>
-                  <td>
-                    <span class="pill" [class.pill--ok]="p.method !== 'cash'"
-                          [class.pill--warn]="p.method === 'cash'">
-                      {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
-                    </span>
-                  </td>
-                  <td>{{ p.marked_by_name ?? '—' }}</td>
-                  <td class="muted">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
-                  <td class="right">
-                    <!-- Handed-over cash has physically moved to the owner, so the
-                         server refuses it: an enabled button that always fails
-                         would be worse than saying why. -->
-                    @if (p.handed_over_at) {
-                      <span class="muted small">cash collected</span>
-                    } @else {
-                      <button
-                        class="btn btn--sm btn--ghost"
-                        [disabled]="reversing() === p.id"
-                        (click)="confirmReverse.set(p)">
-                        {{ reversing() === p.id ? '…' : 'Undo' }}
-                      </button>
-                    }
-                  </td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      }
-
-      <!-- Only what nobody has confirmed yet.
-           A renewal taken at the desk is recorded as paid the moment staff pick
-           cash or UPI, so it never lands here — showing the same two buttons for
-           something already settled would just look like being asked twice. What
-           does land here is a payment raised somewhere nobody could confirm it:
-           a member scanning the door QR, or a membership given out unpaid.
-           Hidden entirely when empty, which is the normal state. -->
-      @if (outstanding().length) {
-      <div class="card">
-        <h2>Waiting for you to confirm</h2>
-        <p class="muted mb">
-          These members say they have paid, or were let in without paying — nobody at the
-          gym has confirmed the money yet. Renewals you take at the desk are already
-          recorded and never appear here.
-        </p>
-
-        <table>
-          <thead>
-            <tr><th>Member</th><th>Plan</th><th>Amount</th><th>How</th><th></th></tr>
-          </thead>
-            <tbody>
-              @for (p of outstanding(); track p.id) {
-                <tr>
-                  <td>
-                    <strong>{{ p.full_name }}</strong>
-                    @if (p.phone) {
-                      <a class="call block" [href]="'tel:' + p.phone">{{ p.phone }}</a>
-                    }
-                  </td>
-                  <td>{{ p.plan_name }}<span class="muted block">to {{ day(p.end_date) }}</span></td>
-                  <td><strong>₹{{ p.amount }}</strong></td>
-                  <td>
-                    <span class="muted">{{ payLabel(p) }}</span>
-                    @if (p.reference) { <span class="muted block">ref {{ p.reference }}</span> }
-                  </td>
-                  <!-- Two buttons, not one: the METHOD is what decides where the
-                       money ends up, so it is chosen here rather than inherited
-                       from however the renewal was first booked. -->
-                  <td class="right actions">
-                    <button
-                      class="btn btn--sm"
-                      [disabled]="settling() === p.id"
-                      (click)="markPaid(p, 'cash')">
-                      {{ settling() === p.id ? '…' : 'Paid cash' }}
-                    </button>
-                    <button
-                      class="btn btn--sm btn--ghost"
-                      [disabled]="settling() === p.id"
-                      (click)="markPaid(p, 'qr')">
-                      {{ settling() === p.id ? '…' : 'Paid UPI' }}
-                    </button>
-                  </td>
-                </tr>
-              }
-            </tbody>
-        </table>
-      </div>
-      }
 
       <!-- The gym's UPI QR. This is the payment method today: the member scans
            it at the door, pays in their own app, shows the desk, and staff

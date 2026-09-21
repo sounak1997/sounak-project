@@ -8,6 +8,7 @@ import {
   CashPosition,
   CreatedMember,
   DashboardSummary,
+  HandoverPeriod,
   GymService,
   MemberRow,
   PaymentProvider,
@@ -18,6 +19,9 @@ import {
   Today,
   Watchlist,
 } from '../core/gym.service';
+
+/** The minimum the renewal dialog needs: who, and whether they have a plan. */
+type RenewTarget = { id: string; full_name: string; expiry?: MemberRow['expiry'] };
 
 /**
  * The owner's console: what needs doing today.
@@ -54,7 +58,7 @@ export class DashboardPage {
   readonly justAdded = signal<CreatedMember['member'] | null>(null);
 
   // --- taking a renewal (front desk) ---
-  readonly renewing = signal<MemberRow | null>(null);
+  readonly renewing = signal<RenewTarget | null>(null);
   readonly renewPlanId = signal('');
   readonly renewMethod = signal<'cash' | 'qr'>('cash');
   readonly savingRenewal = signal(false);
@@ -77,6 +81,18 @@ export class DashboardPage {
   readonly reversing = signal<string | null>(null);
   /** Held for confirmation: undoing locks a member out, so it is never one tap. */
   readonly confirmReverse = signal<SettledPayment | null>(null);
+
+  // --- what the owner has collected, over time ---
+  readonly handovers = signal<HandoverPeriod[]>([]);
+  readonly handoverPeriod = signal<'day' | 'week' | 'month'>('week');
+  /** Which money stream the history shows: cash collected, UPI, or both. */
+  readonly handoverMethod = signal<'cash' | 'qr' | 'all'>('cash');
+  readonly closing = signal<string | null>(null);
+  readonly loadingHandovers = signal(false);
+  /** Everything collected across the periods shown. */
+  readonly handoverTotal = computed(() =>
+    this.handovers().reduce((sum, h) => sum + Number(h.total), 0),
+  );
   /** Owner's view: bank vs own hands vs staff pockets. */
   readonly position = signal<CashPosition | null>(null);
 
@@ -100,15 +116,25 @@ export class DashboardPage {
 
   constructor() {
     // Reloads whenever the owner switches gym — an owner of two gyms sees each
-    // one's numbers without a page refresh.
+    // one's numbers without a page refresh. `initial` here because a different
+    // gym's figures are a genuinely new screen.
     effect(() => {
       const gym = this.auth.activeGym();
-      if (gym) void this.load(gym.id, gym.gym_code);
+      if (gym) void this.load(gym.id, gym.gym_code, true);
     });
   }
 
-  private async load(gymId: string, gymCode: string): Promise<void> {
-    this.loading.set(true);
+  /**
+   * Fetches the whole screen. Only for arriving and for switching gym.
+   *
+   * `initial` is what puts the page into its loading state, and actions pass
+   * false — nothing they do warrants replacing the screen with "Loading…" and
+   * losing the reader's place. They call the refresh* helpers below instead,
+   * which re-fetch only the slices their action can have changed; signals then
+   * re-render just the bindings that read those slices.
+   */
+  private async load(gymId: string, gymCode: string, initial = false): Promise<void> {
+    if (initial) this.loading.set(true);
     this.error.set('');
     this.posterUrl.set(`${location.origin}/checkin?g=${gymCode}`);
     try {
@@ -155,14 +181,16 @@ export class DashboardPage {
       this.payQrUrl.set(this.auth.activeGym()?.payment_qr_url ?? '');
       this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
       if (owner) {
-        const [rows, pos, recent] = await Promise.all([
+        const [rows, pos, recent, hist] = await Promise.all([
           this.api.collections(gymId).catch(() => []),
           this.api.cashPosition(gymId).catch(() => null),
           this.api.recentPayments(gymId).catch(() => []),
+          this.api.handovers(gymId, this.handoverPeriod(), this.handoverMethod()).catch(() => []),
         ]);
         this.collections.set(rows);
         this.position.set(pos);
         this.recentPaid.set(recent);
+        this.handovers.set(hist);
       } else {
         this.collections.set([]);
         this.position.set(null);
@@ -171,8 +199,94 @@ export class DashboardPage {
     } catch {
       this.error.set('Could not load this gym. Please try again.');
     } finally {
-      this.loading.set(false);
+      if (initial) this.loading.set(false);
     }
+  }
+
+  /**
+   * Re-reads the money figures and nothing else: the position tiles, who is
+   * holding cash, what has been marked paid, and what is still unconfirmed.
+   *
+   * Everything here is owner-only except the unconfirmed list and the caller's
+   * own cash, so staff fetch the two they are allowed and skip the rest rather
+   * than collecting 403s.
+   */
+  private async refreshMoney(gymId: string): Promise<void> {
+    const owner = this.auth.isOwner();
+    const [payments, mine] = await Promise.all([
+      this.api.payments(gymId).catch(() => this.payments()),
+      this.api.myCashInHand(gymId).catch(() => this.myCash()),
+    ]);
+    this.payments.set(payments);
+    this.myCash.set(mine);
+    if (!owner) return;
+
+    const [rows, pos, recent] = await Promise.all([
+      this.api.collections(gymId).catch(() => this.collections()),
+      this.api.cashPosition(gymId).catch(() => this.position()),
+      this.api.recentPayments(gymId).catch(() => this.recentPaid()),
+    ]);
+    this.collections.set(rows);
+    this.position.set(pos);
+    this.recentPaid.set(recent);
+    await this.loadHandovers();
+  }
+
+  /** Re-reads the member list, the renewal worklist and the headline counts. */
+  private async refreshMembers(gymId: string): Promise<void> {
+    const [members, watchlist, summary] = await Promise.all([
+      this.api.members(gymId).catch(() => this.members()),
+      this.api.watchlist(gymId, 7).catch(() => this.watchlist()),
+      this.api.dashboard(gymId).catch(() => this.summary()),
+    ]);
+    this.members.set(members);
+    this.watchlist.set(watchlist);
+    this.summary.set(summary);
+  }
+
+  /**
+   * Re-reads the collection history. Its own loader, not the page's: switching
+   * day/week/month must not blank the rest of the screen.
+   */
+  async loadHandovers(
+    period?: 'day' | 'week' | 'month',
+    method?: 'cash' | 'qr' | 'all',
+  ): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym || !this.auth.isOwner()) return;
+    if (period) this.handoverPeriod.set(period);
+    if (method) this.handoverMethod.set(method);
+    this.loadingHandovers.set(true);
+    try {
+      this.handovers.set(
+        await this.api.handovers(gym.id, this.handoverPeriod(), this.handoverMethod()),
+      );
+    } catch {
+      this.handovers.set([]);
+    } finally {
+      this.loadingHandovers.set(false);
+    }
+  }
+
+  /** Re-reads the gateway block after its keys change. Owner-only, like the route. */
+  private async refreshProvider(gymId: string): Promise<void> {
+    const p = await this.api
+      .paymentProvider(gymId)
+      .catch(() => ({ provider: this.provider(), webhookUrl: this.webhookUrl(), webhookReachable: true }));
+    this.provider.set(p.provider);
+    this.webhookUrl.set(p.webhookUrl);
+    this.webhookReachable.set(p.webhookReachable ?? true);
+    if (p.provider) this.keyId.set(p.provider.key_id);
+  }
+
+  /** Re-reads today's attendance and the counts that move with it. */
+  private async refreshAttendance(gymId: string): Promise<void> {
+    const [today, summary] = await Promise.all([
+      this.api.today(gymId).catch(() => this.today()),
+      this.api.dashboard(gymId).catch(() => this.summary()),
+    ]);
+    this.today.set(today);
+    this.summary.set(summary);
   }
 
   /**
@@ -188,7 +302,12 @@ export class DashboardPage {
     try {
       const done = await this.api.handover(gym.id, row.account_id);
       this.notice.set(`Recorded ₹${done.total} received from ${row.account_name}.`);
-      await this.load(gym.id, gym.gym_code);
+      // Their row drops to zero the moment it lands, so the table answers before
+      // the round trip; the refresh then reconciles with the server.
+      this.collections.update((list) =>
+        list.map((r) => (r.account_id === row.account_id ? { ...r, cash_in_hand: '0' } : r)),
+      );
+      await this.refreshMoney(gym.id);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not record that handover.'));
     } finally {
@@ -216,6 +335,28 @@ export class DashboardPage {
   }
 
   /**
+   * Tick a payment off as accounted for — "yes, this is in my account".
+   *
+   * After it, Undo is gone for that row, which is the point: an undo button that
+   * never expires means a payment is never really settled.
+   */
+  async closePaid(row: SettledPayment): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.closing.set(row.id);
+    this.error.set('');
+    try {
+      await this.api.closePayment(gym.id, row.id);
+      this.notice.set(`₹${row.amount} from ${row.full_name} is checked off.`);
+      await this.refreshMoney(gym.id);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not check that off.'));
+    } finally {
+      this.closing.set(null);
+    }
+  }
+
+  /**
    * Undo a payment marked paid by mistake, and lock the member out again.
    *
    * Owner only, and confirmed first: this takes away access someone currently
@@ -235,7 +376,8 @@ export class DashboardPage {
           : `₹${row.amount} for ${row.full_name} is back to unpaid.`,
       );
       this.confirmReverse.set(null);
-      await this.load(gym.id, gym.gym_code);
+      this.recentPaid.update((list) => list.filter((r) => r.id !== row.id));
+      await Promise.all([this.refreshMoney(gym.id), this.refreshMembers(gym.id)]);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not undo that payment.'));
     } finally {
@@ -258,6 +400,15 @@ export class DashboardPage {
   /** Total cash out with staff — what the owner should leave with on a visit. */
   readonly cashOutstanding = computed(() =>
     this.staffHoldingCash().reduce((sum, r) => sum + Number(r.cash_in_hand), 0),
+  );
+
+  /**
+   * What the unconfirmed rows add up to. Shown on the card that lists them
+   * rather than beside the money figures: an unpaid amount is not a place the
+   * gym's money sits, it is money that has not arrived.
+   */
+  readonly unconfirmedTotal = computed(() =>
+    this.outstanding().reduce((sum, p) => sum + Number(p.amount), 0),
   );
 
   /** Everything still owed or awaiting the owner's confirmation. */
@@ -293,7 +444,10 @@ export class DashboardPage {
           ? `₹${payment.amount} cash from ${payment.full_name} — it is with you now.`
           : `₹${payment.amount} from ${payment.full_name} marked as received by UPI.`,
       );
-      await this.load(gym.id, gym.gym_code);
+      // Drop it from the unconfirmed list at once — that card is the one the eye
+      // is on, and it should empty as the row is dealt with.
+      this.payments.update((list) => list.filter((p) => p.id !== payment.id));
+      await Promise.all([this.refreshMoney(gym.id), this.refreshMembers(gym.id)]);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not mark that as paid. Please try again.'));
     } finally {
@@ -336,7 +490,7 @@ export class DashboardPage {
       this.webhookSecret.set('');
       this.showKeys.set(false);
       this.notice.set('Online payment is connected. Members can now renew by UPI.');
-      await this.load(gym.id, gym.gym_code);
+      await this.refreshProvider(gym.id);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not save those keys. Please check them.'));
     } finally {
@@ -356,7 +510,7 @@ export class DashboardPage {
     this.marking.set(memberId);
     try {
       await this.api.markManual(gym.id, memberId);
-      await this.load(gym.id, gym.gym_code);
+      await this.refreshAttendance(gym.id);
     } catch {
       this.error.set('Could not record that. Please try again.');
     } finally {
@@ -382,7 +536,7 @@ export class DashboardPage {
       this.justAdded.set(created.member);
       this.newName.set('');
       this.newPhone.set('');
-      await this.load(gym.id, gym.gym_code);
+      await this.refreshMembers(gym.id);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not add that member.'));
     } finally {
@@ -390,7 +544,16 @@ export class DashboardPage {
     }
   }
 
-  openRenewal(member: MemberRow): void {
+  /**
+   * Opens the renewal dialog.
+   *
+   * Takes the narrow RenewTarget rather than a MemberRow so the renewal worklist
+   * can open it too — that list is where the owner decides to chase someone, and
+   * sending them off to find the same person again in the member table below was
+   * busywork. Its rows carry no `expiry`, so the label falls back to "Renew",
+   * except for the never-started section which passes 'none' explicitly.
+   */
+  openRenewal(member: RenewTarget): void {
     this.renewing.set(member);
     this.renewPlanId.set(this.plans()[0]?.id ?? '');
     this.renewMethod.set('cash');
@@ -410,7 +573,7 @@ export class DashboardPage {
         method: this.renewMethod(),
       });
       this.renewing.set(null);
-      await this.load(gym.id, gym.gym_code);
+      await Promise.all([this.refreshMembers(gym.id), this.refreshMoney(gym.id)]);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not record that payment.'));
     } finally {
@@ -420,6 +583,24 @@ export class DashboardPage {
 
   private apiMessage(err: unknown, fallback: string): string {
     return err instanceof HttpErrorResponse && err.error?.message ? err.error.message : fallback;
+  }
+
+  /**
+   * How a period reads in the history table. A month shows as "September 2026",
+   * a week as "Mon 15 Sep", a day as "21 Sep" — the unit is already in the
+   * column heading, so the label does not repeat it.
+   */
+  periodLabel(value: string): string {
+    const [y, m, d] = String(value).slice(0, 10).split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (this.handoverPeriod() === 'month') {
+      return date.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    }
+    const opts: Intl.DateTimeFormatOptions =
+      this.handoverPeriod() === 'week'
+        ? { weekday: 'short', day: 'numeric', month: 'short' }
+        : { day: 'numeric', month: 'short' };
+    return date.toLocaleDateString([], opts);
   }
 
   /**

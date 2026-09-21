@@ -18,6 +18,15 @@ const makeStore = () => {
 // person and a guaranteed outage for a busy evening at the gym.
 const isGymCheckinPath = (req) => req.path.startsWith('/gym/checkin');
 
+// The whole gym portal carries its own limiters (below), so the general one
+// steps aside for it. Same reasoning as the check-in exemption, for the other
+// side of the same product: opening the owner's console is a single human action
+// that fans out to ~13 requests — the figures, who is holding cash, the member
+// list, the renewal worklist, today's attendance, the collection history. At 100
+// per 15 minutes that is seven page views before a gym owner is locked out of
+// their own console, which is what happened.
+const isGymPath = (req) => req.path.startsWith('/gym/');
+
 // General API: 100 requests per 15 minutes per IP
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -26,7 +35,32 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many requests — please try again later.' },
   store: makeStore(),
-  skip: isGymCheckinPath,
+  skip: isGymPath,
+});
+
+// The owner/staff console: sized for a screen that fans out, not for a single
+// call. ~40 requests a minute sustained is roughly three dashboard loads a
+// minute — more than anyone reads — while still being a brake on a script.
+const gymConsoleLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests — please wait a moment and try again.' },
+  store: makeStore(),
+});
+
+// Signing in to the gym portal. Brute-force protection, but counted per IP and a
+// gym has ONE public IP shared by the owner and everyone on the desk — so 10,
+// which is what the main auth limiter allows, would lock out a gym where three
+// people sign in on a shift change.
+const gymAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many sign-in attempts — please try again in a few minutes.' },
+  store: makeStore(),
 });
 
 // Auth endpoints: 10 requests per 15 minutes per IP (brute-force protection)
@@ -76,4 +110,12 @@ const gymIdentifyLimiter = rateLimit({
   store: makeStore(),
 });
 
-module.exports = { apiLimiter, authLimiter, registerLimiter, gymCheckinLimiter, gymIdentifyLimiter };
+module.exports = {
+  apiLimiter,
+  authLimiter,
+  registerLimiter,
+  gymCheckinLimiter,
+  gymIdentifyLimiter,
+  gymConsoleLimiter,
+  gymAuthLimiter,
+};

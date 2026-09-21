@@ -22,7 +22,12 @@
 const express = require('express');
 const router = express.Router();
 
-const { gymCheckinLimiter, gymIdentifyLimiter } = require('../middleware/rateLimiter');
+const {
+  gymCheckinLimiter,
+  gymIdentifyLimiter,
+  gymConsoleLimiter,
+  gymAuthLimiter,
+} = require('../middleware/rateLimiter');
 const {
   requireGymAccount,
   gymStaffOnly,
@@ -82,7 +87,9 @@ router.post('/webhooks/razorpay', webhooks.razorpay);
 // ---------------------------------------------------------------------------
 // Gym owner / staff authentication
 // ---------------------------------------------------------------------------
-router.post('/auth/login', auth.login);
+// The general API limiter skips /gym (see rateLimiter.js), so sign-in carries its
+// own brake rather than none — this is the one endpoint worth guessing at.
+router.post('/auth/login', gymAuthLimiter, auth.login);
 
 // Standalone member sign-up, for someone not standing at the gym. Rate limited
 // with the identify limiter because a member code is a guessing surface.
@@ -92,7 +99,7 @@ router.post('/auth/signup', gymIdentifyLimiter, member.signUpWithCode);
 // rate limited for the same reason.
 router.post('/auth/reset-password', gymIdentifyLimiter, member.resetPassword);
 router.get('/auth/me', requireGymAccount, auth.me);
-router.post('/auth/change-password', requireGymAccount, auth.changePassword);
+router.post('/auth/change-password', gymAuthLimiter, requireGymAccount, auth.changePassword);
 
 // ---------------------------------------------------------------------------
 // A signed-in member's OWN record
@@ -103,6 +110,10 @@ router.post('/auth/change-password', requireGymAccount, auth.changePassword);
 router.post('/me/bind-device', requireGymAccount, member.bindDevice);
 router.get('/me/memberships', requireGymAccount, member.myMemberships);
 router.get('/me/memberships/:memberId', requireGymAccount, member.myMembership);
+
+// Sized for a screen that fans out into a dozen calls. Declared once here rather
+// than repeated per route, so a route added later cannot forget it.
+router.use(['/gyms', '/me', '/admin'], gymConsoleLimiter);
 
 // ---------------------------------------------------------------------------
 // Owner console — one gym, always tenancy-checked
@@ -155,6 +166,8 @@ router.post('/gyms/:gymId/payments/reconcile', gymOwnerOnly, gym.reconcilePaymen
 router.get('/gyms/:gymId/collections', gymOwnerOnly, gym.staffCollections);
 router.get('/gyms/:gymId/cash-position', gymOwnerOnly, gym.cashPosition);
 router.post('/gyms/:gymId/collections/:accountId/handover', gymOwnerOnly, gym.recordCashHandover);
+// What the owner has collected over time, by day / week / month.
+router.get('/gyms/:gymId/handovers', gymOwnerOnly, gym.handoverHistory);
 router.get('/gyms/:gymId/my-collections', gymStaffOnly, gym.myCashInHand);
 
 // Taking the money is the desk's job, so both of these are open to staff — but
@@ -168,6 +181,9 @@ router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
 // ':paymentId' routes so 'recent' is not read as a payment id.
 router.get('/gyms/:gymId/payments/recent', gymOwnerOnly, gym.recentSettledPayments);
 router.post('/gyms/:gymId/payments/:paymentId/reverse', gymOwnerOnly, gym.reversePayment);
+// Ticking a payment off as accounted for — the UPI counterpart of a cash
+// handover, and what stops Undo hanging around for ever.
+router.post('/gyms/:gymId/payments/:paymentId/close', gymOwnerOnly, gym.closePayment);
 router.post('/gyms/:gymId/payments/:paymentId/settle', gymStaffOnly, gym.settlePayment);
 
 router.get('/gyms/:gymId/attendance/today', gymStaffOnly, gym.attendanceToday);

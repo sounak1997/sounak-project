@@ -24,6 +24,17 @@ export interface Plan {
   active: boolean;
 }
 
+/** One day, week or month of cash the owner has collected from staff. */
+export interface HandoverPeriod {
+  /** First day of the period, in the gym's own timezone. */
+  period_start: string;
+  total: string;
+  payments: number;
+  last_at: string;
+  /** Who it came from — comma separated when more than one person. */
+  from_whom: string | null;
+}
+
 /** A payment already marked paid — what the owner reviews for mistakes. */
 export interface SettledPayment {
   id: string;
@@ -371,6 +382,32 @@ export class GymService {
     return firstValueFrom(
       this.http.get<{ data: { cash_in_hand: string; cash_payments: number } }>(
         `${this.base(gymId)}/my-collections`,
+      ),
+    ).then((r) => r.data);
+  }
+
+  /** Owner only: cash collected over time, grouped by day, week or month. */
+  handovers(
+    gymId: string,
+    period: 'day' | 'week' | 'month',
+    method: 'cash' | 'qr' | 'all' = 'cash',
+  ): Promise<HandoverPeriod[]> {
+    return firstValueFrom(
+      this.http.get<{ data: HandoverPeriod[] }>(`${this.base(gymId)}/handovers`, {
+        params: { period, method },
+      }),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Owner only: tick a payment off as accounted for. For UPI this is what a
+   * handover is for cash — after it, the payment can no longer be undone.
+   */
+  closePayment(gymId: string, paymentId: string): Promise<SettledPayment> {
+    return firstValueFrom(
+      this.http.post<{ data: SettledPayment }>(
+        `${this.base(gymId)}/payments/${paymentId}/close`,
+        {},
       ),
     ).then((r) => r.data);
   }

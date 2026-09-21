@@ -79,7 +79,10 @@ html, body {
   flex: 1;
 }
 
-.wrap--wide { max-width: 1040px; }
+/* The owner console runs two columns on a desktop, so it gets more room than a
+   single reading column. Still capped: a table stretched across a 27" monitor is
+   harder to read, not easier. */
+.wrap--wide { max-width: 1400px; }
 
 .card {
   background: var(--surface);
@@ -232,3 +235,61 @@ a { color: var(--purple); }
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- dialogs ---------------------------------------------------------------
+   Hoisted here because the console and the platform-admin screen had identical
+   copies, and a confirmation dialog that looks different on two screens of the
+   same product is a bug waiting to happen. Sits at the bottom of the viewport
+   on a phone, where a thumb is, and centred on a desktop. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(27, 30, 32, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 50;
+}
+
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 24px 22px;
+  width: 100%;
+  max-width: 440px;
+}
+
+.modal h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
+.modal__body { margin: 0 0 8px; font-size: 15px; }
+
+.modal__list {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.modal__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal__actions .btn { flex: 1; }
+
+/* Destructive confirmations — suspending a gym, undoing a payment. */
+.btn--danger { background: var(--danger); color: #fff; }
+.btn--danger:hover:not(:disabled) { background: #a5322a; }
+
+@media (max-width: 720px) {
+  .modal-backdrop { align-items: flex-end; padding: 0; }
+  .modal {
+    max-width: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  /* Confirm sits above cancel, so the thumb reaches the safe choice first. */
+  .modal__actions { flex-direction: column-reverse; }
+}

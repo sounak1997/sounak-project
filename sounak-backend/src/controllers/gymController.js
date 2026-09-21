@@ -238,6 +238,23 @@ exports.recentSettledPayments = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, count: rows.length, data: rows });
 });
 
+// @desc    Tick a payment off as accounted for, so it can no longer be undone
+// @route   POST /api/gym/gyms/:gymId/payments/:paymentId/close
+// @access  Gym owner
+//
+// For UPI, what a handover is for cash: the owner has seen it on their statement
+// and is done with it. Idempotent — closing an already-closed payment returns it
+// unchanged rather than erroring, because a double tap is not a mistake worth
+// reporting.
+exports.closePayment = asyncHandler(async (req, res) => {
+  const payment = await gymService.closePayment({
+    gymId: req.gym.id,
+    paymentId: req.params.paymentId,
+    closedBy: req.gymAccount.id,
+  });
+  res.status(200).json({ success: true, data: payment });
+});
+
 // @desc    Undo a payment marked paid by mistake, and suspend what it activated
 // @route   POST /api/gym/gyms/:gymId/payments/:paymentId/reverse
 // @access  Gym owner
@@ -285,6 +302,18 @@ exports.myCashInHand = asyncHandler(async (req, res) => {
     accountId: req.gymAccount.id,
   });
   res.status(200).json({ success: true, data: mine });
+});
+
+// @desc    Cash the owner has collected, grouped by day, week or month
+// @route   GET /api/gym/gyms/:gymId/handovers?period=day|week|month
+// @access  Gym owner
+exports.handoverHistory = asyncHandler(async (req, res) => {
+  const rows = await gymService.handoverHistory({
+    gymId: req.gym.id,
+    period: req.query.period || 'week',
+    method: req.query.method || 'cash',
+  });
+  res.status(200).json({ success: true, count: rows.length, data: rows });
 });
 
 // @desc    Record that the owner has taken delivery of a staff member's cash
