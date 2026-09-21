@@ -193,13 +193,15 @@ exports.verifyToken = async (token) => {
 exports.accessibleGyms = async (account) => {
   if (account.platform_admin) {
     const all = await pgPool.query(
-      `SELECT id, name, gym_code, timezone, status, 'platform_admin' AS staff_role
+      `SELECT id, name, gym_code, timezone, status, payment_qr_url,
+              'platform_admin' AS staff_role
          FROM gyms ORDER BY name ASC`
     );
     return all.rows;
   }
   const result = await pgPool.query(
-    `SELECT g.id, g.name, g.gym_code, g.timezone, g.status, s.role AS staff_role
+    `SELECT g.id, g.name, g.gym_code, g.timezone, g.status, g.payment_qr_url,
+            s.role AS staff_role
        FROM gym_staff s
        JOIN gyms g ON g.id = s.gym_id
       WHERE s.account_id = $1

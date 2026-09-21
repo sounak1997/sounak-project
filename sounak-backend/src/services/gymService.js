@@ -408,20 +408,51 @@ exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy
   if (method === 'qr' && status !== 'verified') {
     throw badRequest("A UPI payment settles as 'verified'.");
   }
-  const result = await pgPool.query(
-    `UPDATE gym_payments
-        SET status      = $1,
-            method      = COALESCE($6, method),
-            reference   = COALESCE($2, reference),
-            verified_by = $3,
-            verified_at = now(),
-            updated_at  = now()
-      WHERE id = $4 AND gym_id = $5
-      RETURNING *`,
-    [status, reference || null, recordedBy, paymentId, gymId, method || null]
-  );
-  if (!result.rows[0]) throw notFound(`Payment '${paymentId}' not found.`);
-  return result.rows[0];
+  // Settling must also let the member IN. A payment started at the door leaves
+  // its subscription 'pending_payment' until the money is confirmed — the
+  // gateway path does that in gymCheckoutService.settle, and this is the manual
+  // equivalent. Without it, staff would mark a QR or cash payment as paid and
+  // the member would still be refused at the scanner, which is the worst
+  // possible outcome: they have paid and the door says no.
+  //
+  // One transaction, because a confirmed payment with a subscription still
+  // pending is exactly the inconsistency this is meant to prevent.
+  const client = await pgPool.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const result = await client.query(
+      `UPDATE gym_payments
+          SET status      = $1,
+              method      = COALESCE($6, method),
+              reference   = COALESCE($2, reference),
+              verified_by = $3,
+              verified_at = now(),
+              updated_at  = now()
+        WHERE id = $4 AND gym_id = $5
+        RETURNING *`,
+      [status, reference || null, recordedBy, paymentId, gymId, method || null]
+    );
+    if (!result.rows[0]) throw notFound(`Payment '${paymentId}' not found.`);
+
+    // Scoped to 'pending_payment' so re-settling an already-active membership
+    // cannot move its dates or revive a cancelled one.
+    const sub = await client.query(
+      `UPDATE gym_subscriptions
+          SET status = 'active', updated_at = now()
+        WHERE id = $1 AND status = 'pending_payment'
+        RETURNING *`,
+      [result.rows[0].subscription_id]
+    );
+
+    await client.query('COMMIT');
+    return { ...result.rows[0], subscription_activated: sub.rowCount > 0 };
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 };
 
 exports.listMemberPayments = async ({ gymId, memberId }) => {

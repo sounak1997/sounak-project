@@ -16,7 +16,7 @@ import {
 
 type Phase =
   | 'loading' | 'ready' | 'identify' | 'choose' | 'verify' | 'result' | 'blocked'
-  | 'plans' | 'paying' | 'signup';
+  | 'plans' | 'paying' | 'showqr' | 'signup';
 
 /**
  * The gym door screen — the whole member-facing product.
@@ -67,6 +67,14 @@ export class CheckinPage implements OnDestroy {
   readonly plans = signal<Plan[]>([]);
   readonly onlinePaymentAvailable = signal(false);
   readonly payNotice = signal('');
+
+  /**
+   * The gym's own UPI QR, for gyms with no payment gateway — which is all of
+   * them for now. The member scans it with their UPI app, pays, and shows the
+   * desk; staff confirm it. Nothing on this screen can confirm money.
+   */
+  readonly paymentQrUrl = signal<string | null>(null);
+  readonly qrClaim = signal<{ amount: string; planName: string; reference: string } | null>(null);
 
   // Optional online access
   readonly canSignUp = signal(false);
@@ -300,6 +308,7 @@ export class CheckinPage implements OnDestroy {
       const res = await this.payments.plans(this.gymCode());
       this.plans.set(res.plans);
       this.onlinePaymentAvailable.set(res.onlinePaymentAvailable);
+      this.paymentQrUrl.set(res.paymentQrUrl);
       this.phase.set('plans');
     } catch (err) {
       this.error.set(this.messageFrom(err, 'Could not load the plans. Please ask at the desk.'));
@@ -316,6 +325,41 @@ export class CheckinPage implements OnDestroy {
    * failed when their account was debited is the worst thing this screen could
    * do. So it says "we're checking" and the reconciliation poll settles it.
    */
+  /**
+   * Take a plan against the gym's UPI QR. Shows the QR and the amount; the
+   * member pays in their own UPI app and shows the receipt at the desk.
+   *
+   * Deliberately makes no claim about money having moved — the desk confirms.
+   */
+  async payByQr(plan: Plan): Promise<void> {
+    this.busy.set(true);
+    this.error.set('');
+    this.payNotice.set('');
+    try {
+      const claim = await this.payments.payByQr(this.gymCode(), plan.id);
+      this.qrClaim.set({
+        amount: claim.amount,
+        planName: claim.planName,
+        reference: claim.reference,
+      });
+      if (claim.paymentQrUrl) this.paymentQrUrl.set(claim.paymentQrUrl);
+      this.phase.set('showqr');
+    } catch (err) {
+      this.error.set(this.messageFrom(err, 'Could not start that. Please pay at the desk.'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  /** Back to the member's own screen once they have paid and shown the desk. */
+  doneWithQr(): void {
+    this.qrClaim.set(null);
+    this.payNotice.set(
+      'Show the desk your payment and they will confirm it. Your membership starts as soon as they do.',
+    );
+    void this.load();
+  }
+
   async payWith(plan: Plan): Promise<void> {
     this.phase.set('paying');
     this.error.set('');

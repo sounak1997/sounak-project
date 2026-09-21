@@ -181,3 +181,15 @@
   line-height: 1.1;
   margin-bottom: 4px;
 }
+
+/* Preview of the gym's own UPI QR, so the owner can see they pasted the right
+   image. Small — this one is not meant to be scanned from here. */
+.payqr-preview {
+  display: block;
+  width: 160px;
+  height: auto;
+  background: #fff;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}

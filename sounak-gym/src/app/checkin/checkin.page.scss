@@ -151,3 +151,17 @@
   font-weight: 700;
   letter-spacing: 0.04em;
 }
+
+/* The gym's UPI QR, displayed for the member to scan with their own phone.
+   Sized to fill a phone's width so it scans from a comfortable distance, and
+   on white regardless of theme — a QR on a tinted panel reads unreliably. */
+.payqr {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  margin: 14px auto 0;
+  background: #fff;
+  padding: 10px;
+  border-radius: var(--radius-s);
+  border: 1px solid var(--border);
+}

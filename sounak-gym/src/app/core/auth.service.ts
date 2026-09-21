@@ -10,6 +10,8 @@ export interface GymSummary {
   timezone: string;
   status: string;
   staff_role: string;
+  /** The gym's UPI QR, shown to members on the door screen. Public by nature. */
+  payment_qr_url: string | null;
 }
 
 export interface Membership {

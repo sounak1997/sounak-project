@@ -73,6 +73,10 @@ export class DashboardPage {
   /** Owner's view: bank vs own hands vs staff pockets. */
   readonly position = signal<CashPosition | null>(null);
 
+  // --- the gym's UPI QR, shown to members on the door screen ---
+  readonly payQrUrl = signal('');
+  readonly savingQr = signal(false);
+
   // UPI auto-payment setup
   readonly provider = signal<PaymentProvider | null>(null);
   readonly webhookUrl = signal('');
@@ -141,6 +145,7 @@ export class DashboardPage {
       // Cash figures last, each swallowing its own failure: they are an extra,
       // and must never be what stops the console rendering. The owner-only
       // report is skipped for staff rather than fetched and refused.
+      this.payQrUrl.set(this.auth.activeGym()?.payment_qr_url ?? '');
       this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
       if (owner) {
         const [rows, pos] = await Promise.all([
@@ -178,6 +183,25 @@ export class DashboardPage {
       this.error.set(this.apiMessage(err, 'Could not record that handover.'));
     } finally {
       this.handingOver.set(null);
+    }
+  }
+
+  /**
+   * Put up the gym's UPI QR. This is what members scan at the door, so until it
+   * is set the only way to pay is cash at the desk.
+   */
+  async savePaymentQr(): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym || !this.payQrUrl().trim()) return;
+    this.savingQr.set(true);
+    this.error.set('');
+    try {
+      await this.api.savePaymentQr(gym.id, this.payQrUrl().trim());
+      this.notice.set('Payment QR saved. Members will see it when they renew at the door.');
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not save that QR.'));
+    } finally {
+      this.savingQr.set(false);
     }
   }
 
@@ -346,6 +370,20 @@ export class DashboardPage {
 
   private apiMessage(err: unknown, fallback: string): string {
     return err instanceof HttpErrorResponse && err.error?.message ? err.error.message : fallback;
+  }
+
+  /**
+   * "3 days ago" for a timestamp. Used for how long cash has been sitting: an
+   * owner who visits weekly needs the age, not the clock time.
+   */
+  since(value: string | null): string {
+    if (!value) return '—';
+    const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000);
+    if (days <= 0) return 'today';
+    if (days === 1) return 'yesterday';
+    if (days < 7) return `${days} days`;
+    const weeks = Math.floor(days / 7);
+    return weeks === 1 ? 'over a week' : `${weeks} weeks`;
   }
 
   time(value: string | null): string {

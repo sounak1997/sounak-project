@@ -301,17 +301,25 @@
         <h2>Choose a membership</h2>
         @if (payNotice()) { <div class="alert alert--warn mt-s">{{ payNotice() }}</div> }
 
-        @if (!onlinePaymentAvailable()) {
+        <!-- The gym's own QR comes FIRST, ahead of any gateway: that is how these
+             gyms actually take money — member scans, pays, shows the desk. The
+             gateway is only reached by a gym that has no QR up but has connected
+             one, and neither means cash at the desk. -->
+        @if (paymentQrUrl()) {
+          <p class="muted mb">
+            Pick a plan, scan the gym's UPI QR, then show the desk — they'll confirm it.
+          </p>
+        } @else if (!onlinePaymentAvailable()) {
           <div class="alert alert--warn">
-            This gym hasn't set up online payment yet — please pay at the desk.
+            This gym hasn't put up a payment QR yet — please pay at the desk.
           </div>
         }
 
         @for (p of plans(); track p.id) {
           <button
             class="plan"
-            [disabled]="!onlinePaymentAvailable() || busy()"
-            (click)="payWith(p)">
+            [disabled]="busy() || (!paymentQrUrl() && !onlinePaymentAvailable())"
+            (click)="paymentQrUrl() ? payByQr(p) : payWith(p)">
             <span>
               <span class="plan__name">{{ p.name }}</span>
               @if (p.description) { <span class="plan__desc">{{ p.description }}</span> }
@@ -321,6 +329,42 @@
         }
 
         <button class="btn btn--ghost mt" (click)="backFromPlans()">Back</button>
+      </div>
+    }
+
+    <!-- Pay by scanning the gym's own UPI QR. No gateway involved: the member
+         pays in their own app and the desk confirms it, so this screen shows the
+         code and the amount and claims nothing about money having moved. -->
+    @if (phase() === 'showqr') {
+      <div class="card center">
+        @if (qrClaim(); as c) {
+          <h2>Pay ₹{{ rupees(c.amount) }}</h2>
+          <p class="muted">{{ c.planName }}</p>
+
+          @if (paymentQrUrl()) {
+            <img class="payqr" [src]="paymentQrUrl()" alt="The gym's UPI payment QR code" />
+          }
+
+          <p class="muted mt">
+            Scan with any UPI app — GPay, PhonePe, Paytm — and pay
+            <strong>₹{{ rupees(c.amount) }}</strong>.
+          </p>
+
+          <!-- Read this out at the desk: it is how staff find the right row in
+               their payments list. -->
+          <p class="muted small mt-s">
+            Then show the desk this code:
+            <code class="code">{{ c.reference }}</code>
+          </p>
+
+          <div class="alert alert--warn mt">
+            Your membership starts when the desk confirms the payment — not when
+            you tap below.
+          </div>
+
+          <button class="btn mt" (click)="doneWithQr()">I've paid</button>
+          <button class="btn btn--ghost mt-s" (click)="backFromPlans()">Cancel</button>
+        }
       </div>
     }
 

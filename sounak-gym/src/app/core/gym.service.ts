@@ -301,6 +301,19 @@ export class GymService {
     ).then((r) => r.data);
   }
 
+  /**
+   * Owner only: put up (or change) the gym's UPI QR.
+   *
+   * A URL rather than an upload — the gym already has this image, from their
+   * bank's app or a printout, and hosting it here would mean a file store this
+   * app does not otherwise need.
+   */
+  savePaymentQr(gymId: string, paymentQrUrl: string): Promise<unknown> {
+    return firstValueFrom(
+      this.http.put<{ data: unknown }>(`${this.base(gymId)}`, { paymentQrUrl }),
+    ).then((r) => r.data);
+  }
+
   /** Owner only: bank vs own hands vs staff pockets. */
   cashPosition(gymId: string): Promise<CashPosition> {
     return firstValueFrom(

@@ -96,6 +96,42 @@ const requireMemberDevice = async (req) => {
 // @desc    Plans this gym sells, so a member can choose one to renew with
 // @route   GET /api/gym/checkin/plans?g=<gymCode>
 // @access  Public — prices are on a board in the gym, not a secret
+// @desc    Member picks a plan and pays by scanning the gym's UPI QR
+// @route   POST /api/gym/checkin/pay/qr
+//          Body: { gymCode, deviceToken, planId }
+// @access  Device token — the same proof startPayment requires
+//
+// The no-gateway path, and for these gyms the normal one. Nothing here confirms
+// money: it books the membership as pending and raises a payment the desk can
+// see, so the member scans the QR, pays, shows their UPI receipt, and staff tap
+// 'Paid UPI'. Status is 'pending_verification' precisely because a member's word
+// is a claim, not a confirmation — only somebody who can see the gym's account
+// turns it into money.
+//
+// The member comes from the device token, never from the body: a memberId a
+// caller could choose would let anyone run up a claim against somebody else's
+// membership.
+exports.payByQr = asyncHandler(async (req, res) => {
+  const { gym, member } = await requireMemberDevice(req);
+  const started = await gymCheckoutService.startQrClaim({
+    gym,
+    memberId: member.id,
+    planId: req.body.planId,
+  });
+  res.status(201).json({
+    success: true,
+    data: {
+      paymentId: started.paymentId,
+      amount: started.amount,
+      planName: started.planName,
+      // Short, readable, and printed on the screen: what the member reads out so
+      // the desk can match the right row.
+      reference: started.reference,
+      paymentQrUrl: gym.payment_qr_url || null,
+    },
+  });
+});
+
 exports.plans = asyncHandler(async (req, res) => {
   const gym = await gymAttendanceService.requireGymByCode(req.query.g);
   const plans = await pgPool.query(
@@ -113,6 +149,10 @@ exports.plans = asyncHandler(async (req, res) => {
       // Lets the screen offer "pay at the desk" instead of a dead button when
       // the gym has not connected a gateway.
       onlinePaymentAvailable: !!(provider && provider.enabled),
+      // The gym's own UPI QR, displayed on the door screen so a member can pay
+      // without any gateway at all: they scan, pay, and show the desk. Public by
+      // nature — it is the same code the gym would tape to the counter.
+      paymentQrUrl: gym.payment_qr_url || null,
     },
   });
 });

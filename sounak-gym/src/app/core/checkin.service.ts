@@ -197,12 +197,52 @@ export class PaymentService {
   private checkin = inject(CheckinService);
   private scriptLoaded?: Promise<void>;
 
-  plans(gymCode: string): Promise<{ plans: Plan[]; onlinePaymentAvailable: boolean }> {
+  plans(gymCode: string): Promise<{
+    plans: Plan[];
+    onlinePaymentAvailable: boolean;
+    /** The gym's own UPI QR. Present when they take payment without a gateway. */
+    paymentQrUrl: string | null;
+  }> {
     return firstValueFrom(
-      this.http.get<{ data: { plans: Plan[]; onlinePaymentAvailable: boolean } }>(
-        '/api/gym/checkin/plans',
-        { params: { g: gymCode } },
-      ),
+      this.http.get<{
+        data: { plans: Plan[]; onlinePaymentAvailable: boolean; paymentQrUrl: string | null };
+      }>('/api/gym/checkin/plans', { params: { g: gymCode } }),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Take a membership against the gym's UPI QR, with no gateway.
+   *
+   * Confirms nothing — it books the membership as pending and raises a claim the
+   * desk can see. The member scans, pays, and shows their receipt; staff tap
+   * 'Paid UPI' and the membership activates.
+   */
+  payByQr(
+    gymCode: string,
+    planId: string,
+  ): Promise<{
+    paymentId: string;
+    amount: string;
+    planName: string;
+    reference: string;
+    paymentQrUrl: string | null;
+  }> {
+    return firstValueFrom(
+      this.http.post<{
+        data: {
+          paymentId: string;
+          amount: string;
+          planName: string;
+          reference: string;
+          paymentQrUrl: string | null;
+        };
+        // Same proof as pay/start: the device token says who this is. Nothing
+        // here names a member, so nobody can raise a claim against someone else.
+      }>('/api/gym/checkin/pay/qr', {
+        gymCode,
+        deviceToken: this.checkin.deviceToken(gymCode),
+        planId,
+      }),
     ).then((r) => r.data);
   }
 

@@ -57,6 +57,10 @@ router.get('/checkin/plans', gymCheckinLimiter, checkin.plans);
 router.post('/checkin/pay/start', gymCheckinLimiter, checkin.startPayment);
 router.post('/checkin/pay/confirm', gymCheckinLimiter, checkin.confirmPayment);
 router.get('/checkin/pay/status', gymCheckinLimiter, checkin.paymentStatus);
+// Paying against the gym's own UPI QR, with no gateway. Raises a claim for the
+// desk to confirm rather than taking money, so it is rate-limited like the other
+// public door endpoints.
+router.post('/checkin/pay/qr', gymCheckinLimiter, checkin.payByQr);
 
 // OPTIONAL member login. Signing up needs no password and no OTP because the
 // device has already been verified at the door — see gymMemberAccountService.

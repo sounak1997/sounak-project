@@ -309,10 +309,13 @@
         <div class="card">
           <h2>Cash with staff</h2>
           <p class="muted mb">
-            Cash a person took at the desk and has not handed over yet. UPI is shown
-            for credit only — that money went straight to your account.
+            What to collect from whom on your next visit. The cash column is what they
+            owe you; the UPI column is money that already reached your account, shown
+            so you can see what each person has taken in total.
             @if (cashOutstanding() > 0) {
-              <strong>₹{{ cashOutstanding() }} is out there in total.</strong>
+              <strong>Collect ₹{{ cashOutstanding() }} in total.</strong>
+            } @else {
+              Nothing to collect — everyone has settled up.
             }
           </p>
 
@@ -320,8 +323,9 @@
             <thead>
               <tr>
                 <th>Who</th>
-                <th>Cash in hand</th>
-                <th>UPI taken</th>
+                <th>Cash to collect</th>
+                <th>Held since</th>
+                <th>UPI (already yours)</th>
                 <th>Handed over to date</th>
                 <th class="right"></th>
               </tr>
@@ -340,6 +344,13 @@
                       <strong>₹{{ c.cash_in_hand }}</strong>
                       <span class="muted small">({{ c.cash_payments }})</span>
                     } @else { <span class="muted">—</span> }
+                  </td>
+                  <!-- How long it has been sitting. The owner comes in once a
+                       week, so "since when" is what tells them whether this is
+                       today's takings or a fortnight of them. -->
+                  <td class="muted">
+                    @if (c.oldest_unsettled_at) { {{ since(c.oldest_unsettled_at) }} }
+                    @else { — }
                   </td>
                   <td class="muted">₹{{ c.upi_confirmed }}</td>
                   <td class="muted">₹{{ c.cash_handed_over }}</td>
@@ -416,7 +427,50 @@
         }
       </div>
 
-      <!-- Switching on UPI auto-payment, so the owner stops marking things by hand.
+      <!-- The gym's UPI QR. This is the payment method today: the member scans
+           it at the door, pays in their own app, shows the desk, and staff
+           confirm. Owner only — it is their bank account behind it. -->
+      @if (auth.isOwner()) {
+        <div class="card">
+          <h2>Your payment QR</h2>
+          <p class="muted mb">
+            Members see this when they renew at the door. They scan it, pay you directly,
+            then show the desk — and whoever is on the desk taps <strong>Paid UPI</strong>.
+            Money from here lands in your account, so it never sits with staff.
+          </p>
+
+          @if (payQrUrl()) {
+            <img class="payqr-preview" [src]="payQrUrl()" alt="Your gym's UPI payment QR" />
+          } @else {
+            <div class="alert alert--warn">
+              No QR set yet, so the door screen can only tell members to pay at the desk —
+              which means everything comes in as cash.
+            </div>
+          }
+
+          <div class="field mt">
+            <label for="payqr">Image link to your UPI QR</label>
+            <input
+              id="payqr"
+              type="url"
+              placeholder="https://…"
+              [ngModel]="payQrUrl()"
+              (ngModelChange)="payQrUrl.set($event)" />
+            <p class="muted small">
+              Save your UPI QR as an image somewhere public and paste the link. Any UPI
+              app's "my QR" screenshot works.
+            </p>
+          </div>
+          <button class="btn" [disabled]="savingQr() || !payQrUrl().trim()" (click)="savePaymentQr()">
+            {{ savingQr() ? 'Saving…' : 'Save QR' }}
+          </button>
+        </div>
+      }
+
+      <!-- Razorpay auto-payment. Secondary now: the QR above is how these gyms
+           take money, and the door screen prefers it. Still offered in full,
+           including connecting it for the first time — a gym that later wants
+           payments to confirm themselves should not need this rebuilt.
            Owner only: these are payout credentials, and the server refuses the
            payment-provider routes to staff anyway. -->
       @if (auth.isOwner()) {
