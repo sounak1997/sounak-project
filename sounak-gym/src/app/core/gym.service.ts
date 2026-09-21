@@ -28,10 +28,16 @@ export interface Plan {
 export interface HandoverPeriod {
   /** First day of the period, in the gym's own timezone. */
   period_start: string;
+  /** Rows are per period AND per route, because the two arrive differently. */
+  method: 'cash' | 'upi';
   total: string;
   payments: number;
   last_at: string;
-  /** Who it came from — comma separated when more than one person. */
+  /**
+   * Who the cash was collected from — comma separated for more than one person,
+   * and null for UPI, which nobody hands over: it lands in the owner's account
+   * directly.
+   */
   from_whom: string | null;
 }
 

@@ -167,6 +167,9 @@ exports.createSubscription = asyncHandler(async (req, res) => {
     amount: req.body.amount,
     payment: req.body.payment,
     recordedBy: req.gymAccount.id,
+    // Decides whether this account may record cash at all — the verified role,
+    // never anything the caller sends.
+    actorRole: req.staffRole,
   });
   res.status(201).json({ success: true, data: result });
 });
@@ -182,6 +185,7 @@ exports.settlePayment = asyncHandler(async (req, res) => {
     // renewal was booked. Decides whether the money is in the bank or in a
     // pocket, so the desk gets to say.
     method: req.body.method,
+    actorRole: req.staffRole,
     status: req.body.status,
     reference: req.body.reference,
     recordedBy: req.gymAccount.id,

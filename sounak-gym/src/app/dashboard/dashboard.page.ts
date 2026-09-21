@@ -556,7 +556,8 @@ export class DashboardPage {
   openRenewal(member: RenewTarget): void {
     this.renewing.set(member);
     this.renewPlanId.set(this.plans()[0]?.id ?? '');
-    this.renewMethod.set('cash');
+    // The owner cannot record cash, so their dialog opens on UPI.
+    this.renewMethod.set(this.auth.isOwner() ? 'qr' : 'cash');
     this.error.set('');
   }
 

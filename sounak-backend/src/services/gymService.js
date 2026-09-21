@@ -268,7 +268,27 @@ exports.revokeMemberDevices = async ({ gymId, memberId }) => {
 // A renewal bought before the current membership runs out starts the day AFTER
 // it ends, not today — otherwise renewing early would silently throw away the
 // days the member had already paid for.
-exports.createSubscription = async ({ gymId, memberId, planId, startDate, amount, payment, recordedBy }) => {
+// Cash is the front desk's alone.
+//
+// The owner is not at the gym and takes money by UPI only, so a cash payment
+// recorded against their account describes something that did not happen — and
+// it used to vanish from every figure on their own screen, because "cash held by
+// staff" counts staff and nothing else reported the rest. Rather than add a tile
+// for an impossible state, the state is refused.
+//
+// Only enforced when a role is supplied, which means a request. The seed and
+// setup scripts call these services directly with no role and are trusted: they
+// are run by whoever owns the database.
+const assertMayTakeCash = (method, actorRole) => {
+  if (method !== 'cash' || !actorRole || actorRole === 'staff') return;
+  throw badRequest(
+    'Only the front desk takes cash. Record this as UPI - it goes straight to your account.'
+  );
+};
+
+exports.createSubscription = async ({
+  gymId, memberId, planId, startDate, amount, payment, recordedBy, actorRole,
+}) => {
   const member = await exports.getMember({ gymId, memberId });
 
   const planResult = await pgPool.query('SELECT * FROM gym_plans WHERE id = $1 AND gym_id = $2', [
@@ -282,6 +302,7 @@ exports.createSubscription = async ({ gymId, memberId, planId, startDate, amount
   if (!['cash', 'qr', 'gateway'].includes(method)) {
     throw badRequest("payment.method must be 'cash', 'qr' or 'gateway'.");
   }
+  assertMayTakeCash(method, actorRole);
   // Cash handed over at the desk is money already in the drawer, so it is
   // recorded as collected. A QR payment has no gateway callback to trust, so it
   // waits for the owner to confirm it — the same manual model the grocery
@@ -392,7 +413,9 @@ exports.createSubscription = async ({ gymId, memberId, planId, startDate, amount
 // ends up: cash stays with whoever took it, UPI lands in the gym's bank. So the
 // person marking it paid says how it was paid, and that is the figure the
 // owner's cash position is built from.
-exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy, method }) => {
+exports.settlePayment = async ({
+  gymId, paymentId, status, reference, recordedBy, method, actorRole,
+}) => {
   if (!['verified', 'collected'].includes(status)) {
     throw badRequest("status must be 'verified' (QR confirmed) or 'collected' (cash taken).");
   }
@@ -408,6 +431,7 @@ exports.settlePayment = async ({ gymId, paymentId, status, reference, recordedBy
   if (method === 'qr' && status !== 'verified') {
     throw badRequest("A UPI payment settles as 'verified'.");
   }
+  assertMayTakeCash(method, actorRole);
   // Settling must also let the member IN. A payment started at the door leaves
   // its subscription 'pending_payment' until the money is confirmed — the
   // gateway path does that in gymCheckoutService.settle, and this is the manual
@@ -484,8 +508,11 @@ exports.reversePayment = async ({ gymId, paymentId, reversedBy }) => {
       throw badRequest('That payment is not marked as paid, so there is nothing to undo.');
     }
     if (payment.handed_over_at) {
+      // Same rule, two different facts on the ground — say the right one.
       throw badRequest(
-        'That cash has already been handed over to you, so it cannot be undone here.'
+        payment.method === 'cash'
+          ? 'That cash has already been handed over to you, so it cannot be undone here.'
+          : 'You have already checked that payment off, so it cannot be undone here.'
       );
     }
 
@@ -703,18 +730,25 @@ exports.handoverHistory = async ({ gymId, period = 'week', method = 'cash', limi
 
   const result = await pgPool.query(
     `SELECT date_trunc($2, (p.handed_over_at AT TIME ZONE g.timezone))::date AS period_start,
+            -- Grouped by method as well as period: cash and UPI reach the owner
+            -- by different routes, and a row that merged them could not honestly
+            -- say where the money came from.
+            CASE WHEN p.method = 'cash' THEN 'cash' ELSE 'upi' END AS method,
             SUM(p.amount)                                     AS total,
             COUNT(*)::int                                     AS payments,
             MAX(p.handed_over_at)                             AS last_at,
-            string_agg(DISTINCT a.name, ', ')                 AS from_whom
+            -- Only cash is collected FROM somebody. A UPI payment went straight
+            -- into the owner's account, so naming the staff member who confirmed
+            -- it here would read as though they had handed it over.
+            string_agg(DISTINCT a.name, ', ') FILTER (WHERE p.method = 'cash') AS from_whom
        FROM gym_payments p
        JOIN gyms g ON g.id = p.gym_id
        LEFT JOIN gym_accounts a ON a.id = COALESCE(p.verified_by, p.recorded_by)
       WHERE p.gym_id = $1
         AND ($4::text = 'all' OR p.method = $4)
         AND p.handed_over_at IS NOT NULL
-      GROUP BY 1
-      ORDER BY 1 DESC
+      GROUP BY 1, 2
+      ORDER BY 1 DESC, 2 ASC
       LIMIT $3`,
     [gymId, unit, limit, method === 'qr' ? 'qr' : method]
   );
@@ -741,6 +775,17 @@ exports.closePayment = async ({ gymId, paymentId, closedBy }) => {
   if (!payment) throw notFound(`Payment '${paymentId}' not found.`);
   if (!['verified', 'collected'].includes(payment.status)) {
     throw badRequest('That payment is not marked as paid yet.');
+  }
+  // Cash has exactly one way to become accounted for: somebody physically hands
+  // it over, which is recordCashHandover. Allowing it to be ticked off here as
+  // well would let the notes leave "cash held by staff" without ever reaching
+  // the owner — the desk would look square while still holding the money, and
+  // the row would become un-undoable on the way out. Two ways to record the
+  // same fact is how ledgers drift.
+  if (payment.method === 'cash') {
+    throw badRequest(
+      'Cash is accounted for by collecting it from whoever took it, not by ticking it off here.'
+    );
   }
   if (payment.handed_over_at) return payment; // already closed; nothing to do
 

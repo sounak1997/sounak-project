@@ -272,20 +272,31 @@
                 <thead>
                   <tr>
                     <th>{{ handoverPeriod() === 'month' ? 'Month' : handoverPeriod() === 'week' ? 'Week of' : 'Day' }}</th>
-                    <th>From</th>
+                    <th>How it reached you</th>
                     <th>Payments</th>
-                    <th>Collected</th>
+                    <th>Amount</th>
                   </tr>
                 </thead>
                 <tbody>
-                  @for (h of handovers(); track h.period_start) {
+                  @for (h of handovers(); track h.period_start + h.method) {
                     <tr>
                       <td>
                         <strong>{{ periodLabel(h.period_start) }}</strong>
                       </td>
-                      <td data-label="From">{{ h.from_whom ?? '—' }}</td>
+                      <!-- Cash was collected FROM somebody; UPI was not handed over
+                           by anyone, so naming the staff member who confirmed it
+                           would read as though they had passed you the money. -->
+                      <td data-label="How it reached you">
+                        @if (h.method === 'cash') {
+                          <span class="pill pill--warn">Cash</span>
+                          <span class="muted block">collected from {{ h.from_whom ?? 'staff' }}</span>
+                        } @else {
+                          <span class="pill pill--ok">UPI</span>
+                          <span class="muted block">straight into your account</span>
+                        }
+                      </td>
                       <td data-label="Payments">{{ h.payments }}</td>
-                      <td data-label="Collected"><strong>₹{{ h.total }}</strong></td>
+                      <td data-label="Amount"><strong>₹{{ h.total }}</strong></td>
                     </tr>
                   }
                 </tbody>
@@ -408,12 +419,15 @@
                          money ends up, so it is chosen here rather than inherited
                          from however the renewal was first booked. -->
                     <td class="right actions">
-                      <button
-                        class="btn btn--sm"
-                        [disabled]="settling() === p.id"
-                        (click)="markPaid(p, 'cash')">
-                        {{ settling() === p.id ? '…' : 'Paid cash' }}
-                      </button>
+                      <!-- Owners take UPI only, so they are not offered cash. -->
+                      @if (!auth.isOwner()) {
+                        <button
+                          class="btn btn--sm"
+                          [disabled]="settling() === p.id"
+                          (click)="markPaid(p, 'cash')">
+                          {{ settling() === p.id ? '…' : 'Paid cash' }}
+                        </button>
+                      }
                       <button
                         class="btn btn--sm btn--ghost"
                         [disabled]="settling() === p.id"
@@ -427,6 +441,87 @@
           </table>
         </div>
         }
+        <!-- Someone walks in and wants to join. Owner AND staff: registering a
+             member is running the gym, not spending its money, so this card is
+             deliberately outside the auth.isOwner() gates above. -->
+        <div class="card">
+          <h2>Add a member</h2>
+          <p class="muted mb">
+            Name and mobile number are all the gym needs. They can create their own login
+            later using the member code this gives you.
+          </p>
+
+          @if (justAdded(); as m) {
+            <div class="alert alert--success">
+              <strong>{{ m.full_name }}</strong> is registered. Their member code is
+              <code class="code">{{ m.member_code }}</code> — read it out to them.
+              <button class="btn btn--ghost btn--sm mt" (click)="justAdded.set(null)">Done</button>
+            </div>
+          }
+
+          <div class="add-row">
+            <input
+              type="text"
+              placeholder="Full name"
+              autocomplete="off"
+              [ngModel]="newName()"
+              (ngModelChange)="newName.set($event)" />
+            <input
+              type="tel"
+              inputmode="numeric"
+              placeholder="Mobile number"
+              autocomplete="off"
+              [ngModel]="newPhone()"
+              (ngModelChange)="newPhone.set($event)"
+              (keyup.enter)="addMember()" />
+            <button
+              class="btn btn--sm"
+              [disabled]="adding() || !newName().trim() || !newPhone().trim()"
+              (click)="addMember()">
+              {{ adding() ? 'Adding…' : 'Add member' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Members</h2>
+          <p class="muted mb">
+            "Mark present" is for members without a smartphone — it records the same visit a scan would.
+            The <strong>code</strong> is what a member needs to create their own login at
+            <em>/signup</em>; read it out when they ask.
+          </p>
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Code</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              @for (m of members(); track m.id) {
+                <tr>
+                  <td data-label="Name"><strong>{{ m.full_name }}</strong></td>
+                  <!-- What a member needs to create a login from their own device. -->
+                  <td data-label="Code"><code class="code">{{ m.member_code }}</code></td>
+                  <td class="muted" data-label="Phone">{{ m.phone }}</td>
+                  <td data-label="Plan">{{ m.plan_name ?? '—' }}</td>
+                  <td data-label="Valid to">{{ day(m.end_date) }}</td>
+                  <td data-label="Status"><span class="pill" [class]="'pill ' + pill(m.expiry)">{{ expiryLabel(m.expiry) }}</span></td>
+                  <td class="right actions">
+                    <button
+                      class="btn btn--ghost btn--sm"
+                      [disabled]="marking() === m.id"
+                      (click)="markPresent(m.id)">
+                      {{ marking() === m.id ? '…' : 'Mark present' }}
+                    </button>
+                    <button class="btn btn--sm" (click)="openRenewal(m)">
+                      {{ m.expiry === 'none' ? 'Start plan' : 'Renew' }}
+                    </button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+
+
         </div>
 
         <aside class="console__side">
@@ -543,87 +638,6 @@
         }
         </aside>
       </div>
-
-      <!-- Someone walks in and wants to join. Owner AND staff: registering a
-           member is running the gym, not spending its money, so this card is
-           deliberately outside the auth.isOwner() gates above. -->
-      <div class="card">
-        <h2>Add a member</h2>
-        <p class="muted mb">
-          Name and mobile number are all the gym needs. They can create their own login
-          later using the member code this gives you.
-        </p>
-
-        @if (justAdded(); as m) {
-          <div class="alert alert--success">
-            <strong>{{ m.full_name }}</strong> is registered. Their member code is
-            <code class="code">{{ m.member_code }}</code> — read it out to them.
-            <button class="btn btn--ghost btn--sm mt" (click)="justAdded.set(null)">Done</button>
-          </div>
-        }
-
-        <div class="add-row">
-          <input
-            type="text"
-            placeholder="Full name"
-            autocomplete="off"
-            [ngModel]="newName()"
-            (ngModelChange)="newName.set($event)" />
-          <input
-            type="tel"
-            inputmode="numeric"
-            placeholder="Mobile number"
-            autocomplete="off"
-            [ngModel]="newPhone()"
-            (ngModelChange)="newPhone.set($event)"
-            (keyup.enter)="addMember()" />
-          <button
-            class="btn btn--sm"
-            [disabled]="adding() || !newName().trim() || !newPhone().trim()"
-            (click)="addMember()">
-            {{ adding() ? 'Adding…' : 'Add member' }}
-          </button>
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Members</h2>
-        <p class="muted mb">
-          "Mark present" is for members without a smartphone — it records the same visit a scan would.
-          The <strong>code</strong> is what a member needs to create their own login at
-          <em>/signup</em>; read it out when they ask.
-        </p>
-        <table>
-          <thead>
-            <tr><th>Name</th><th>Code</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
-          </thead>
-          <tbody>
-            @for (m of members(); track m.id) {
-              <tr>
-                <td data-label="Name"><strong>{{ m.full_name }}</strong></td>
-                <!-- What a member needs to create a login from their own device. -->
-                <td data-label="Code"><code class="code">{{ m.member_code }}</code></td>
-                <td class="muted" data-label="Phone">{{ m.phone }}</td>
-                <td data-label="Plan">{{ m.plan_name ?? '—' }}</td>
-                <td data-label="Valid to">{{ day(m.end_date) }}</td>
-                <td data-label="Status"><span class="pill" [class]="'pill ' + pill(m.expiry)">{{ expiryLabel(m.expiry) }}</span></td>
-                <td class="right actions">
-                  <button
-                    class="btn btn--ghost btn--sm"
-                    [disabled]="marking() === m.id"
-                    (click)="markPresent(m.id)">
-                    {{ marking() === m.id ? '…' : 'Mark present' }}
-                  </button>
-                  <button class="btn btn--sm" (click)="openRenewal(m)">
-                    {{ m.expiry === 'none' ? 'Start plan' : 'Renew' }}
-                  </button>
-                </td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-
 
 
 
@@ -824,15 +838,18 @@
 
         <div class="field">
           <label for="method">Paid by</label>
+          <!-- Cash is the desk's alone: the owner is not at the gym and takes
+               money by UPI only, and the server refuses cash from them. No point
+               offering an option that comes back as an error. -->
           <select id="method" [value]="renewMethod()" (change)="renewMethod.set($any($event.target).value)">
-            <option value="cash">Cash at the desk</option>
+            @if (!auth.isOwner()) { <option value="cash">Cash at the desk</option> }
             <option value="qr">UPI / QR</option>
           </select>
           <p class="muted small">
             @if (renewMethod() === 'cash') {
               You are holding this cash until the owner collects it.
             } @else {
-              Straight to the owner's account — nothing for you to hold.
+              Straight to the owner's account — nothing for anyone to hold.
             }
           </p>
         </div>
