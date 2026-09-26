@@ -728,13 +728,22 @@ export class DashboardPage {
     this.savingRenewal.set(true);
     this.error.set('');
     try {
-      const typed = this.renewAmount().trim();
+      // String(...) rather than .trim() directly: ngModelChange is typed `any`,
+      // so nothing at compile time guarantees a string is what arrived.
+      const typed = String(this.renewAmount() ?? '').trim();
+      const custom = this.canSetPrice() && typed !== '' ? Number(typed) : undefined;
+
+      if (custom !== undefined && (!Number.isFinite(custom) || custom < 0)) {
+        this.error.set('Enter the amount as a number, or leave it blank for the plan price.');
+        return;
+      }
+
       await this.api.createSubscription(gym.id, member.id, {
         planId: this.renewPlanId(),
         method: this.renewMethod(),
         // Sent only when the owner actually typed one, so the server charges
         // the plan's price by default rather than whatever was last in the box.
-        amount: this.canSetPrice() && typed !== '' ? Number(typed) : undefined,
+        amount: custom,
       });
       this.renewing.set(null);
       await Promise.all([this.refreshMembers(gym.id), this.refreshMoney(gym.id)]);
@@ -745,8 +754,22 @@ export class DashboardPage {
     }
   }
 
+  /**
+   * The server's own message where there is one, otherwise something honest.
+   *
+   * This used to return a flat fallback for anything that was not an
+   * HttpErrorResponse, so a bug in this file reported itself as "could not
+   * record that payment" — indistinguishable from the server refusing, and it
+   * cost real time to track down. A client-side fault now says so.
+   */
   private apiMessage(err: unknown, fallback: string): string {
-    return err instanceof HttpErrorResponse && err.error?.message ? err.error.message : fallback;
+    if (err instanceof HttpErrorResponse) {
+      if (err.error?.message) return err.error.message;
+      if (err.status === 0) return 'Could not reach the server. Check your connection and try again.';
+      return `${fallback} (server said ${err.status})`;
+    }
+    if (err instanceof Error) return `${fallback} — ${err.message}`;
+    return fallback;
   }
 
   /**

@@ -935,7 +935,11 @@
         @if (canSetPrice()) {
           <div class="field">
             <label for="amount">Amount charged</label>
-            <input id="amount" type="number" inputmode="decimal" min="0"
+            <!-- type="text" with inputmode="decimal", NOT type="number":
+                 a number input makes ngModel emit a number, which silently
+                 broke the string handling below and surfaced as a useless
+                 "could not record that payment". The keypad is the same. -->
+            <input id="amount" type="text" inputmode="decimal"
               [placeholder]="'Plan price — ₹' + selectedPlanPrice()"
               [ngModel]="renewAmount()" (ngModelChange)="renewAmount.set($event)" />
             <p class="muted small">
