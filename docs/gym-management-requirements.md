@@ -102,7 +102,10 @@ The gym prints **one static QR** and fixes it by the entrance. Its URL is
 - **FR-4.2** Two members may share a phone number (a parent and child). This is reported, not blocked; the check-in screen asks which of them is scanning.
 - **FR-4.3** Plans are per gym: name, duration in days, price.
 - **FR-4.4** A renewal is a **new subscription row**, never an edit, so payment history stays intact.
-- **FR-4.5** A renewal bought before the current one lapses starts the **day after it ends**, so renewing early never discards paid days.
+- **FR-4.5** **A membership is continuous.** A renewal starts the day after the previous one ended — not the day the money changed hands. Someone whose month ran out on the 3rd and who pays on the 10th has still used the gym in between, and the month they are buying is the one that began on the 4th. Starting from the payment date would gift them the gap and let their renewal date drift later every month.
+- **FR-4.5a** *Exception — a long lapse.* If the whole period being bought would already be over (someone who stopped in March paying for one month in September), it starts today instead. Continuing would have them pay and still be expired the moment it is recorded, and no gym charges six months of arrears to a returning member.
+- **FR-4.5b** The rule lives in **one function** (`resolveStartDate`), used by both a desk renewal and a member's own online renewal. Three copies of a date rule is three chances for them to disagree.
+- **FR-4.5c** The renewal dialog **shows the dates being bought** before they are recorded, and says whether the period is continuing from a lapse, added to a current membership, or starting today.
 - **FR-4.6** Plans are deactivated, never deleted — past subscriptions reference them.
 
 ### 3.5 Expiry and renewals

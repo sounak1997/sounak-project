@@ -235,11 +235,30 @@ exports.markManual = asyncHandler(async (req, res) => {
 // @route   GET /api/gym/gyms/:gymId/payments/recent
 // @access  Gym owner
 exports.recentSettledPayments = asyncHandler(async (req, res) => {
-  const rows = await gymService.recentSettledPayments({
+  // `outstanding=true` is the owner's to-do list and is deliberately NOT paged;
+  // see the service. Everything else is the record, which is.
+  const outstandingOnly = req.query.outstanding === 'true';
+  const limit = outstandingOnly ? 200 : Math.min(Number(req.query.limit) || 20, 100);
+  const offset = outstandingOnly ? 0 : Math.max(Number(req.query.offset) || 0, 0);
+
+  const { rows, total } = await gymService.recentSettledPayments({
     gymId: req.gym.id,
-    limit: Math.min(Number(req.query.limit) || 20, 100),
+    limit,
+    offset,
+    outstandingOnly,
   });
-  res.status(200).json({ success: true, count: rows.length, data: rows });
+
+  res.status(200).json({
+    success: true,
+    count: rows.length,
+    total,
+    limit,
+    offset,
+    // Saves the client working out whether to enable a Next button from three
+    // other numbers, and keeps that judgement on one side of the wire.
+    hasMore: offset + rows.length < total,
+    data: rows,
+  });
 });
 
 // @desc    Tick a payment off as accounted for, so it can no longer be undone
@@ -484,4 +503,26 @@ exports.getMemberPhoto = asyncHandler(async (req, res) => {
   res.set('Content-Type', photo.mime);
   res.set('Cache-Control', 'public, max-age=31536000, immutable');
   res.send(photo.bytes);
+});
+
+// @desc    Take in every staff member's cash in one go
+// @route   POST /api/gym/gyms/:gymId/collections/handover-all
+// @access  Gym owner
+exports.handoverAllCash = asyncHandler(async (req, res) => {
+  const result = await gymService.handoverAllCash({
+    gymId: req.gym.id,
+    receivedBy: req.gymAccount.id,
+  });
+  res.status(200).json({ success: true, data: result });
+});
+
+// @desc    Tick off every UPI payment the owner has seen land
+// @route   POST /api/gym/gyms/:gymId/payments/close-all
+// @access  Gym owner
+exports.closeAllUpiPayments = asyncHandler(async (req, res) => {
+  const result = await gymService.closeAllUpiPayments({
+    gymId: req.gym.id,
+    closedBy: req.gymAccount.id,
+  });
+  res.status(200).json({ success: true, data: result });
 });

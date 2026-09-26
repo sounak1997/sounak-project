@@ -23,7 +23,7 @@ import {
 } from '../core/gym.service';
 
 /** The minimum the renewal dialog needs: who, and whether they have a plan. */
-type RenewTarget = { id: string; full_name: string; expiry?: MemberRow['expiry'] };
+type RenewTarget = { id: string; full_name: string; expiry?: MemberRow['expiry']; end_date?: string | null };
 
 /**
  * The owner's console: what needs doing today.
@@ -217,20 +217,27 @@ export class DashboardPage {
       this.payQrUrl.set(this.auth.activeGym()?.payment_qr_url ?? '');
       this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
       if (owner) {
-        const [rows, pos, recent, hist] = await Promise.all([
+        const [rows, pos, outstanding, page, hist] = await Promise.all([
           this.api.collections(gymId).catch(() => []),
           this.api.cashPosition(gymId).catch(() => null),
-          this.api.recentPayments(gymId).catch(() => []),
+          this.api.recentPayments(gymId, { outstanding: true }).catch(() => ({ rows: [], total: 0, offset: 0, hasMore: false })),
+          this.api.recentPayments(gymId, { limit: this.paidPageSize, offset: this.paidOffset() })
+            .catch(() => ({ rows: [], total: 0, offset: 0, hasMore: false })),
           this.api.handovers(gymId, this.handoverPeriod(), this.handoverMethod()).catch(() => []),
         ]);
         this.collections.set(rows);
         this.position.set(pos);
-        this.recentPaid.set(recent);
+        this.outstandingPaid.set(outstanding.rows);
+        this.recentPaid.set(page.rows);
+        this.paidOffset.set(page.offset);
+        this.paidTotal.set(page.total);
+        this.paidHasMore.set(page.hasMore);
         this.handovers.set(hist);
       } else {
         this.collections.set([]);
         this.position.set(null);
         this.recentPaid.set([]);
+        this.outstandingPaid.set([]);
       }
     } catch {
       this.error.set('Could not load this gym. Please try again.');
@@ -257,14 +264,19 @@ export class DashboardPage {
     this.myCash.set(mine);
     if (!owner) return;
 
-    const [rows, pos, recent] = await Promise.all([
+    const [rows, pos, outstanding] = await Promise.all([
       this.api.collections(gymId).catch(() => this.collections()),
       this.api.cashPosition(gymId).catch(() => this.position()),
-      this.api.recentPayments(gymId).catch(() => this.recentPaid()),
+      this.api
+        .recentPayments(gymId, { outstanding: true })
+        .catch(() => ({ rows: this.outstandingPaid(), total: 0, offset: 0, hasMore: false })),
     ]);
     this.collections.set(rows);
     this.position.set(pos);
-    this.recentPaid.set(recent);
+    this.outstandingPaid.set(outstanding.rows);
+    // Back to page one: settling something changes what the record contains, and
+    // holding an old offset would show a page that has shifted underneath it.
+    await this.loadPaidPage(0);
     await this.loadHandovers();
   }
 
@@ -598,6 +610,50 @@ export class DashboardPage {
     this.error.set('');
   }
 
+  /**
+   * The dates this renewal will actually cover, shown before it is recorded.
+   *
+   * Mirrors the server's rule (see resolveStartDate): a renewal continues from
+   * the day after the last one ended, not from today — unless the whole period
+   * would already be over, in which case it starts today. The owner is charging
+   * money for a span of days and should see which days those are; getting this
+   * silently wrong is how a member ends up short a week.
+   *
+   * A PREVIEW only. The server computes it again and is the authority.
+   */
+  readonly renewalPeriod = computed(() => {
+    const plan = this.plans().find((p) => p.id === this.renewPlanId());
+    if (!plan) return null;
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const prevEnd = this.renewing()?.end_date ? this.parseDay(this.renewing()!.end_date!) : null;
+
+    let start = today;
+    let continuing = false;
+    if (prevEnd) {
+      const dayAfter = new Date(prevEnd); dayAfter.setDate(dayAfter.getDate() + 1);
+      const wouldEnd = new Date(dayAfter); wouldEnd.setDate(wouldEnd.getDate() + plan.duration_days - 1);
+      if (wouldEnd >= today) { start = dayAfter; continuing = true; }
+    }
+    const end = new Date(start); end.setDate(end.getDate() + plan.duration_days - 1);
+
+    return {
+      start, end, continuing,
+      // True when the member has been lapsed and is paying for that gap.
+      backdated: continuing && start < today,
+    };
+  });
+
+  /** 'YYYY-MM-DD' as a local date — `new Date(str)` would read it as UTC. */
+  private parseDay(value: string): Date {
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y, m - 1, d);
+  }
+
+  fmtDay(d: Date): string {
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+
   /** The plan's list price, to show beside the custom-amount box. */
   selectedPlanPrice(): string {
     return this.plans().find((p) => p.id === this.renewPlanId())?.price ?? '';
@@ -647,6 +703,113 @@ export class DashboardPage {
       await this.load(gym.id, gym.gym_code);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not remove that photo.'));
+    }
+  }
+
+  // --- accounting for money -------------------------------------------------
+
+  /**
+   * UPI payments the owner has not yet ticked off.
+   *
+   * Cash is excluded because cash becomes accounted for by somebody handing it
+   * over, never by ticking a row — see closePayment on the server.
+   */
+  readonly upiToConfirm = computed(() =>
+    this.outstandingPaid().filter((p) => p.method !== 'cash' && !p.handed_over_at),
+  );
+
+  readonly upiToConfirmTotal = computed(() =>
+    this.upiToConfirm().reduce((sum, p) => sum + Number(p.amount), 0),
+  );
+
+  /** Everything already accounted for — a log, not a to-do list. */
+  /**
+   * Everything still needing the owner's action — fetched unpaged, separately
+   * from the record below. Deriving it from a page of history would hide
+   * anything past the first page, and money the owner cannot see is money they
+   * wrongly believe is settled.
+   */
+  readonly outstandingPaid = signal<SettledPayment[]>([]);
+
+  // The paged record.
+  readonly paidPageSize = 20;
+  readonly paidOffset = signal(0);
+  readonly paidTotal = signal(0);
+  readonly paidHasMore = signal(false);
+  readonly loadingPaid = signal(false);
+
+  readonly paidRangeLabel = computed(() => {
+    const total = this.paidTotal();
+    if (!total) return '';
+    const from = this.paidOffset() + 1;
+    const to = Math.min(this.paidOffset() + this.recentPaid().length, total);
+    return `${from}–${to} of ${total}`;
+  });
+
+  async loadPaidPage(offset: number): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.loadingPaid.set(true);
+    try {
+      const page = await this.api.recentPayments(gym.id, {
+        limit: this.paidPageSize,
+        offset: Math.max(0, offset),
+      });
+      this.recentPaid.set(page.rows);
+      this.paidOffset.set(page.offset);
+      this.paidTotal.set(page.total);
+      this.paidHasMore.set(page.hasMore);
+    } catch {
+      this.error.set('Could not load that page of payments.');
+    } finally {
+      this.loadingPaid.set(false);
+    }
+  }
+
+  nextPaidPage(): void { void this.loadPaidPage(this.paidOffset() + this.paidPageSize); }
+  prevPaidPage(): void { void this.loadPaidPage(this.paidOffset() - this.paidPageSize); }
+
+  readonly bulkCash = signal(false);
+  readonly bulkUpi = signal(false);
+  readonly confirmBulk = signal<'cash' | 'upi' | null>(null);
+
+  async takeAllCash(): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.bulkCash.set(true);
+    this.confirmBulk.set(null);
+    this.error.set('');
+    try {
+      const r = await this.api.handoverAllCash(gym.id);
+      this.notice.set(
+        r.payments
+          ? `₹${r.total} collected from ${r.people} ${r.people === 1 ? 'person' : 'people'}.`
+          : 'There was no cash left to collect.',
+      );
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not record that collection.'));
+    } finally {
+      this.bulkCash.set(false);
+    }
+  }
+
+  async confirmAllUpi(): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.bulkUpi.set(true);
+    this.confirmBulk.set(null);
+    this.error.set('');
+    try {
+      const r = await this.api.closeAllUpiPayments(gym.id);
+      this.notice.set(
+        r.payments ? `₹${r.total} across ${r.payments} payments ticked off.` : 'Nothing left to confirm.',
+      );
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not confirm those payments.'));
+    } finally {
+      this.bulkUpi.set(false);
     }
   }
 

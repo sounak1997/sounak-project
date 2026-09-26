@@ -21,6 +21,10 @@
 const pgPool = require('../config/pg.config');
 const { genId } = require('../utils/id');
 const gateway = require('./gymGatewayService');
+// The renewal start-date rule lives in ONE place. A member paying online and a
+// desk taking cash must produce the same dates, and three copies of a date rule
+// is three chances for them to drift apart.
+const { resolveStartDate } = require('./gymService');
 
 const err = (statusCode, message) => {
   const e = new Error(message);
@@ -110,15 +114,11 @@ exports.startQrClaim = async ({ gym, memberId, planId }) => {
       [memberId]
     )).rows[0]?.end_date ?? null;
 
-    const startDate = (await client.query(
-      `SELECT CASE
-                WHEN $1::date IS NOT NULL
-                 AND $1::date >= (now() AT TIME ZONE $2)::date
-                THEN $1::date + 1
-                ELSE (now() AT TIME ZONE $2)::date
-              END AS start_date`,
-      [currentEnd, gym.timezone]
-    )).rows[0].start_date;
+    const startDate = await resolveStartDate(client, {
+      previousEnd: currentEnd,
+      durationDays: plan.duration_days,
+      timezone: gym.timezone,
+    });
 
     await client.query(
       `INSERT INTO gym_subscriptions
@@ -208,18 +208,12 @@ exports.startRenewal = async ({ gym, memberId, planId }) => {
       );
       const currentEnd = currentResult.rows[0] ? currentResult.rows[0].end_date : null;
 
-      // Same rule as a desk renewal: paying early extends from the existing end
-      // date rather than discarding the days already paid for.
-      const startResult = await client.query(
-        `SELECT CASE
-                  WHEN $1::date IS NOT NULL
-                   AND $1::date >= (now() AT TIME ZONE $2)::date
-                  THEN $1::date + 1
-                  ELSE (now() AT TIME ZONE $2)::date
-                END AS start_date`,
-        [currentEnd, gym.timezone]
-      );
-      const startDate = startResult.rows[0].start_date;
+      // Same rule as a desk renewal — literally the same function.
+      const startDate = await resolveStartDate(client, {
+        previousEnd: currentEnd,
+        durationDays: plan.duration_days,
+        timezone: gym.timezone,
+      });
 
       subscriptionId = genId('SUB');
       await client.query(

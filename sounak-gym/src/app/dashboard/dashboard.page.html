@@ -155,17 +155,42 @@
                  which only appears when there is something outstanding. -->
           </div>
         }
-        @if (auth.isOwner() && staffHoldingCash().length) {
+        @if (auth.isOwner() && (staffHoldingCash().length || upiToConfirm().length)) {
           <div class="card">
-            <h2>Collect from staff</h2>
+            <h2>Money to account for</h2>
+            <!-- Cash collection and ticking off UPI were two cards. They are one
+                 question — has this money actually reached you — so they are one
+                 card, with a bulk action each for settling up in one go. -->
             <p class="muted mb">
-              Who is holding your cash, and how much.
-              @if (cashOutstanding() > 0) {
-                <strong>₹{{ cashOutstanding() }} to collect in total.</strong>
+              @if (cashOutstanding() > 0 || upiToConfirmTotal() > 0) {
+                <strong>₹{{ cashOutstanding() + upiToConfirmTotal() }}</strong> still to
+                account for — ₹{{ cashOutstanding() }} cash to collect,
+                ₹{{ upiToConfirmTotal() }} UPI to check.
               } @else {
-                Everyone has handed over — nothing to collect.
+                All square. Nothing to collect and nothing to check.
               }
             </p>
+
+            @if (cashOutstanding() > 0 || upiToConfirm().length) {
+              <div class="bulk">
+                @if (cashOutstanding() > 0) {
+                  <button class="btn btn--sm" [disabled]="bulkCash()"
+                          (click)="confirmBulk.set('cash')">
+                    {{ bulkCash() ? 'Saving…' : 'Cash received from everyone' }}
+                  </button>
+                }
+                @if (upiToConfirm().length) {
+                  <button class="btn btn--sm" [disabled]="bulkUpi()"
+                          (click)="confirmBulk.set('upi')">
+                    {{ bulkUpi() ? 'Saving…' : 'Got it — all ' + upiToConfirm().length + ' UPI payments' }}
+                  </button>
+                }
+              </div>
+            }
+
+            @if (cashOutstanding() > 0) {
+              <h3 class="sub">Cash held by staff</h3>
+            }
 
             <table>
               <thead>
@@ -213,6 +238,46 @@
                 }
               </tbody>
             </table>
+
+            <!-- UPI in the same card, because it is the same question. It stays a
+                 separate list because cash is accounted for PER PERSON (you take
+                 notes from someone) and UPI PER PAYMENT (you find it in your
+                 statement) — one flat table would misrepresent both. -->
+            @if (upiToConfirm().length) {
+              <h3 class="sub">UPI to check in your account</h3>
+              <div class="scroll-y">
+                <table>
+                  <thead>
+                    <tr><th>Member</th><th>Amount</th><th>Marked by</th><th>When</th><th class="right"></th></tr>
+                  </thead>
+                  <tbody>
+                    @for (p of upiToConfirm(); track p.id) {
+                      <tr>
+                        <td>
+                          <strong>{{ p.full_name }}</strong>
+                          <span class="muted block">{{ p.plan_name }}</span>
+                        </td>
+                        <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
+                        <td data-label="Marked by">{{ p.marked_by_name ?? '—' }}</td>
+                        <td class="muted" data-label="When">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
+                        <td class="right actions">
+                          <button class="btn btn--sm btn--ghost"
+                                  [disabled]="reversing() === p.id || closing() === p.id"
+                                  (click)="confirmReverse.set(p)">
+                            {{ reversing() === p.id ? '…' : 'Undo' }}
+                          </button>
+                          <button class="btn btn--sm"
+                                  [disabled]="closing() === p.id || reversing() === p.id"
+                                  (click)="closePaid(p)">
+                            {{ closing() === p.id ? '…' : 'Got it' }}
+                          </button>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
           </div>
         }
         <!-- What the owner has actually collected, over time. Each "Cash received"
@@ -308,77 +373,7 @@
         <!-- The owner's check on what staff marked paid. Owner only: staff make the
              marks, so staff erasing their own marks would leave the person
              accountable for the money unable to see anything had changed. -->
-        @if (auth.isOwner() && recentPaid().length) {
-          <div class="card">
-            <h2>Recently marked paid</h2>
-            <p class="muted mb">
-              Every payment your staff has confirmed. Undo one that was marked paid by
-              mistake — the member goes back to unpaid and their membership goes on hold.
-              Tap <strong>Got it</strong> on a UPI payment once you have seen it in your
-              account: that closes it off, and it can no longer be undone.
-            </p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Member</th>
-                  <th>Amount</th>
-                  <th>How</th>
-                  <th>Marked by</th>
-                  <th>When</th>
-                  <th class="right"></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (p of recentPaid(); track p.id) {
-                  <tr>
-                    <td>
-                      <strong>{{ p.full_name }}</strong>
-                      <span class="muted block">{{ p.plan_name }}</span>
-                    </td>
-                    <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
-                    <td data-label="How">
-                      <span class="pill" [class.pill--ok]="p.method !== 'cash'"
-                            [class.pill--warn]="p.method === 'cash'">
-                        {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
-                      </span>
-                    </td>
-                    <td data-label="Marked by">{{ p.marked_by_name ?? '—' }}</td>
-                    <td class="muted" data-label="When">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
-                    <td class="right actions">
-                      <!-- Once the owner has accounted for the money the row is
-                           closed and the server refuses a reversal, so no Undo is
-                           offered: a button that always fails is worse than saying
-                           why. Cash closes when it is handed over; UPI closes when
-                           the owner ticks it off with the button below. Without
-                           that, Undo would hang around for ever and a UPI payment
-                           would never actually be finished with. -->
-                      @if (p.handed_over_at) {
-                        <span class="muted small">
-                          {{ p.method === 'cash' ? 'cash collected' : 'checked off' }}
-                        </span>
-                      } @else {
-                        <button
-                          class="btn btn--sm btn--ghost"
-                          [disabled]="reversing() === p.id || closing() === p.id"
-                          (click)="confirmReverse.set(p)">
-                          {{ reversing() === p.id ? '…' : 'Undo' }}
-                        </button>
-                        @if (p.method !== 'cash') {
-                          <button
-                            class="btn btn--sm"
-                            [disabled]="closing() === p.id || reversing() === p.id"
-                            (click)="closePaid(p)">
-                            {{ closing() === p.id ? '…' : 'Got it' }}
-                          </button>
-                        }
-                      }
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
+
         <!-- Only what nobody has confirmed yet.
              A renewal taken at the desk is recorded as paid the moment staff pick
              cash or UPI, so it never lands here — showing the same two buttons for
@@ -511,6 +506,7 @@
             The <strong>code</strong> is what a member needs to create their own login at
             <em>/signup</em>; read it out when they ask.
           </p>
+          <div class="scroll-y scroll-y--tall">
           <table>
             <thead>
               <tr><th></th><th>Name</th><th>Code</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
@@ -548,67 +544,9 @@
               }
             </tbody>
           </table>
+          </div>
         </div>
 
-        @if (editing(); as m) {
-          <div class="card">
-            <h2>Edit — {{ m.full_name }}</h2>
-            <div class="accent-bar accent-bar--left"></div>
-
-            <div class="photo-row mt">
-              @if (editPhotoPreview()) {
-                <img class="avatar avatar--lg" [src]="editPhotoPreview()" alt="" />
-              } @else if (m.photo_id) {
-                <img class="avatar avatar--lg" [src]="photoUrl(m.photo_id)" [alt]="m.full_name" />
-              } @else {
-                <div class="avatar avatar--lg avatar--empty">{{ initials(m.full_name) }}</div>
-              }
-              <div>
-                <label class="btn btn--ghost btn--sm file-btn">
-                  {{ m.photo_id || editPhotoPreview() ? 'Replace photo' : 'Take photo' }}
-                  <input type="file" accept="image/*" capture="environment"
-                    (change)="onPhotoPicked($event, 'edit')" hidden />
-                </label>
-                @if (m.photo_id) {
-                  <button class="btn btn--ghost btn--sm" (click)="removePhoto()">Remove photo</button>
-                }
-              </div>
-            </div>
-
-            <div class="field">
-              <label for="e-name">Full name</label>
-              <input id="e-name" type="text" [ngModel]="editName()" (ngModelChange)="editName.set($event)" />
-            </div>
-            <div class="field">
-              <label for="e-phone">Mobile number</label>
-              <input id="e-phone" type="tel" inputmode="numeric"
-                [ngModel]="editPhone()" (ngModelChange)="editPhone.set($event)" />
-              <p class="muted small">
-                How they identify themselves at the door, and how you call them.
-              </p>
-            </div>
-            <div class="field">
-              <label for="e-emg">Emergency contact</label>
-              <input id="e-emg" type="text" [ngModel]="editEmergency()" (ngModelChange)="editEmergency.set($event)" />
-            </div>
-            <div class="field">
-              <label for="e-notes">Notes</label>
-              <input id="e-notes" type="text" [ngModel]="editNotes()" (ngModelChange)="editNotes.set($event)" />
-            </div>
-            <div class="field">
-              <label for="e-status">Status</label>
-              <select id="e-status" [ngModel]="editStatus()" (ngModelChange)="editStatus.set($event)">
-                <option value="active">Active</option>
-                <option value="inactive">Inactive — cannot check in</option>
-              </select>
-            </div>
-
-            <button class="btn" [disabled]="savingEdit() || !editName().trim()" (click)="saveEdit()">
-              {{ savingEdit() ? 'Saving…' : 'Save changes' }}
-            </button>
-            <button class="btn btn--ghost" (click)="cancelEdit()">Cancel</button>
-          </div>
-        }
 
         </div>
 
@@ -725,6 +663,101 @@
           </div>
         }
         </aside>
+
+      <!-- After the working cards, before the gym's settings. It is the record
+           you consult rather than something you act on, but it is still about
+           the gym's day — not configuration. -->
+      @if (auth.isOwner() && recentPaid().length) {
+          <div class="card">
+            <h2>Recently marked paid</h2>
+            <p class="muted mb">
+              What staff have confirmed lately. Anything still needing your action is in
+              <strong>Money to account for</strong> above; this is the record. Undo one
+              marked paid by mistake — the member goes back to unpaid and their
+              membership goes on hold. Once accounted for, a payment can no longer be
+              undone.
+            </p>
+            <div class="scroll-y">
+            <table>
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th>Amount</th>
+                  <th>How</th>
+                  <th>Marked by</th>
+                  <th>When</th>
+                  <th class="right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (p of recentPaid(); track p.id) {
+                  <tr>
+                    <td>
+                      <strong>{{ p.full_name }}</strong>
+                      <span class="muted block">{{ p.plan_name }}</span>
+                    </td>
+                    <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
+                    <td data-label="How">
+                      <span class="pill" [class.pill--ok]="p.method !== 'cash'"
+                            [class.pill--warn]="p.method === 'cash'">
+                        {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                      </span>
+                    </td>
+                    <td data-label="Marked by">{{ p.marked_by_name ?? '—' }}</td>
+                    <td class="muted" data-label="When">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
+                    <td class="right actions">
+                      <!-- Once the owner has accounted for the money the row is
+                           closed and the server refuses a reversal, so no Undo is
+                           offered: a button that always fails is worse than saying
+                           why. Cash closes when it is handed over; UPI closes when
+                           the owner ticks it off with the button below. Without
+                           that, Undo would hang around for ever and a UPI payment
+                           would never actually be finished with. -->
+                      @if (p.handed_over_at) {
+                        <span class="muted small">
+                          {{ p.method === 'cash' ? 'cash collected' : 'checked off' }}
+                        </span>
+                      } @else {
+                        <button
+                          class="btn btn--sm btn--ghost"
+                          [disabled]="reversing() === p.id || closing() === p.id"
+                          (click)="confirmReverse.set(p)">
+                          {{ reversing() === p.id ? '…' : 'Undo' }}
+                        </button>
+                        @if (p.method !== 'cash') {
+                          <button
+                            class="btn btn--sm"
+                            [disabled]="closing() === p.id || reversing() === p.id"
+                            (click)="closePaid(p)">
+                            {{ closing() === p.id ? '…' : 'Got it' }}
+                          </button>
+                        }
+                      }
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+            </div>
+
+            <!-- Paged on the SERVER: a gym running for a year has thousands of
+                 these, and sending them all to render twenty is wasteful in
+                 exactly the place — a phone on gym wifi — where it is felt. -->
+            <div class="pager">
+              <button class="btn btn--ghost btn--sm"
+                      [disabled]="paidOffset() === 0 || loadingPaid()"
+                      (click)="prevPaidPage()">Newer</button>
+              <span class="muted small">
+                {{ loadingPaid() ? 'Loading…' : paidRangeLabel() }}
+              </span>
+              <button class="btn btn--ghost btn--sm"
+                      [disabled]="!paidHasMore() || loadingPaid()"
+                      (click)="nextPaidPage()">Older</button>
+            </div>
+          </div>
+        }
+
+
       </div>
 
 
@@ -875,12 +908,86 @@
         <p class="muted small mt">If you need the raw link:</p>
         <code class="poster">{{ posterUrl() }}</code>
       </div>
+
     }
   </div>
 </div>
 
 <!-- Undoing a payment takes away access a member currently has, so it is
      confirmed with the consequence spelled out. -->
+@if (editing(); as m) {
+  <!-- A dialog rather than a panel below the table. Editing someone halfway
+       down a long member list used to render the form off-screen, so the row
+       appeared to do nothing — the same failure the renewal dialog had. A modal
+       is always where you are looking. -->
+  <div class="modal-backdrop" (click)="cancelEdit()">
+    <div class="modal" (click)="$event.stopPropagation()">
+
+      <h2>Edit — {{ m.full_name }}</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      <div class="photo-row mt">
+        @if (editPhotoPreview()) {
+          <img class="avatar avatar--lg" [src]="editPhotoPreview()" alt="" />
+        } @else if (m.photo_id) {
+          <img class="avatar avatar--lg" [src]="photoUrl(m.photo_id)" [alt]="m.full_name" />
+        } @else {
+          <div class="avatar avatar--lg avatar--empty">{{ initials(m.full_name) }}</div>
+        }
+        <div>
+          <label class="btn btn--ghost btn--sm file-btn">
+            {{ m.photo_id || editPhotoPreview() ? 'Replace photo' : 'Take photo' }}
+            <input type="file" accept="image/*" capture="environment"
+              (change)="onPhotoPicked($event, 'edit')" hidden />
+          </label>
+          @if (m.photo_id) {
+            <button class="btn btn--ghost btn--sm" (click)="removePhoto()">Remove photo</button>
+          }
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="e-name">Full name</label>
+        <input id="e-name" type="text" [ngModel]="editName()" (ngModelChange)="editName.set($event)" />
+      </div>
+      <div class="field">
+        <label for="e-phone">Mobile number</label>
+        <input id="e-phone" type="tel" inputmode="numeric"
+          [ngModel]="editPhone()" (ngModelChange)="editPhone.set($event)" />
+        <p class="muted small">
+          How they identify themselves at the door, and how you call them.
+        </p>
+      </div>
+      <div class="field">
+        <label for="e-emg">Emergency contact</label>
+        <input id="e-emg" type="text" [ngModel]="editEmergency()" (ngModelChange)="editEmergency.set($event)" />
+      </div>
+      <div class="field">
+        <label for="e-notes">Notes</label>
+        <input id="e-notes" type="text" [ngModel]="editNotes()" (ngModelChange)="editNotes.set($event)" />
+      </div>
+      <div class="field">
+        <label for="e-status">Status</label>
+        <select id="e-status" [ngModel]="editStatus()" (ngModelChange)="editStatus.set($event)">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive — cannot check in</option>
+        </select>
+      </div>
+
+      @if (error()) {
+        <div class="alert alert--error mt">{{ error() }}</div>
+      }
+
+      <div class="modal__actions">
+        <button class="btn btn--ghost" (click)="cancelEdit()">Cancel</button>
+        <button class="btn" [disabled]="savingEdit() || !editName().trim()" (click)="saveEdit()">
+          {{ savingEdit() ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
 @if (confirmReverse(); as p) {
   <div class="modal-backdrop" (click)="confirmReverse.set(null)">
     <div class="modal" (click)="$event.stopPropagation()">
@@ -911,6 +1018,32 @@
 
 <!-- Taking a renewal at the desk. Staff can do this: it is money coming IN
      against one member, not a view of the gym's books. -->
+@if (confirmBulk(); as which) {
+  <div class="modal-backdrop" (click)="confirmBulk.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      @if (which === 'cash') {
+        <h2>Collect ₹{{ cashOutstanding() }} from everyone?</h2>
+        <p class="modal__body">
+          Records that every staff member has handed you the cash they were holding.
+          Only do this once the notes are actually in your hands.
+        </p>
+      } @else {
+        <h2>Tick off {{ upiToConfirm().length }} UPI payments?</h2>
+        <p class="modal__body">
+          Confirms you have found all ₹{{ upiToConfirmTotal() }} in your account.
+          They can no longer be undone afterwards.
+        </p>
+      }
+      <div class="modal__actions">
+        <button class="btn btn--ghost" (click)="confirmBulk.set(null)">Cancel</button>
+        <button class="btn" (click)="which === 'cash' ? takeAllCash() : confirmAllUpi()">
+          Yes, {{ which === 'cash' ? 'I have the cash' : 'I have seen them' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
 @if (renewing(); as m) {
   <div class="modal-backdrop" (click)="renewing.set(null)">
     <div class="modal" (click)="$event.stopPropagation()">
@@ -946,6 +1079,26 @@
               Blank charges the plan's ₹{{ selectedPlanPrice() }}. Owner only — the desk
               always charges the plan price.
             </p>
+          </div>
+        }
+
+        @if (renewalPeriod(); as period) {
+          <div class="period">
+            <div class="period__dates">
+              {{ fmtDay(period.start) }} &rarr; {{ fmtDay(period.end) }}
+            </div>
+            @if (period.backdated) {
+              <p class="muted small">
+                Continues from where their last membership ended, so they are paying for
+                the days since it lapsed.
+              </p>
+            } @else if (period.continuing) {
+              <p class="muted small">
+                Added on to their current membership — no days lost by renewing early.
+              </p>
+            } @else {
+              <p class="muted small">Starts today.</p>
+            }
           </div>
         }
 

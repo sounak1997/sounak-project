@@ -324,6 +324,44 @@ const assertMayTakeCash = (method, actorRole) => {
   );
 };
 
+/**
+ * When a renewal starts.
+ *
+ * A membership is CONTINUOUS: renewing picks up the day after the last one
+ * ended, not the day the money changed hands. Someone whose month ran out on
+ * the 3rd and who pays on the 10th has still used the gym in between, and the
+ * month they are buying is the one that began on the 4th. Starting from the
+ * payment date would quietly gift them the gap, and their renewal date would
+ * drift later every month.
+ *
+ * The exception is a LONG lapse. If the whole period being bought would already
+ * be over — someone who stopped in March paying for one month in September —
+ * continuing would have them pay and still be expired the moment it is
+ * recorded. No gym charges six months of arrears to a returning member, so that
+ * case starts today and the past is written off.
+ *
+ * An explicit start date always wins; the owner may know something the rule
+ * does not.
+ */
+const resolveStartDate = async (client, { explicitStart, previousEnd, durationDays, timezone }) => {
+  const result = await client.query(
+    `WITH today AS (SELECT (now() AT TIME ZONE $4)::date AS d)
+     SELECT CASE
+              WHEN $1::date IS NOT NULL THEN $1::date
+              WHEN $2::date IS NULL     THEN (SELECT d FROM today)
+              -- Continue from the day after the last membership ended, unless
+              -- the period being bought would end before today.
+              WHEN ($2::date + 1) + ($3::int - 1) >= (SELECT d FROM today)
+                THEN $2::date + 1
+              ELSE (SELECT d FROM today)
+            END AS start_date`,
+    [explicitStart || null, previousEnd || null, durationDays, timezone]
+  );
+  return result.rows[0].start_date;
+};
+
+exports.resolveStartDate = resolveStartDate;
+
 exports.createSubscription = async ({
   gymId, memberId, planId, startDate, amount, payment, recordedBy, actorRole,
 }) => {
@@ -388,25 +426,16 @@ exports.createSubscription = async ({
     );
     const currentEnd = currentResult.rows[0] ? currentResult.rows[0].end_date : null;
 
-    // Resolved in its own statement rather than inside the INSERT. The CTE
-    // version could not have its parameter types inferred (Postgres reports
-    // "inconsistent types deduced" when a placeholder feeds both a CTE
-    // predicate and an INSERT target list), and spelling out a cast per
-    // placeholder to satisfy it made the date rule unreadable. Still one
-    // transaction, so it is equally atomic.
-    const startResult = await client.query(
-      `SELECT COALESCE(
-                $1::date,
-                CASE
-                  WHEN $2::date IS NOT NULL
-                   AND $2::date >= (now() AT TIME ZONE $3)::date
-                  THEN $2::date + 1
-                  ELSE (now() AT TIME ZONE $3)::date
-                END
-              ) AS start_date`,
-      [startDate || null, currentEnd, gymTimezone]
-    );
-    const resolvedStart = startResult.rows[0].start_date;
+    // Resolved in its own statement rather than inside the INSERT: a
+    // placeholder feeding both a CTE predicate and an INSERT target list leaves
+    // Postgres unable to deduce its type. Still one transaction, so equally
+    // atomic. See resolveStartDate for the rule itself.
+    const resolvedStart = await resolveStartDate(client, {
+      explicitStart: startDate,
+      previousEnd: currentEnd,
+      durationDays: plan.duration_days,
+      timezone: gymTimezone,
+    });
 
     const subscriptionId = genId('SUB');
     const subResult = await client.query(
@@ -617,12 +646,28 @@ exports.reversePayment = async ({ gymId, paymentId, reversedBy }) => {
 // Recently settled payments — what the owner scans to spot a wrong "paid".
 // Newest first, and each row carries who marked it so a correction can be aimed
 // at the right person rather than just at the row.
-exports.recentSettledPayments = async ({ gymId, limit = 20 }) => {
+/**
+ * Settled payments, newest first, in pages.
+ *
+ * TWO DISTINCT CALLERS, and conflating them would be a quiet bug:
+ *
+ *   outstandingOnly = true   what the owner still has to act on. Never paged —
+ *                            a page-two "Got it" the owner cannot see is money
+ *                            they think is accounted for and is not.
+ *   outstandingOnly = false  the record, which grows without limit and is what
+ *                            pagination is actually for.
+ *
+ * The total comes back from COUNT(*) OVER() in the same statement rather than a
+ * second round trip, so the page and its count can never disagree — which they
+ * can when a payment is settled between two queries.
+ */
+exports.recentSettledPayments = async ({ gymId, limit = 20, offset = 0, outstandingOnly = false }) => {
   const result = await pgPool.query(
     `SELECT p.id, p.amount, p.method, p.status, p.verified_at, p.handed_over_at,
             m.full_name, s.plan_name, s.end_date,
             a.name AS marked_by_name,
-            st.role AS marked_by_role
+            st.role AS marked_by_role,
+            COUNT(*) OVER() AS total_count
        FROM gym_payments p
        JOIN gym_members m ON m.id = p.member_id
        JOIN gym_subscriptions s ON s.id = p.subscription_id
@@ -631,11 +676,18 @@ exports.recentSettledPayments = async ({ gymId, limit = 20 }) => {
                              AND st.gym_id = p.gym_id
       WHERE p.gym_id = $1
         AND p.status IN ('verified', 'collected')
-      ORDER BY COALESCE(p.verified_at, p.created_at) DESC
-      LIMIT $2`,
-    [gymId, limit]
+        AND ($4::boolean IS NOT TRUE OR p.handed_over_at IS NULL)
+      -- Tie-broken by id: without it, two payments settled in the same instant
+      -- can swap places between pages, so one is shown twice and another never.
+      ORDER BY COALESCE(p.verified_at, p.created_at) DESC, p.id DESC
+      LIMIT $2 OFFSET $3`,
+    [gymId, limit, offset, outstandingOnly]
   );
-  return result.rows;
+
+  const total = result.rows.length ? Number(result.rows[0].total_count) : 0;
+  // Dropped from each row: it is a property of the result set, not of a payment.
+  const rows = result.rows.map(({ total_count, ...row }) => row);
+  return { rows, total };
 };
 
 exports.listMemberPayments = async ({ gymId, memberId }) => {
@@ -880,6 +932,58 @@ exports.recordCashHandover = async ({ gymId, accountId, receivedBy }) => {
         AND handed_over_at IS NULL
       RETURNING amount`,
     [gymId, accountId, receivedBy]
+  );
+  const total = result.rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  return { payments: result.rowCount, total };
+};
+
+/**
+ * Take in every staff member's cash at once.
+ *
+ * An owner who comes in on a Sunday settles up with everyone in one go, and
+ * tapping through each person to say the same thing is just friction. Done in
+ * ONE statement rather than a loop over recordCashHandover, so every row
+ * carries the same handed_over_at — which is what makes them group as a single
+ * collection in the history, instead of a scatter of near-identical timestamps.
+ */
+exports.handoverAllCash = async ({ gymId, receivedBy }) => {
+  const result = await pgPool.query(
+    `UPDATE gym_payments
+        SET handed_over_at = now(), handed_over_to = $2, updated_at = now()
+      WHERE gym_id = $1
+        AND method = 'cash' AND status = 'collected'
+        AND handed_over_at IS NULL
+      RETURNING amount, COALESCE(verified_by, recorded_by) AS from_account`,
+    [gymId, receivedBy]
+  );
+  const total = result.rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  const people = new Set(result.rows.map((r) => r.from_account)).size;
+  return { payments: result.rowCount, total, people };
+};
+
+/**
+ * Tick off every UPI payment the owner has seen land.
+ *
+ * The counterpart of the above for money that never passed through anyone's
+ * hands. Cash is excluded, for the same reason closePayment refuses it: cash
+ * becomes accounted for by somebody physically handing it over, and a second
+ * route to the same fact would let notes leave "held by staff" without ever
+ * reaching the owner.
+ *
+ * Closing also ends the window in which a payment can be undone, so this is
+ * the owner saying "I have checked my account and these are all there" — worth
+ * being deliberate about, which is why the screen asks first.
+ */
+exports.closeAllUpiPayments = async ({ gymId, closedBy }) => {
+  const result = await pgPool.query(
+    `UPDATE gym_payments
+        SET handed_over_at = now(), handed_over_to = $2, updated_at = now()
+      WHERE gym_id = $1
+        AND method <> 'cash'
+        AND status IN ('verified', 'collected')
+        AND handed_over_at IS NULL
+      RETURNING amount`,
+    [gymId, closedBy]
   );
   const total = result.rows.reduce((sum, r) => sum + Number(r.amount), 0);
   return { payments: result.rowCount, total };

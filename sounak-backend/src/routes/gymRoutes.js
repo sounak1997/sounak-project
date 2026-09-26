@@ -187,6 +187,9 @@ router.post('/gyms/:gymId/payments/reconcile', gymOwnerOnly, gym.reconcilePaymen
 // pocket, and they cannot hand it over without knowing the amount.
 router.get('/gyms/:gymId/collections', gymOwnerOnly, gym.staffCollections);
 router.get('/gyms/:gymId/cash-position', gymOwnerOnly, gym.cashPosition);
+// Declared BEFORE the ':accountId' route, or 'handover-all' is read as an
+// account id and the bulk collection silently becomes a collection from nobody.
+router.post('/gyms/:gymId/collections/handover-all', gymOwnerOnly, gym.handoverAllCash);
 router.post('/gyms/:gymId/collections/:accountId/handover', gymOwnerOnly, gym.recordCashHandover);
 // What the owner has collected over time, by day / week / month.
 router.get('/gyms/:gymId/handovers', gymOwnerOnly, gym.handoverHistory);
@@ -205,6 +208,8 @@ router.get('/gyms/:gymId/payments/recent', gymOwnerOnly, gym.recentSettledPaymen
 router.post('/gyms/:gymId/payments/:paymentId/reverse', gymOwnerOnly, gym.reversePayment);
 // Ticking a payment off as accounted for — the UPI counterpart of a cash
 // handover, and what stops Undo hanging around for ever.
+// Same ordering reason as above: before the ':paymentId' routes.
+router.post('/gyms/:gymId/payments/close-all', gymOwnerOnly, gym.closeAllUpiPayments);
 router.post('/gyms/:gymId/payments/:paymentId/close', gymOwnerOnly, gym.closePayment);
 router.post('/gyms/:gymId/payments/:paymentId/settle', gymStaffOnly, gym.settlePayment);
 

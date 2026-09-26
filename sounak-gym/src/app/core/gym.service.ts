@@ -362,10 +362,28 @@ export class GymService {
   }
 
   /** Owner only: recently settled payments, newest first. */
-  recentPayments(gymId: string): Promise<SettledPayment[]> {
+  /**
+   * Settled payments.
+   *
+   * `outstanding: true` asks for everything the owner still has to act on, and
+   * the server returns it unpaged — a "Got it" hiding on page two is money the
+   * owner believes is accounted for and is not. Omit it for the paged record.
+   */
+  recentPayments(
+    gymId: string,
+    opts: { outstanding?: boolean; limit?: number; offset?: number } = {},
+  ): Promise<{ rows: SettledPayment[]; total: number; offset: number; hasMore: boolean }> {
+    const params: Record<string, string> = {};
+    if (opts.outstanding) params['outstanding'] = 'true';
+    if (opts.limit !== undefined) params['limit'] = String(opts.limit);
+    if (opts.offset !== undefined) params['offset'] = String(opts.offset);
+
     return firstValueFrom(
-      this.http.get<{ data: SettledPayment[] }>(`${this.base(gymId)}/payments/recent`),
-    ).then((r) => r.data);
+      this.http.get<{ data: SettledPayment[]; total: number; offset: number; hasMore: boolean }>(
+        `${this.base(gymId)}/payments/recent`,
+        { params },
+      ),
+    ).then((r) => ({ rows: r.data, total: r.total, offset: r.offset, hasMore: r.hasMore }));
   }
 
   /**
@@ -416,6 +434,27 @@ export class GymService {
    * Owner only: tick a payment off as accounted for. For UPI this is what a
    * handover is for cash — after it, the payment can no longer be undone.
    */
+  /**
+   * Take in every staff member's cash at once — the owner settling up on a
+   * Sunday rather than tapping through each person to say the same thing.
+   */
+  handoverAllCash(gymId: string): Promise<{ payments: number; total: number; people: number }> {
+    return firstValueFrom(
+      this.http.post<{ data: { payments: number; total: number; people: number } }>(
+        `${this.base(gymId)}/collections/handover-all`, {},
+      ),
+    ).then((r) => r.data);
+  }
+
+  /** Tick off every UPI payment the owner has seen land. */
+  closeAllUpiPayments(gymId: string): Promise<{ payments: number; total: number }> {
+    return firstValueFrom(
+      this.http.post<{ data: { payments: number; total: number } }>(
+        `${this.base(gymId)}/payments/close-all`, {},
+      ),
+    ).then((r) => r.data);
+  }
+
   closePayment(gymId: string, paymentId: string): Promise<SettledPayment> {
     return firstValueFrom(
       this.http.post<{ data: SettledPayment }>(
