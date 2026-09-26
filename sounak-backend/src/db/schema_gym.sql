@@ -511,3 +511,48 @@ CREATE INDEX IF NOT EXISTS gym_payments_cash_outstanding_idx
 -- ---------------------------------------------------------------------------
 ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMPTZ;
 ALTER TABLE gym_payments ADD COLUMN IF NOT EXISTS reversed_by VARCHAR;
+
+-- ---------------------------------------------------------------------------
+-- MEMBER PHOTOS (added 2026-09-27)
+--
+-- Stored as BYTES IN POSTGRES, not on disk, and that is the whole point.
+--
+-- The product images in this codebase are written to uploads/ and served by
+-- express.static, which works locally and silently fails in production: Render
+-- builds onto an EPHEMERAL filesystem, so anything uploaded there is gone on
+-- the next restart while the database still holds a URL pointing at it. That
+-- lesson is already recorded in commit ae26747 for product photos. Repeating it
+-- for member photos would mean every member's picture quietly disappearing, and
+-- a gym noticing weeks later.
+--
+-- Postgres is the one durable store this deployment actually has, and a member
+-- photo is small — resized to 400px webp it lands around 20-40 KB, so a gym of
+-- 500 members costs roughly 20 MB. Comfortable inside Neon's free tier, and it
+-- needs no S3 account, no credentials and no second thing to configure.
+--
+-- Bytes live in their OWN TABLE rather than a column on gym_members, because
+-- listMembers does `SELECT m.*` — a photo column would drag every member's
+-- image bytes into every member-list query.
+--
+-- `photo_id` is random and unguessable, and is what the image URL carries. That
+-- is deliberate: an <img> tag cannot send an Authorization header, so requiring
+-- a token would mean photos simply not rendering. Possession of the id is the
+-- access, the same reasoning as the attendance device token. A new id is issued
+-- on every replacement, which also makes the URL safe to cache for ever.
+-- ---------------------------------------------------------------------------
+ALTER TABLE gym_members
+  ADD COLUMN IF NOT EXISTS photo_id VARCHAR;
+
+CREATE TABLE IF NOT EXISTS gym_member_photos (
+  member_id  VARCHAR PRIMARY KEY REFERENCES gym_members(id) ON DELETE CASCADE,
+  gym_id     VARCHAR NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
+  photo_id   VARCHAR NOT NULL UNIQUE,
+  mime       VARCHAR NOT NULL DEFAULT 'image/webp',
+  bytes      BYTEA   NOT NULL,
+  byte_size  INTEGER NOT NULL,
+  updated_by VARCHAR,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- The public image URL looks photos up by this, so it is the index that matters.
+CREATE INDEX IF NOT EXISTS gym_member_photos_photo_idx ON gym_member_photos (photo_id);

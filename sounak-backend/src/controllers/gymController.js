@@ -438,3 +438,50 @@ exports.resetMemberPassword = asyncHandler(async (req, res) => {
   });
   res.status(200).json({ success: true, data: result });
 });
+
+// --- member photos ---------------------------------------------------------
+
+const gymPhotoService = require('../services/gymPhotoService');
+
+// @desc    Upload or replace a member's photo
+// @route   POST /api/gym/gyms/:gymId/members/:memberId/photo   (multipart, field "photo")
+// @access  Gym staff — taking a new member's picture is desk work
+exports.uploadMemberPhoto = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    res.status(400);
+    throw new Error('No image was received.');
+  }
+  const result = await gymPhotoService.savePhoto({
+    gymId: req.gym.id,
+    memberId: req.params.memberId,
+    buffer: req.file.buffer,
+    updatedBy: req.gymAccount.id,
+  });
+  res.status(201).json({ success: true, data: result });
+});
+
+// @route   DELETE /api/gym/gyms/:gymId/members/:memberId/photo
+exports.deleteMemberPhoto = asyncHandler(async (req, res) => {
+  const result = await gymPhotoService.deletePhoto({
+    gymId: req.gym.id,
+    memberId: req.params.memberId,
+  });
+  res.status(200).json({ success: true, data: result });
+});
+
+// @desc    Serve a member photo
+// @route   GET /api/gym/members/photo/:photoId
+// @access  Public by unguessable id — an <img> tag cannot send a bearer token
+//
+// Cached for a year and marked immutable, which is safe because replacing a
+// photo mints a new id: the URL for a given id never changes content.
+exports.getMemberPhoto = asyncHandler(async (req, res) => {
+  const photo = await gymPhotoService.getPhotoBytes(req.params.photoId);
+  if (!photo) {
+    res.status(404);
+    throw new Error('Photo not found.');
+  }
+  res.set('Content-Type', photo.mime);
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.send(photo.bytes);
+});

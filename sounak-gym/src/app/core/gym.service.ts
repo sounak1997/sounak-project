@@ -112,6 +112,9 @@ export interface MemberRow {
   full_name: string;
   phone: string | null;
   member_code: string;
+  photo_id: string | null;
+  emergency_contact: string | null;
+  notes: string | null;
   status: string;
   plan_name: string | null;
   end_date: string | null;
@@ -225,11 +228,15 @@ export class GymService {
   createSubscription(
     gymId: string,
     memberId: string,
-    fields: { planId: string; method: 'cash' | 'qr' },
+    fields: { planId: string; method: 'cash' | 'qr'; amount?: number },
   ): Promise<unknown> {
     return firstValueFrom(
       this.http.post<{ data: unknown }>(`${this.base(gymId)}/members/${memberId}/subscriptions`, {
         planId: fields.planId,
+        // Left out unless the owner actually set one, so the server falls back
+        // to the plan's list price. A staff account sending a custom amount is
+        // refused server-side — hiding the field is not the control.
+        amount: fields.amount,
         payment: {
           method: fields.method,
           status: fields.method === 'cash' ? 'collected' : 'verified',
@@ -426,6 +433,62 @@ export class GymService {
         {},
       ),
     ).then((r) => r.data);
+  }
+
+  /**
+   * Update a member's details. Available to staff as well as the owner — a
+   * corrected phone number or a new emergency contact is desk work.
+   */
+  updateMember(
+    gymId: string,
+    memberId: string,
+    fields: {
+      fullName?: string;
+      phone?: string;
+      emergencyContact?: string;
+      notes?: string;
+      status?: 'active' | 'inactive';
+    },
+  ): Promise<MemberRow> {
+    return firstValueFrom(
+      this.http.put<{ data: MemberRow }>(`${this.base(gymId)}/members/${memberId}`, fields),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Upload a member's photo.
+   *
+   * Sent as multipart rather than a base64 JSON field: a 4MB camera photo
+   * becomes ~5.3MB once base64-encoded, and the server re-encodes from the raw
+   * buffer anyway.
+   */
+  uploadMemberPhoto(gymId: string, memberId: string, file: File): Promise<{ photoId: string; url: string }> {
+    const form = new FormData();
+    form.append('photo', file);
+    return firstValueFrom(
+      this.http.post<{ data: { photoId: string; url: string } }>(
+        `${this.base(gymId)}/members/${memberId}/photo`,
+        form,
+      ),
+    ).then((r) => r.data);
+  }
+
+  deleteMemberPhoto(gymId: string, memberId: string): Promise<{ removed: number }> {
+    return firstValueFrom(
+      this.http.delete<{ data: { removed: number } }>(
+        `${this.base(gymId)}/members/${memberId}/photo`,
+      ),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * The public URL for a member's photo.
+   *
+   * Needs no token — the photo id is 128 random bits and is reissued whenever
+   * the photo changes, which is what lets a plain <img> render it.
+   */
+  photoUrl(photoId: string | null): string | null {
+    return photoId ? `/api/gym/members/photo/${photoId}` : null;
   }
 
   /** The path for members without a smartphone — the owner marks them present. */

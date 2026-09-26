@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
+import QRCode from 'qrcode';
 import { FormsModule } from '@angular/forms';
 import {
   CashPosition,
@@ -61,6 +62,8 @@ export class DashboardPage {
   readonly renewing = signal<RenewTarget | null>(null);
   readonly renewPlanId = signal('');
   readonly renewMethod = signal<'cash' | 'qr'>('cash');
+  /** Blank means "charge the plan's price". Owner-only; the server agrees. */
+  readonly renewAmount = signal('');
   readonly savingRenewal = signal(false);
 
   /** The door URL to print. Absolute, because it goes on a physical poster. */
@@ -113,6 +116,31 @@ export class DashboardPage {
   readonly webhookReachable = signal(true);
 
   readonly posterUrl = signal('');
+  /** The poster QR as a data URL, so it can be printed straight from here. */
+  readonly posterQr = signal('');
+
+  // Photo capture when registering
+  readonly newPhoto = signal<File | null>(null);
+  readonly newPhotoPreview = signal('');
+
+  // Editing a member
+  readonly editing = signal<MemberRow | null>(null);
+  readonly editName = signal('');
+  readonly editPhone = signal('');
+  readonly editEmergency = signal('');
+  readonly editNotes = signal('');
+  readonly editStatus = signal<'active' | 'inactive'>('active');
+  readonly editPhoto = signal<File | null>(null);
+  readonly editPhotoPreview = signal('');
+  readonly savingEdit = signal(false);
+
+  /**
+   * Only the owner may set a price other than the plan's.
+   *
+   * Mirrors the server, which refuses a custom amount from a staff account —
+   * this hides the field, it does not enforce anything.
+   */
+  readonly canSetPrice = computed(() => this.auth.activeGym()?.staff_role !== 'staff');
 
   constructor() {
     // Reloads whenever the owner switches gym — an owner of two gyms sees each
@@ -136,7 +164,14 @@ export class DashboardPage {
   private async load(gymId: string, gymCode: string, initial = false): Promise<void> {
     if (initial) this.loading.set(true);
     this.error.set('');
-    this.posterUrl.set(`${location.origin}/checkin?g=${gymCode}`);
+    const poster = `${location.origin}/checkin?g=${gymCode}`;
+    this.posterUrl.set(poster);
+    // Rendered here rather than shown as a URL to paste into some other QR
+    // generator — the poster is the entire member-facing product, and asking an
+    // owner to find a third-party site to make it is a strange place to stop.
+    QRCode.toDataURL(poster, { width: 512, margin: 2, errorCorrectionLevel: 'M' })
+      .then((url) => this.posterQr.set(url))
+      .catch(() => this.posterQr.set(''));
     try {
       // Reconcile BEFORE reading payments, so a UPI payment whose webhook was
       // missed (the backend was asleep) shows as paid rather than as something
@@ -504,6 +539,116 @@ export class DashboardPage {
     return 'Online — awaiting the gateway';
   }
 
+  /**
+   * Print just the poster.
+   *
+   * window.print() on the console would produce pages of tables, so the print
+   * stylesheet hides everything but the QR card. Nothing to install, and it
+   * works from a phone as well as a desktop.
+   */
+  printPoster(): void {
+    window.print();
+  }
+
+  // --- photo capture --------------------------------------------------------
+
+  /**
+   * `capture="environment"` on the input opens the camera directly on a phone
+   * and falls back to a file picker on a desktop, so one control covers the
+   * desk taking a picture and someone uploading one later.
+   */
+  onPhotoPicked(event: Event, which: 'new' | 'edit'): void {
+    const file = (event.target as HTMLInputElement).files?.[0] ?? null;
+    if (!file) return;
+    const preview = URL.createObjectURL(file);
+    if (which === 'new') {
+      this.newPhoto.set(file);
+      this.newPhotoPreview.set(preview);
+    } else {
+      this.editPhoto.set(file);
+      this.editPhotoPreview.set(preview);
+    }
+  }
+
+  clearNewPhoto(): void {
+    this.newPhoto.set(null);
+    this.newPhotoPreview.set('');
+  }
+
+  photoUrl(photoId: string | null): string | null {
+    return this.api.photoUrl(photoId);
+  }
+
+  initials(name: string): string {
+    return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
+  }
+
+  // --- editing a member -----------------------------------------------------
+
+  startEdit(m: MemberRow): void {
+    this.editing.set(m);
+    this.editName.set(m.full_name);
+    this.editPhone.set(m.phone ?? '');
+    this.editEmergency.set(m.emergency_contact ?? '');
+    this.editNotes.set(m.notes ?? '');
+    this.editStatus.set(m.status === 'inactive' ? 'inactive' : 'active');
+    this.editPhoto.set(null);
+    this.editPhotoPreview.set('');
+    this.error.set('');
+  }
+
+  /** The plan's list price, to show beside the custom-amount box. */
+  selectedPlanPrice(): string {
+    return this.plans().find((p) => p.id === this.renewPlanId())?.price ?? '';
+  }
+
+  cancelEdit(): void {
+    this.editing.set(null);
+    this.editPhoto.set(null);
+    this.editPhotoPreview.set('');
+  }
+
+  async saveEdit(): Promise<void> {
+    const gym = this.auth.activeGym();
+    const m = this.editing();
+    if (!gym || !m) return;
+    this.savingEdit.set(true);
+    this.error.set('');
+    try {
+      await this.api.updateMember(gym.id, m.id, {
+        fullName: this.editName().trim(),
+        phone: this.editPhone().trim(),
+        emergencyContact: this.editEmergency().trim(),
+        notes: this.editNotes().trim(),
+        status: this.editStatus(),
+      });
+      const photo = this.editPhoto();
+      if (photo) await this.api.uploadMemberPhoto(gym.id, m.id, photo);
+      this.notice.set(`${this.editName().trim()} updated.`);
+      this.cancelEdit();
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not save those changes.'));
+    } finally {
+      this.savingEdit.set(false);
+    }
+  }
+
+  async removePhoto(): Promise<void> {
+    const gym = this.auth.activeGym();
+    const m = this.editing();
+    if (!gym || !m) return;
+    try {
+      await this.api.deleteMemberPhoto(gym.id, m.id);
+      this.editPhotoPreview.set('');
+      this.editPhoto.set(null);
+      this.editing.set({ ...m, photo_id: null });
+      await this.load(gym.id, gym.gym_code);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not remove that photo.'));
+    }
+  }
+
   async markPresent(memberId: string): Promise<void> {
     const gym = this.auth.activeGym();
     if (!gym) return;
@@ -533,9 +678,21 @@ export class DashboardPage {
         fullName: this.newName().trim(),
         phone: this.newPhone().trim(),
       });
+      // Uploaded as a second call rather than folded into the create: the
+      // member exists either way, so a failed photo upload costs a picture
+      // rather than the registration.
+      const photo = this.newPhoto();
+      if (photo) {
+        try {
+          await this.api.uploadMemberPhoto(gym.id, created.member.id, photo);
+        } catch {
+          this.error.set(`${created.member.full_name} was added, but the photo did not upload. Add it from Edit.`);
+        }
+      }
       this.justAdded.set(created.member);
       this.newName.set('');
       this.newPhone.set('');
+      this.clearNewPhoto();
       await this.refreshMembers(gym.id);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not add that member.'));
@@ -556,6 +713,7 @@ export class DashboardPage {
   openRenewal(member: RenewTarget): void {
     this.renewing.set(member);
     this.renewPlanId.set(this.plans()[0]?.id ?? '');
+    this.renewAmount.set('');
     // The owner cannot record cash, so their dialog opens on UPI.
     this.renewMethod.set(this.auth.isOwner() ? 'qr' : 'cash');
     this.error.set('');
@@ -569,9 +727,13 @@ export class DashboardPage {
     this.savingRenewal.set(true);
     this.error.set('');
     try {
+      const typed = this.renewAmount().trim();
       await this.api.createSubscription(gym.id, member.id, {
         planId: this.renewPlanId(),
         method: this.renewMethod(),
+        // Sent only when the owner actually typed one, so the server charges
+        // the plan's price by default rather than whatever was last in the box.
+        amount: this.canSetPrice() && typed !== '' ? Number(typed) : undefined,
       });
       this.renewing.set(null);
       await Promise.all([this.refreshMembers(gym.id), this.refreshMoney(gym.id)]);

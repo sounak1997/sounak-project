@@ -332,3 +332,105 @@
    the renew button stays on one line rather than wrapping under the name. */
 .console__side .btn--sm { padding: 6px 10px; font-size: 13px; white-space: nowrap; }
 .console__side .call { font-size: 13px; }
+
+/* --- member photos --- */
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  background: var(--page);
+}
+
+.avatar--lg { width: 88px; height: 88px; }
+
+.avatar--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+}
+
+.avatar--lg.avatar--empty { font-size: 24px; }
+
+.photo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* A <label> wrapping a hidden file input — the only way to style the control
+   consistently across browsers. */
+.file-btn {
+  display: inline-block;
+  cursor: pointer;
+  width: auto;
+  margin-right: 8px;
+}
+
+/* --- printable door poster --- */
+.qr-wrap { text-align: center; margin: 8px 0 16px; }
+
+.qr {
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: #fff;
+  padding: 10px;
+}
+
+.qr-caption {
+  margin-top: 10px;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+/* Print only the poster. Without this, printing the console produces pages of
+   member and payment tables before the thing the owner actually wanted. */
+@media print {
+  body * { visibility: hidden; }
+  .poster-card, .poster-card * { visibility: visible; }
+  .poster-card {
+    position: absolute;
+    inset: 0;
+    box-shadow: none;
+    border: 0;
+  }
+  .poster-card .muted,
+  .poster-card .poster,
+  .no-print { display: none !important; }
+  .qr { max-width: 460px; border: 0; }
+}
+
+/* The door poster: the code itself beside the link it encodes. */
+.poster-row {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.poster-row__side { flex: 1 1 260px; min-width: 0; }
+
+/* On white, always — a QR on a tinted panel scans unreliably. */
+.poster-qr {
+  width: 180px;
+  height: 180px;
+  background: #fff;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+}
+
+@media (max-width: 720px) {
+  .poster-qr { width: 100%; max-width: 240px; height: auto; margin: 0 auto; }
+  .poster-row { justify-content: center; }
+}

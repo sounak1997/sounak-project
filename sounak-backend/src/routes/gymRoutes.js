@@ -40,6 +40,7 @@ const webhooks = require('../controllers/gymWebhookController');
 const member = require('../controllers/gymMemberController');
 const auth = require('../controllers/gymAuthController');
 const gym = require('../controllers/gymController');
+const gymPhotoService = require('../services/gymPhotoService');
 
 // ---------------------------------------------------------------------------
 // PUBLIC — the door check-in flow
@@ -83,6 +84,16 @@ router.post('/checkin/account', gymIdentifyLimiter, member.signUp);
 // Not rate limited either — throttling a gateway's retries would drop payment
 // confirmations, and the signature check is what keeps it safe.
 router.post('/webhooks/razorpay', webhooks.razorpay);
+
+// ---------------------------------------------------------------------------
+// MEMBER PHOTOS (public by unguessable id)
+// ---------------------------------------------------------------------------
+// No auth: an <img> tag cannot attach an Authorization header, so requiring one
+// would mean photos never rendering — in the owner's console or on the door
+// screen. The 128-bit photo id is the access, and it is reissued whenever the
+// photo changes. Sits outside /gyms/:gymId because the id already identifies
+// exactly one photo.
+router.get('/members/photo/:photoId', gym.getMemberPhoto);
 
 // ---------------------------------------------------------------------------
 // Gym owner / staff authentication
@@ -149,6 +160,17 @@ router.get('/gyms/:gymId/members', gymStaffOnly, gym.listMembers);
 router.post('/gyms/:gymId/members', gymStaffOnly, gym.createMember);
 router.get('/gyms/:gymId/members/:memberId', gymStaffOnly, gym.getMember);
 router.put('/gyms/:gymId/members/:memberId', gymStaffOnly, gym.updateMember);
+// Member photos. Uploading is desk work, so staff as well as the owner.
+// multer runs AFTER the tenancy check, so an unauthorised caller never gets as
+// far as having their upload parsed.
+router.post(
+  '/gyms/:gymId/members/:memberId/photo',
+  gymStaffOnly,
+  gymPhotoService.upload.single('photo'),
+  gym.uploadMemberPhoto,
+);
+router.delete('/gyms/:gymId/members/:memberId/photo', gymStaffOnly, gym.deleteMemberPhoto);
+
 router.post('/gyms/:gymId/members/:memberId/revoke-devices', gymStaffOnly, gym.revokeMemberDevices);
 router.post('/gyms/:gymId/members/:memberId/reset-password', gymStaffOnly, gym.resetMemberPassword);
 // Selling or renewing a membership, cash included. The desk's core job.

@@ -303,6 +303,32 @@ exports.createSubscription = async ({
     throw badRequest("payment.method must be 'cash', 'qr' or 'gateway'.");
   }
   assertMayTakeCash(method, actorRole);
+
+  // A price other than the plan's is the OWNER's call alone.
+  //
+  // Discretion over what a membership costs is the difference between running
+  // the gym and working the desk: a discount is a decision about the business,
+  // and quietly letting staff set their own price is also the easiest way for
+  // money to go missing. Enforced here rather than by hiding the field, because
+  // a hidden field is not a permission — the endpoint is open to staff (they
+  // must still be able to sell at list price) and nothing stops them posting an
+  // amount directly.
+  const listPrice = Number(plan.price);
+  const chargedAmount = amount === undefined || amount === null || amount === ''
+    ? listPrice
+    : Number(amount);
+
+  if (!Number.isFinite(chargedAmount) || chargedAmount < 0) {
+    throw badRequest('The amount must be a number, zero or more.');
+  }
+  if (chargedAmount !== listPrice && actorRole === 'staff') {
+    const e = new Error(
+      `Only the gym owner can change the price. ${plan.name} is ₹${listPrice}.`
+    );
+    e.statusCode = 403;
+    throw e;
+  }
+
   // Cash handed over at the desk is money already in the drawer, so it is
   // recorded as collected. A QR payment has no gateway callback to trust, so it
   // waits for the owner to confirm it — the same manual model the grocery
@@ -358,7 +384,7 @@ exports.createSubscription = async ({
         plan.name,
         resolvedStart,
         plan.duration_days,
-        amount ?? plan.price,
+        chargedAmount,
         recordedBy,
       ]
     );
@@ -383,7 +409,7 @@ exports.createSubscription = async ({
         gymId,
         subscriptionId,
         memberId,
-        (payment && payment.amount) ?? amount ?? plan.price,
+        (payment && payment.amount) ?? chargedAmount,
         method,
         status,
         (payment && payment.reference) || null,

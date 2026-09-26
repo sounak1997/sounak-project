@@ -56,12 +56,48 @@
           <div class="alert alert--warn mt-s">No active membership yet.</div>
         }
 
-        <!-- Checking in is still a scan. The account never replaces it. -->
-        <button class="btn mt" (click)="goToCheckin()">Open check-in screen</button>
+        <!-- Checking in is still a scan. The account never replaces it — this
+             just puts the camera one tap away instead of two apps away. -->
+        <button class="btn mt" [disabled]="scanBusy()" (click)="openScanner()">
+          {{ scanBusy() ? 'Recording…' : 'Scan to check in' }}
+        </button>
+        <button class="btn btn--ghost mt-s" (click)="goToCheckin()">Open check-in screen</button>
         @if (o.membership.gymPhone) {
           <a class="btn btn--ghost mt-s" [href]="'tel:' + o.membership.gymPhone">Call the gym</a>
         }
       </div>
+
+      @if (scanError()) { <div class="alert alert--error">{{ scanError() }}</div> }
+
+      @if (scanning()) {
+        <div class="card">
+          <h2>Scan the gym QR</h2>
+          <app-qr-scanner (scanned)="onScanned($event)" (failed)="onScannerFailed($event)" />
+          <button class="btn btn--ghost mt" (click)="closeScanner()">Cancel</button>
+        </div>
+      }
+
+      @if (scanResult(); as r) {
+        <div class="card center">
+          <div
+            class="badge"
+            [class.badge--in]="r.outcome === 'checked_in'"
+            [class.badge--out]="r.outcome === 'checked_out'"
+            [class.badge--warn]="r.outcome === 'no_subscription' || r.outcome === 'subscription_expired'">
+            {{ r.outcome === 'checked_in' || r.outcome === 'checked_out' ? '✓' : '!' }}
+          </div>
+          <h2>{{ scanHeadline(r.outcome) }}</h2>
+          @if (r.visit?.checkInAt) {
+            <p class="big">
+              {{ time(r.visit?.checkInAt ?? null) }}@if (r.visit?.checkOutAt) { → {{ time(r.visit?.checkOutAt ?? null) }} }
+            </p>
+          }
+          @if (r.outcome === 'subscription_expired') {
+            <p class="muted">Renew at the desk to keep training.</p>
+          }
+          <button class="btn btn--ghost mt" (click)="scanResult.set(null)">Done</button>
+        </div>
+      }
 
       @if (o.summary && o.summary.percentage !== null) {
         <div class="card">

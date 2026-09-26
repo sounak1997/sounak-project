@@ -459,6 +459,27 @@
             </div>
           }
 
+          <div class="photo-row">
+            @if (newPhotoPreview()) {
+              <img class="avatar avatar--lg" [src]="newPhotoPreview()" alt="" />
+            } @else {
+              <div class="avatar avatar--lg avatar--empty">+</div>
+            }
+            <div>
+              <!-- capture="environment" opens the camera straight away on a
+                   phone, and falls back to a file picker on a desktop. -->
+              <label class="btn btn--ghost btn--sm file-btn">
+                {{ newPhotoPreview() ? 'Retake photo' : 'Take photo' }}
+                <input type="file" accept="image/*" capture="environment"
+                  (change)="onPhotoPicked($event, 'new')" hidden />
+              </label>
+              @if (newPhotoPreview()) {
+                <button class="btn btn--ghost btn--sm" (click)="clearNewPhoto()">Remove</button>
+              }
+              <p class="muted small">Optional — helps the desk recognise them.</p>
+            </div>
+          </div>
+
           <div class="add-row">
             <input
               type="text"
@@ -492,11 +513,18 @@
           </p>
           <table>
             <thead>
-              <tr><th>Name</th><th>Code</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
+              <tr><th></th><th>Name</th><th>Code</th><th>Phone</th><th>Plan</th><th>Valid to</th><th>Status</th><th></th></tr>
             </thead>
             <tbody>
               @for (m of members(); track m.id) {
                 <tr>
+                  <td data-label="Photo">
+                    @if (m.photo_id) {
+                      <img class="avatar" [src]="photoUrl(m.photo_id)" [alt]="m.full_name" />
+                    } @else {
+                      <div class="avatar avatar--empty">{{ initials(m.full_name) }}</div>
+                    }
+                  </td>
                   <td data-label="Name"><strong>{{ m.full_name }}</strong></td>
                   <!-- What a member needs to create a login from their own device. -->
                   <td data-label="Code"><code class="code">{{ m.member_code }}</code></td>
@@ -514,6 +542,7 @@
                     <button class="btn btn--sm" (click)="openRenewal(m)">
                       {{ m.expiry === 'none' ? 'Start plan' : 'Renew' }}
                     </button>
+                    <button class="btn btn--ghost btn--sm" (click)="startEdit(m)">Edit</button>
                   </td>
                 </tr>
               }
@@ -521,6 +550,65 @@
           </table>
         </div>
 
+        @if (editing(); as m) {
+          <div class="card">
+            <h2>Edit — {{ m.full_name }}</h2>
+            <div class="accent-bar accent-bar--left"></div>
+
+            <div class="photo-row mt">
+              @if (editPhotoPreview()) {
+                <img class="avatar avatar--lg" [src]="editPhotoPreview()" alt="" />
+              } @else if (m.photo_id) {
+                <img class="avatar avatar--lg" [src]="photoUrl(m.photo_id)" [alt]="m.full_name" />
+              } @else {
+                <div class="avatar avatar--lg avatar--empty">{{ initials(m.full_name) }}</div>
+              }
+              <div>
+                <label class="btn btn--ghost btn--sm file-btn">
+                  {{ m.photo_id || editPhotoPreview() ? 'Replace photo' : 'Take photo' }}
+                  <input type="file" accept="image/*" capture="environment"
+                    (change)="onPhotoPicked($event, 'edit')" hidden />
+                </label>
+                @if (m.photo_id) {
+                  <button class="btn btn--ghost btn--sm" (click)="removePhoto()">Remove photo</button>
+                }
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="e-name">Full name</label>
+              <input id="e-name" type="text" [ngModel]="editName()" (ngModelChange)="editName.set($event)" />
+            </div>
+            <div class="field">
+              <label for="e-phone">Mobile number</label>
+              <input id="e-phone" type="tel" inputmode="numeric"
+                [ngModel]="editPhone()" (ngModelChange)="editPhone.set($event)" />
+              <p class="muted small">
+                How they identify themselves at the door, and how you call them.
+              </p>
+            </div>
+            <div class="field">
+              <label for="e-emg">Emergency contact</label>
+              <input id="e-emg" type="text" [ngModel]="editEmergency()" (ngModelChange)="editEmergency.set($event)" />
+            </div>
+            <div class="field">
+              <label for="e-notes">Notes</label>
+              <input id="e-notes" type="text" [ngModel]="editNotes()" (ngModelChange)="editNotes.set($event)" />
+            </div>
+            <div class="field">
+              <label for="e-status">Status</label>
+              <select id="e-status" [ngModel]="editStatus()" (ngModelChange)="editStatus.set($event)">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive — cannot check in</option>
+              </select>
+            </div>
+
+            <button class="btn" [disabled]="savingEdit() || !editName().trim()" (click)="saveEdit()">
+              {{ savingEdit() ? 'Saving…' : 'Save changes' }}
+            </button>
+            <button class="btn btn--ghost" (click)="cancelEdit()">Cancel</button>
+          </div>
+        }
 
         </div>
 
@@ -769,14 +857,24 @@
       </div>
       }
 
-      <!-- The poster is the whole member-facing product, so the owner needs the
-           URL to hand to a QR generator and print. -->
-      <div class="card">
+      <!-- The poster IS the member-facing product, so the QR is rendered here
+           rather than handing the owner a URL and a trip to some other site. -->
+      <div class="card poster-card">
         <h2>Door poster</h2>
         <p class="muted mb">
-          Turn this link into a QR code, print it, and stick it by the entrance. Members point their
-          phone camera at it — no app to install.
+          Print this and stick it by the entrance. Members point their phone camera at it —
+          nothing to install. Signed-in members can also scan it from inside the app.
         </p>
+
+        @if (posterQr()) {
+          <div class="qr-wrap">
+            <img class="qr" [src]="posterQr()" alt="Check-in QR code" />
+            <p class="qr-caption">{{ auth.activeGym()?.name }} — scan to check in</p>
+          </div>
+          <button class="btn btn--ghost no-print" (click)="printPoster()">Print</button>
+        }
+
+        <p class="muted small mt">If you need the raw link:</p>
         <code class="poster">{{ posterUrl() }}</code>
       </div>
     }
@@ -835,6 +933,20 @@
             }
           </select>
         </div>
+
+        @if (canSetPrice()) {
+          <div class="field">
+            <label for="amount">Amount charged</label>
+            <input id="amount" type="number" inputmode="decimal" min="0"
+              [placeholder]="'Plan price — ₹' + selectedPlanPrice()"
+              [ngModel]="renewAmount()" (ngModelChange)="renewAmount.set($event)" />
+            <p class="muted small">
+              Leave blank to charge the plan's ₹{{ selectedPlanPrice() }}. Type a figure to
+              charge something else — a discount, a part payment, a long-standing member.
+              Only you can do this; the desk always charges the plan price.
+            </p>
+          </div>
+        }
 
         <div class="field">
           <label for="method">Paid by</label>

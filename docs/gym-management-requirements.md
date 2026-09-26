@@ -2,7 +2,7 @@
 
 **Version:** 0.1
 **Date:** September 20, 2026
-**Status:** Attendance flow, online UPI payment, member accounts and password reset built; owner console partially built
+**Status:** Attendance flow, online UPI payment, member accounts, password reset, photos and in-app scanning built; owner console partially built
 
 ## 1. Purpose and Scope
 
@@ -137,6 +137,24 @@ and therefore knows what the money was for.
 - **FR-7.7** The webhook returns **200 for everything except a bad signature**, including duplicates and events it ignores — a non-2xx makes the gateway retry, and retrying something already recorded is pure noise.
 - **FR-7.8** An unconfirmed payment is reported to the member as *"we haven't had confirmation yet"*, never as failure. Telling someone their payment failed when their account was debited is the worst outcome this screen can produce.
 - **FR-7.9** Cash and manual-QR payment remain fully supported and unchanged. Online payment is additive; a gym that never connects a gateway loses nothing.
+
+### 3.9 Member photos, editing, and owner pricing
+
+- **FR-9.1** A photo can be captured when registering a member, and replaced or removed later. The input uses `capture="environment"`, so it opens the camera on a phone and a file picker on a desktop — one control for both.
+- **FR-9.2** Photos are stored **as bytes in Postgres, not on disk**. Render's filesystem is ephemeral, so an uploaded file survives until the next restart while the database still holds a pointer to it — the failure already recorded for product images in commit ae26747. Postgres is the only durable store this deployment has; a 400px webp is 20–40 KB, so 500 members costs ~20 MB.
+- **FR-9.3** Bytes live in their own table, because `listMembers` does `SELECT m.*` and a photo column would drag every member's image into every list query.
+- **FR-9.4** The image URL carries a random 128-bit `photo_id` and needs no token. An `<img>` tag cannot send an Authorization header, so requiring one would mean photos simply never rendering. A new id is minted on every replacement, which also makes the URL safe to cache for a year.
+- **FR-9.5** Members can be **edited** by staff and owner alike — name, mobile, emergency contact, notes, active/inactive. Correcting a mistyped number is desk work.
+- **FR-9.6** **Only the owner may charge a price other than the plan's.** Discretion over what a membership costs is the difference between running the gym and working the desk, and it is the easiest route for money to go missing. Enforced in the service against the verified `staffRole`, never by hiding the field: the endpoint is open to staff, who must still be able to sell at list price, and nothing stops them posting an amount directly.
+
+### 3.10 In-app scanning and the printable poster
+
+- **FR-10.1** The owner's console **renders the door QR as an image** and prints it, rather than showing a URL to paste into some other QR generator. The poster is the entire member-facing product; stopping one step short of it was a strange place to stop.
+- **FR-10.2** A print stylesheet hides everything but the poster card, so printing does not produce pages of member and payment tables first.
+- **FR-10.3** A signed-in member can **scan from inside the app** (`Scan to check in`), as an alternative to leaving for the phone's camera app. The native-camera path still works and still needs nothing installed.
+- **FR-10.4** Decoding uses the browser's native `BarcodeDetector` where present (Chrome on Android — faster, and off the main thread) and falls back to jsQR elsewhere, notably iOS Safari, which has none and is half the phones at any Indian gym.
+- **FR-10.5** The scanner parses the gym code out of the scanned URL rather than assuming it, so pointing the camera at an unrelated QR reports "not a gym check-in code" instead of failing obscurely. A bare code is also accepted.
+- **FR-10.6** If that browser has never checked in at the scanned gym, the signed-in session binds the device silently (FR-8 / bind-device) rather than asking the member to identify themselves again.
 
 ## 4. Non-Functional
 
