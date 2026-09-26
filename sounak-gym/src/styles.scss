@@ -250,6 +250,10 @@ a { color: var(--purple); }
   justify-content: center;
   padding: 16px;
   z-index: 50;
+  /* Scrolls with the dialog when the dialog is the taller of the two. Without
+     this the backdrop is fixed, a tall dialog overflows it top AND bottom, and
+     the buttons sit off-screen with no way to reach them. */
+  overflow-y: auto;
 }
 
 .modal {
@@ -259,6 +263,13 @@ a { color: var(--purple); }
   padding: 24px 22px;
   width: 100%;
   max-width: 440px;
+  /* The dialog grows with its contents — the renewal one gains a whole field
+     when an owner opens it, since only they may change the price. Capping it
+     and scrolling INSIDE keeps the actions reachable on a laptop screen, which
+     is where this first went wrong: the buttons rendered below the fold and
+     looked simply dead. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
 }
 
 .modal h2 { margin: 0 0 6px; font-size: 19px; font-weight: 700; }
@@ -289,6 +300,8 @@ a { color: var(--purple); }
     max-width: none;
     border-radius: var(--radius) var(--radius) 0 0;
     padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+    /* A sheet from the bottom on a phone, so it may use nearly the full height. */
+    max-height: 92vh;
   }
   /* Confirm sits above cancel, so the thumb reaches the safe choice first. */
   .modal__actions { flex-direction: column-reverse; }

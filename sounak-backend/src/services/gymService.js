@@ -134,14 +134,35 @@ exports.createMember = async ({ gymId, fullName, phone, emergencyContact, notes,
   const digits = String(phone).replace(/\D/g, '');
   if (digits.length < 10) throw badRequest('Enter a full 10-digit mobile number.');
 
-  // Warn rather than block: two members legitimately sharing a number is rare
-  // but real (a parent and child), and the check-in screen already handles it
-  // by asking which of them is scanning. Blocking it would be wrong.
+  // One mobile number, one membership per gym. BLOCKS rather than warns.
+  //
+  // This used to warn and continue, reasoning that a parent and child might
+  // share a number. That was wrong twice over. The phone IS a member's identity
+  // here — it is how they are found at the door and how they sign in — and
+  // gym_accounts.phone is already globally unique, so a second member on the
+  // same number could never create a login anyway: the duplicate was
+  // half-broken from the start.
+  //
+  // And the failure it caused is worse than the case it allowed. A desk
+  // re-registering someone already on the list silently splits that person in
+  // two, and their attendance, subscription and payment history stops adding
+  // up. A genuinely shared number is rare and has workarounds; a split record
+  // is invisible until the numbers stop making sense.
   const duplicate = await pgPool.query(
-    `SELECT id, full_name FROM gym_members
+    `SELECT id, full_name, member_code FROM gym_members
       WHERE gym_id = $1 AND right(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 10) = $2`,
     [gymId, digits.slice(-10)]
   );
+  if (duplicate.rows[0]) {
+    const existing = duplicate.rows[0];
+    // Names them, because the desk's next question is always "who has it?" —
+    // and the answer is usually that this is the same person they are adding.
+    throw badRequest(
+      `${existing.full_name} is already registered with that mobile number ` +
+      `(member code ${existing.member_code}). Use Edit to update their details, ` +
+      `or Renew to sell them a new plan.`
+    );
+  }
 
   const result = await pgPool.query(
     `INSERT INTO gym_members
@@ -159,15 +180,32 @@ exports.createMember = async ({ gymId, fullName, phone, emergencyContact, notes,
       joinedOn || null,
     ]
   );
-  return {
-    member: result.rows[0],
-    sharesPhoneWith: duplicate.rows.map((r) => r.full_name),
-  };
+  return { member: result.rows[0] };
 };
 
 exports.updateMember = async ({ gymId, memberId, fullName, phone, emergencyContact, notes, status }) => {
   if (status !== undefined && !['active', 'inactive'].includes(status)) {
     throw badRequest("status must be 'active' or 'inactive'.");
+  }
+
+  // The same rule as registration. Without it the block above is sidestepped in
+  // two steps: add a member on any number, then edit it to the refused one.
+  if (phone) {
+    const digits = String(phone).replace(/\D/g, '');
+    if (digits.length < 10) throw badRequest('Enter a full 10-digit mobile number.');
+    const clash = await pgPool.query(
+      `SELECT full_name, member_code FROM gym_members
+        WHERE gym_id = $1
+          AND id <> $2
+          AND right(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 10) = $3`,
+      [gymId, memberId, digits.slice(-10)]
+    );
+    if (clash.rows[0]) {
+      throw badRequest(
+        `${clash.rows[0].full_name} already uses that mobile number ` +
+        `(member code ${clash.rows[0].member_code}).`
+      );
+    }
   }
   const result = await pgPool.query(
     `UPDATE gym_members

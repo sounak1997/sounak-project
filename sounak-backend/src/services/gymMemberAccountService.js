@@ -127,6 +127,11 @@ exports.deviceAccountState = async ({ gymCode, deviceToken }) => {
     recognised: true,
     hasAccount: !!member.account_id,
     suggestedName: member.full_name,
+    // Shown on the sign-up card so the member can see WHICH number will be
+    // their login, without being able to change it — it is the number the gym
+    // registered and the one half of their identity we have already verified.
+    // Safe to return in full: this device is already proven to be theirs.
+    phone: member.phone,
   };
 };
 

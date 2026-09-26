@@ -825,13 +825,11 @@
           </div>
           <div class="field">
             <label for="ksec">Key Secret</label>
-            <input id="ksec" type="password" autocomplete="off"
-              [ngModel]="keySecret()" (ngModelChange)="keySecret.set($event)" />
+            <app-password-field fieldId="ksec" autocomplete="off" [(value)]="keySecret" />
           </div>
           <div class="field">
             <label for="wsec">Webhook Secret <span class="muted">(optional)</span></label>
-            <input id="wsec" type="password" autocomplete="off"
-              [ngModel]="webhookSecret()" (ngModelChange)="webhookSecret.set($event)" />
+            <app-password-field fieldId="wsec" autocomplete="off" [(value)]="webhookSecret" />
           </div>
           @if (webhookUrl()) {
             <p class="muted small">
@@ -941,9 +939,8 @@
               [placeholder]="'Plan price — ₹' + selectedPlanPrice()"
               [ngModel]="renewAmount()" (ngModelChange)="renewAmount.set($event)" />
             <p class="muted small">
-              Leave blank to charge the plan's ₹{{ selectedPlanPrice() }}. Type a figure to
-              charge something else — a discount, a part payment, a long-standing member.
-              Only you can do this; the desk always charges the plan price.
+              Blank charges the plan's ₹{{ selectedPlanPrice() }}. Owner only — the desk
+              always charges the plan price.
             </p>
           </div>
         }
@@ -965,6 +962,10 @@
             }
           </p>
         </div>
+      }
+
+      @if (error()) {
+        <div class="alert alert--error mt">{{ error() }}</div>
       }
 
       <div class="modal__actions">

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { AuthService } from '../core/auth.service';
+import { PasswordFieldComponent } from '../shared/password-field.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   Candidate,
@@ -38,7 +39,7 @@ type Phase =
 @Component({
   selector: 'app-checkin',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PasswordFieldComponent],
   templateUrl: './checkin.page.html',
   styleUrl: './checkin.page.scss',
 })
@@ -81,6 +82,8 @@ export class CheckinPage implements OnDestroy {
   readonly signupEmail = signal('');
   readonly signupPassword = signal('');
   readonly signupDone = signal(false);
+  /** Their registered number — shown, never edited. It IS their login. */
+  readonly signupPhone = signal('');
 
   /**
    * Seconds until check-out is allowed, ticking down locally.
@@ -132,6 +135,7 @@ export class CheckinPage implements OnDestroy {
         try {
           const account = await this.accounts.state(this.gymCode());
           this.canSignUp.set(account.recognised && !account.hasAccount);
+          this.signupPhone.set(account.phone ?? '');
         } catch {
           this.canSignUp.set(false);
         }

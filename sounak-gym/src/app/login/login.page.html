@@ -9,7 +9,7 @@
       }
 
       <div class="field">
-        <label for="identifier">Mobile number or email</label>
+        <label for="identifier">Mobile number, member code or email</label>
         <input
           id="identifier"
           type="text"
@@ -17,7 +17,7 @@
           autocapitalize="none"
           autocorrect="off"
           autocomplete="username"
-          placeholder="e.g. 9609987874"
+          placeholder="e.g. 9609987874 or 123456"
           [ngModel]="identifier()"
           (ngModelChange)="identifier.set($event)"
           (keyup.enter)="submit()" />
@@ -25,13 +25,11 @@
 
       <div class="field">
         <label for="password">Password</label>
-        <input
-          id="password"
-          type="password"
+        <app-password-field
+          fieldId="password"
           autocomplete="current-password"
-          [ngModel]="password()"
-          (ngModelChange)="password.set($event)"
-          (keyup.enter)="submit()" />
+          [(value)]="password"
+          (submitted)="submit()" />
       </div>
 
       <button class="btn" [disabled]="busy()" (click)="submit()">

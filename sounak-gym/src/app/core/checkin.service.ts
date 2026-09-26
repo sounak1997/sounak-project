@@ -371,9 +371,16 @@ export class MemberAccountService {
   private http = inject(HttpClient);
   private checkin = inject(CheckinService);
 
-  state(gymCode: string): Promise<{ recognised: boolean; hasAccount: boolean; suggestedName?: string }> {
+  state(gymCode: string): Promise<{
+    recognised: boolean;
+    hasAccount: boolean;
+    suggestedName?: string;
+    phone?: string | null;
+  }> {
     return firstValueFrom(
-      this.http.get<{ data: { recognised: boolean; hasAccount: boolean; suggestedName?: string } }>(
+      this.http.get<{
+        data: { recognised: boolean; hasAccount: boolean; suggestedName?: string; phone?: string | null };
+      }>(
         '/api/gym/checkin/account/state',
         { params: { g: gymCode, deviceToken: this.checkin.deviceToken(gymCode) ?? '' } },
       ),

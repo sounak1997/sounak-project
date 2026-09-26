@@ -49,14 +49,12 @@
 
       <div class="field">
         <label for="password">Choose a password</label>
-        <input
-          id="password"
-          type="password"
+        <app-password-field
+          fieldId="password"
           autocomplete="new-password"
           placeholder="At least 8 characters"
-          [ngModel]="password()"
-          (ngModelChange)="password.set($event)"
-          (keyup.enter)="submit()" />
+          [(value)]="password"
+          (submitted)="submit()" />
       </div>
 
       <button class="btn" [disabled]="busy() || !canSubmit()" (click)="submit()">

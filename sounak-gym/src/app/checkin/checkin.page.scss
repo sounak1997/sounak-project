@@ -165,3 +165,12 @@
   border-radius: var(--radius-s);
   border: 1px solid var(--border);
 }
+
+/* A field that shows a fact rather than taking input — visibly not editable,
+   so nobody taps it expecting to type. */
+.readonly {
+  background: var(--page);
+  color: var(--text-muted);
+  font-weight: 600;
+  cursor: default;
+}

@@ -259,8 +259,18 @@
         <h2>Set up online access</h2>
         <p class="muted mb">
           We already know who you are on this phone, so there's nothing to verify —
-          just pick a password. You'll sign in with your mobile number.
+          just pick a password.
         </p>
+
+        <!-- Shown, not asked for. This is the number the gym registered and the
+             half of their identity already verified when this device was bound,
+             so it is their login — and letting them retype it here would only
+             be a way to get it wrong. -->
+        <div class="field">
+          <label>Your mobile number</label>
+          <input type="text" [value]="signupPhone()" readonly class="readonly" />
+          <p class="muted small">You'll sign in with this. Ask the gym desk to change it.</p>
+        </div>
 
         <div class="field">
           <label for="su-email">Email <span class="muted">(optional)</span></label>
@@ -268,21 +278,19 @@
             id="su-email"
             type="email"
             autocomplete="email"
-            placeholder="Leave blank to sign in with your mobile"
+            placeholder="Only if you'd also like to sign in by email"
             [ngModel]="signupEmail()"
             (ngModelChange)="signupEmail.set($event)" />
         </div>
 
         <div class="field">
-          <label for="su-pass">Password</label>
-          <input
-            id="su-pass"
-            type="password"
+          <label for="su-pass">Choose a password</label>
+          <app-password-field
+            fieldId="su-pass"
             autocomplete="new-password"
             placeholder="At least 8 characters"
-            [ngModel]="signupPassword()"
-            (ngModelChange)="signupPassword.set($event)"
-            (keyup.enter)="submitSignUp()" />
+            [(value)]="signupPassword"
+            (submitted)="submitSignUp()" />
         </div>
 
         <button

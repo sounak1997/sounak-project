@@ -101,25 +101,63 @@ const phoneKey = (value) => String(value || '').replace(/\D/g, '').slice(-10);
 const looksLikePhone = (value) => phoneKey(value).length >= 10 && !String(value).includes('@');
 
 /**
- * Sign in with EITHER an email or a mobile number.
+ * Resolve a sign-in identifier to an account: email, mobile number, OR member
+ * code — whichever the person happens to remember.
+ *
+ * Tried in order of how specific each one is, and the first match wins rather
+ * than the shape of the input deciding. A member code can be digits (a gym may
+ * set its own, and one here is literally "123456"), so a digits-only string is
+ * checked as a phone AND as a code instead of being assumed to be one or the
+ * other — otherwise a numeric code would look like a short phone number and
+ * never resolve.
+ *
+ * The member-code route reaches the account through gym_members.account_id, so
+ * it only works for a member who has actually set up a login. Someone who has
+ * not gets the same "incorrect" message as any other miss, which is what stops
+ * this being a way to find out which codes are real.
+ */
+const findAccount = async (given) => {
+  const raw = String(given).trim();
+
+  if (raw.includes('@')) {
+    const byEmail = await pgPool.query('SELECT * FROM gym_accounts WHERE email = $1', [
+      raw.toLowerCase(),
+    ]);
+    if (byEmail.rows[0]) return byEmail.rows[0];
+  }
+
+  if (phoneKey(raw).length >= 10) {
+    const byPhone = await pgPool.query(
+      `SELECT * FROM gym_accounts
+        WHERE right(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10) = $1`,
+      [phoneKey(raw)]
+    );
+    if (byPhone.rows[0]) return byPhone.rows[0];
+  }
+
+  const byCode = await pgPool.query(
+    `SELECT a.* FROM gym_members m
+       JOIN gym_accounts a ON a.id = m.account_id
+      WHERE m.member_code = $1 AND m.status = 'active'
+      LIMIT 1`,
+    [raw]
+  );
+  if (byCode.rows[0]) return byCode.rows[0];
+
+  return null;
+};
+
+/**
+ * Sign in with an email, a mobile number, or a member code.
  *
  * `identifier` is the field to use; `email` is still accepted so nothing that
  * called this before has to change.
  */
 exports.login = async ({ identifier, email, phone, password }) => {
   const given = identifier || email || phone;
-  if (!given || !password) throw badRequest('Enter your email or mobile number, and your password.');
+  if (!given || !password) throw badRequest('Enter your mobile number, member code or email, and your password.');
 
-  const result = looksLikePhone(given)
-    ? await pgPool.query(
-        `SELECT * FROM gym_accounts
-          WHERE right(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10) = $1`,
-        [phoneKey(given)]
-      )
-    : await pgPool.query('SELECT * FROM gym_accounts WHERE email = $1', [
-        String(given).trim().toLowerCase(),
-      ]);
-  const account = result.rows[0];
+  const account = await findAccount(given);
 
   // Same message and a real bcrypt comparison whether or not the account
   // exists, so a wrong email and a wrong password are indistinguishable — the
@@ -127,7 +165,7 @@ exports.login = async ({ identifier, email, phone, password }) => {
   const hash = account ? account.password_hash : '$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidinv';
   const matches = await bcrypt.compare(password, hash);
 
-  if (!account || !matches) throw unauthorized('Incorrect email/mobile number or password.');
+  if (!account || !matches) throw unauthorized('Those details did not match an account. Check and try again.');
   if (account.status !== 'active') throw forbidden('This account has been suspended.');
 
   // Both are returned because one account can be either, or both: a gym owner

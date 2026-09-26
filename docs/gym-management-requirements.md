@@ -147,6 +147,11 @@ and therefore knows what the money was for.
 - **FR-9.5** Members can be **edited** by staff and owner alike — name, mobile, emergency contact, notes, active/inactive. Correcting a mistyped number is desk work.
 - **FR-9.6** **Only the owner may charge a price other than the plan's.** Discretion over what a membership costs is the difference between running the gym and working the desk, and it is the easiest route for money to go missing. Enforced in the service against the verified `staffRole`, never by hiding the field: the endpoint is open to staff, who must still be able to sell at list price, and nothing stops them posting an amount directly.
 
+- **FR-9.7** **One mobile number, one membership per gym** — enforced, not warned about. A desk re-registering someone already on the list would otherwise split that person in two and their attendance, subscription and payment history would stop adding up. The error names who already holds the number, because the desk's next question is always that. Matched on the normalised last 10 digits, so `+91 96099 87874` and `09609987874` are one number. Applies to editing a phone as well, or the rule is sidestepped in two steps.
+  *Per gym, not platform-wide:* the same person genuinely can train at two gyms here.
+  *Backed by a partial unique index*, because two desks registering the same walk-in at the same moment would both pass an application check. The index is created inside a DO block that warns rather than fails, so a deploy cannot die over pre-existing duplicates.
+- **FR-9.8** At the door, "Set up online access" **shows the member's registered mobile read-only** and asks only for a password. That number is their login and was already verified when the device was bound; asking them to retype it would only be a way to get it wrong. Email stays optional.
+
 ### 3.10 In-app scanning and the printable poster
 
 - **FR-10.1** The owner's console **renders the door QR as an image** and prints it, rather than showing a URL to paste into some other QR generator. The poster is the entire member-facing product; stopping one step short of it was a strange place to stop.

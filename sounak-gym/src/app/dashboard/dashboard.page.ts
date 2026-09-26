@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AuthService } from '../core/auth.service';
+import { PasswordFieldComponent } from '../shared/password-field.component';
 import QRCode from 'qrcode';
 import { FormsModule } from '@angular/forms';
 import {
@@ -34,7 +35,7 @@ type RenewTarget = { id: string; full_name: string; expiry?: MemberRow['expiry']
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, RouterLink, FormsModule],
+  imports: [CommonModule, RouterLink, FormsModule, PasswordFieldComponent],
   templateUrl: './dashboard.page.html',
   styleUrl: './dashboard.page.scss',
 })

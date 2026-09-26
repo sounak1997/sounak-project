@@ -556,3 +556,32 @@ CREATE TABLE IF NOT EXISTS gym_member_photos (
 
 -- The public image URL looks photos up by this, so it is the index that matters.
 CREATE INDEX IF NOT EXISTS gym_member_photos_photo_idx ON gym_member_photos (photo_id);
+
+-- ---------------------------------------------------------------------------
+-- ONE MOBILE NUMBER, ONE MEMBERSHIP PER GYM (added 2026-09-27)
+--
+-- The service checks this too, for a message that names who already holds the
+-- number. This is the guarantee underneath it: two desks registering the same
+-- walk-in at the same moment would both pass an application-level check and
+-- both insert.
+--
+-- Per gym, not platform-wide: the same person genuinely can train at two gyms
+-- here, and each membership is its own record.
+--
+-- Indexed on the NORMALISED last 10 digits, so "+91 96099 87874",
+-- "09609987874" and "9609987874" are one number rather than three.
+--
+-- Wrapped in a DO block that WARNS instead of failing: this file is applied on
+-- every deploy, and a deployment that dies because two members already share a
+-- number would be a worse outcome than the duplicate itself. Clear the
+-- duplicates and re-run, and the index appears.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  CREATE UNIQUE INDEX IF NOT EXISTS gym_members_one_phone_per_gym_uq
+    ON gym_members (gym_id, right(regexp_replace(COALESCE(phone, ''), '\D', '', 'g'), 10))
+    WHERE phone IS NOT NULL;
+EXCEPTION WHEN unique_violation THEN
+  RAISE WARNING
+    'gym_members_one_phone_per_gym_uq not created: some gym has two members sharing a mobile number. Resolve the duplicates and re-run this file.';
+END $$;
