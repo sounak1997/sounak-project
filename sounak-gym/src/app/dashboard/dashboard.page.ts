@@ -124,6 +124,32 @@ export class DashboardPage {
   readonly newPhoto = signal<File | null>(null);
   readonly newPhotoPreview = signal('');
 
+  /**
+   * Free-text filter over the member list.
+   *
+   * Matched in the browser rather than round-tripping per keystroke: the list is
+   * already loaded, and at the desk with someone waiting, instant beats
+   * thorough. It searches everything visible in the row — name, mobile, member
+   * code, plan, status — because the desk does not know which of those the
+   * person on the other side of the counter will say.
+   */
+  readonly memberFilter = signal('');
+
+  readonly filteredMembers = computed(() => {
+    const q = this.memberFilter().trim().toLowerCase();
+    if (!q) return this.members();
+    // Digits-only query: match phone loosely, so "9609" finds "+91 96099 87874"
+    // and the punctuation a number was typed with never hides it.
+    const digits = q.replace(/\D/g, '');
+    return this.members().filter((m) => {
+      const haystack = [
+        m.full_name, m.member_code, m.phone, m.plan_name, m.expiry, m.status,
+      ].filter(Boolean).join(' ').toLowerCase();
+      if (haystack.includes(q)) return true;
+      return digits.length >= 3 && (m.phone ?? '').replace(/\D/g, '').includes(digits);
+    });
+  });
+
   // Editing a member
   readonly editing = signal<MemberRow | null>(null);
   readonly editName = signal('');
@@ -441,8 +467,21 @@ export class DashboardPage {
    * nobody to collect from at all. Both are dropped rather than shown with a
    * disabled button, which would only raise the question of why it is there.
    */
+  /**
+   * Staff who are ACTUALLY holding cash right now.
+   *
+   * Previously every staff member, which meant that once everyone had handed
+   * over, this card still listed them with a dash in every column — a table of
+   * nothing, on a card whose whole job is to say what is left to do. A to-do
+   * list that keeps showing finished work stops being read.
+   *
+   * Their historical totals have not gone anywhere: they belong on "Money
+   * you've accounted for", which is the card for what has already happened.
+   */
   readonly staffHoldingCash = computed(() =>
-    this.collections().filter((r) => r.staff_role === 'staff' && r.account_id),
+    this.collections().filter(
+      (r) => r.staff_role === 'staff' && r.account_id && Number(r.cash_in_hand) > 0,
+    ),
   );
 
   /** Total cash out with staff — what the owner should leave with on a visit. */

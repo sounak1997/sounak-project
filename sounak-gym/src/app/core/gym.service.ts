@@ -183,8 +183,15 @@ export class GymService {
     ).then((r) => r.data);
   }
 
+  /**
+   * The gym's members.
+   *
+   * Asks for the server's maximum, because the console filters the list in the
+   * browser for instant results — and a filter over a truncated list is worse
+   * than no filter: it says "nobody matches" when somebody does.
+   */
   members(gymId: string, search = ''): Promise<MemberRow[]> {
-    const params: Record<string, string> = {};
+    const params: Record<string, string> = { limit: '500' };
     if (search) params['search'] = search;
     return firstValueFrom(
       this.http.get<{ data: MemberRow[] }>(`${this.base(gymId)}/members`, { params }),

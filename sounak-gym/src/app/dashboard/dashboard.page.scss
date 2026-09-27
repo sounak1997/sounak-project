@@ -514,3 +514,28 @@
 }
 
 .pager .btn { width: auto; }
+
+/* Member search */
+.filter { position: relative; margin-bottom: 6px; }
+
+.filter__input { padding-right: 38px; }
+
+.filter__clear {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  border: 0;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 50%;
+}
+
+.filter__clear:hover { color: var(--danger); background: rgba(192, 57, 43, 0.08); }
+
+.filter__count { margin: 0 0 12px; }
