@@ -353,9 +353,12 @@ exports.attendanceSummary = attendanceSummary;
 
 const todaysVisit = async (memberId, timezone, at) => {
   const result = await pgPool.query(
-    `SELECT * FROM gym_attendance
-      WHERE member_id = $1
-        AND visit_date = (COALESCE($2::timestamptz, now()) AT TIME ZONE $3)::date`,
+    `SELECT a.*,
+            (SELECT COUNT(*)::int FROM gym_attendance_sessions s
+              WHERE s.attendance_id = a.id) AS session_count
+       FROM gym_attendance a
+      WHERE a.member_id = $1
+        AND a.visit_date = (COALESCE($2::timestamptz, now()) AT TIME ZONE $3)::date`,
     [memberId, at, timezone]
   );
   return result.rows[0] || null;
@@ -372,58 +375,91 @@ const todaysVisit = async (memberId, timezone, at) => {
 // exactly one win, and the loser falls through to the branches below instead of
 // opening a second visit for the same day.
 const recordVisit = async ({ gymId, memberId, gym, at, method, recordedBy = null }) => {
-  const inserted = await pgPool.query(
+  // The DAY row first: one per member per day, which is what the presence
+  // percentage counts. ON CONFLICT DO NOTHING makes two simultaneous taps safe
+  // — one creates it, the other finds it.
+  await pgPool.query(
     `INSERT INTO gym_attendance (id, gym_id, member_id, visit_date, check_in_at, method, recorded_by)
      VALUES ($1, $2, $3,
              (COALESCE($4::timestamptz, now()) AT TIME ZONE $5)::date,
              COALESCE($4::timestamptz, now()),
              $6, $7)
-     ON CONFLICT (member_id, visit_date) DO NOTHING
-     RETURNING *`,
+     ON CONFLICT (member_id, visit_date) DO NOTHING`,
     [genId('ATT'), gymId, memberId, at, gym.timezone, method, recordedBy]
   );
 
-  if (inserted.rows.length > 0) {
-    return { outcome: SCAN_OUTCOME.CHECKED_IN, visit: inserted.rows[0] };
+  const day = await todaysVisit(memberId, gym.timezone, at);
+  if (!day) throw err(500, 'Could not record that check-in. Please try again.');
+
+  const openSession = (await pgPool.query(
+    `SELECT * FROM gym_attendance_sessions
+      WHERE attendance_id = $1 AND check_out_at IS NULL`,
+    [day.id]
+  )).rows[0];
+
+  // --- arriving -------------------------------------------------------------
+  if (!openSession) {
+    const inserted = await pgPool.query(
+      `INSERT INTO gym_attendance_sessions
+         (id, attendance_id, gym_id, member_id, check_in_at, method, recorded_by)
+       VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, now()), $6, $7)
+       -- Loses a race with another tap opening the same day's session; the
+       -- winner's session stands and this one is a no-op.
+       ON CONFLICT (attendance_id) WHERE check_out_at IS NULL DO NOTHING
+       RETURNING *`,
+      [genId('SES'), day.id, gymId, memberId, at, method, recordedBy]
+    );
+    if (inserted.rows.length === 0) {
+      return { outcome: SCAN_OUTCOME.DUPLICATE_IGNORED, visit: day, graceSecondsRemaining: gym.rescan_grace_seconds };
+    }
+
+    // The day row tracks the FIRST arrival and, until they leave again, no
+    // departure — so anything reading those columns sees the day as open.
+    const updated = await pgPool.query(
+      `UPDATE gym_attendance
+          SET check_out_at = NULL, updated_at = now()
+        WHERE id = $1
+        RETURNING *`,
+      [day.id]
+    );
+    return { outcome: SCAN_OUTCOME.CHECKED_IN, visit: updated.rows[0], session: inserted.rows[0] };
   }
 
-  const existing = await todaysVisit(memberId, gym.timezone, at);
-  if (!existing) {
-    // Only reachable if the row was deleted between the two statements.
-    throw err(500, 'Could not record that check-in. Please try again.');
-  }
-  if (existing.check_out_at) {
-    return { outcome: SCAN_OUTCOME.ALREADY_COMPLETE, visit: existing };
-  }
-
+  // --- already inside -------------------------------------------------------
   const scanAt = at || new Date();
-  const heldForSeconds = (scanAt.getTime() - new Date(existing.check_in_at).getTime()) / 1000;
+  const heldForSeconds = (scanAt.getTime() - new Date(openSession.check_in_at).getTime()) / 1000;
   if (heldForSeconds < gym.rescan_grace_seconds) {
+    // An accidental re-scan or a page reload, not a departure.
     return {
       outcome: SCAN_OUTCOME.DUPLICATE_IGNORED,
-      visit: existing,
+      visit: day,
       graceSecondsRemaining: Math.max(0, Math.ceil(gym.rescan_grace_seconds - heldForSeconds)),
     };
   }
 
+  // --- leaving --------------------------------------------------------------
   const closed = await pgPool.query(
-    `UPDATE gym_attendance
-        SET check_out_at = COALESCE($1::timestamptz, now()), updated_at = now()
+    `UPDATE gym_attendance_sessions
+        SET check_out_at = COALESCE($1::timestamptz, now())
       WHERE id = $2 AND check_out_at IS NULL
       RETURNING *`,
-    [at, existing.id]
+    [at, openSession.id]
   );
-
-  // Lost a race with another tap that closed it first — same end state.
   if (closed.rows.length === 0) {
-    return {
-      outcome: SCAN_OUTCOME.ALREADY_COMPLETE,
-      visit: await todaysVisit(memberId, gym.timezone, at),
-    };
+    // Another tap closed it first — same end state.
+    return { outcome: SCAN_OUTCOME.ALREADY_COMPLETE, visit: await todaysVisit(memberId, gym.timezone, at) };
   }
-  return { outcome: SCAN_OUTCOME.CHECKED_OUT, visit: closed.rows[0] };
-};
 
+  // The day row carries the LAST departure, so "who is still here" stays right.
+  const updated = await pgPool.query(
+    `UPDATE gym_attendance
+        SET check_out_at = $1, updated_at = now()
+      WHERE id = $2
+      RETURNING *`,
+    [closed.rows[0].check_out_at, day.id]
+  );
+  return { outcome: SCAN_OUTCOME.CHECKED_OUT, visit: updated.rows[0], session: closed.rows[0] };
+};
 // --- what the check-in screen shows --------------------------------------
 
 // Called on page load, before the member taps anything, so the button can be
@@ -448,9 +484,19 @@ exports.getState = async ({ gymCode, deviceToken }) => {
   // Sent so the screen can disable the button and count down, instead of
   // offering "Check out" and then having the server ignore the tap. A button
   // that promises something the server will refuse is worse than no button.
+  // The OPEN SESSION decides the button, not the day row. A member who trained
+  // this morning and came back in the evening has a closed day row and no open
+  // session — they should be offered a check-in, not told they are finished.
+  const openSession = visit
+    ? (await pgPool.query(
+        'SELECT * FROM gym_attendance_sessions WHERE attendance_id = $1 AND check_out_at IS NULL',
+        [visit.id]
+      )).rows[0]
+    : null;
+
   let graceSecondsRemaining = 0;
-  if (visit && !visit.check_out_at) {
-    const elapsed = (Date.now() - new Date(visit.check_in_at).getTime()) / 1000;
+  if (openSession) {
+    const elapsed = (Date.now() - new Date(openSession.check_in_at).getTime()) / 1000;
     graceSecondsRemaining = Math.max(0, Math.ceil(gym.rescan_grace_seconds - elapsed));
   }
 
@@ -467,13 +513,22 @@ exports.getState = async ({ gymCode, deviceToken }) => {
     },
     today: visit && {
       visitDate: visit.visit_date,
-      checkInAt: visit.check_in_at,
-      checkOutAt: visit.check_out_at,
+      // The session in progress when there is one, otherwise the day's span.
+      checkInAt: openSession ? openSession.check_in_at : visit.check_in_at,
+      checkOutAt: openSession ? null : visit.check_out_at,
+      firstCheckInAt: visit.check_in_at,
       method: visit.method,
       graceSecondsRemaining,
     },
     // What the single button should do. The server decides, never the client.
-    nextAction: !visit ? 'check_in' : visit.check_out_at ? 'none' : 'check_out',
+    //
+    // There is no longer a 'none': having checked out is not a reason to be
+    // unable to come back. Someone who trains twice in a day, or who simply
+    // left and returned, gets a check-in again.
+    nextAction: openSession ? 'check_out' : 'check_in',
+    // How many times they have been in today, so the screen can say "visit 2"
+    // rather than looking like it forgot the first one.
+    visitsToday: visit ? Number(visit.session_count ?? 1) : 0,
     graceSecondsRemaining,
     summary: await attendanceSummary(member.id, subscription, gym),
   };

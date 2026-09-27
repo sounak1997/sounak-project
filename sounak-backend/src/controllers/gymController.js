@@ -526,3 +526,12 @@ exports.closeAllUpiPayments = asyncHandler(async (req, res) => {
   });
   res.status(200).json({ success: true, data: result });
 });
+
+// @desc    Every payment that has not finished arriving — one list, one lifecycle
+// @route   GET /api/gym/gyms/:gymId/payments/open?method=cash|upi
+// @access  Gym staff (the desk confirms payments; the owner receives them)
+exports.openPayments = asyncHandler(async (req, res) => {
+  const method = ['cash', 'upi'].includes(req.query.method) ? req.query.method : null;
+  const rows = await gymService.openPayments({ gymId: req.gym.id, method });
+  res.status(200).json({ success: true, count: rows.length, data: rows });
+});

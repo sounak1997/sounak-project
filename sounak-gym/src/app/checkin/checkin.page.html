@@ -114,8 +114,22 @@
 
         @if (s.nextAction === 'check_in') {
           <button class="btn btn--action mt" [disabled]="busy()" (click)="mark()">
-            @if (busy()) { <span class="spinner"></span> } @else { I'm here — Check in }
+            @if (busy()) { <span class="spinner"></span> }
+            @else if (s.visitsToday) { Back again — Check in }
+            @else { I'm here — Check in }
           </button>
+          <!-- Coming back later in the day used to leave no button at all. It
+               says which visit this is so the screen does not look as though it
+               has forgotten the earlier one. -->
+          @if (s.visitsToday) {
+            <p class="muted small center mt-s">
+              @if (s.visitsToday === 1) {
+                You were here earlier today, from {{ time(s.today?.firstCheckInAt) }}.
+              } @else {
+                {{ s.visitsToday }} visits so far today.
+              }
+            </p>
+          }
         }
         @if (s.nextAction === 'check_out') {
           <button
@@ -133,12 +147,7 @@
             </p>
           }
         }
-        @if (s.nextAction === 'none') {
-          <div class="alert alert--success mt">
-            Checked in at {{ time(s.today?.checkInAt) }}, out at {{ time(s.today?.checkOutAt) }}.
-            See you tomorrow.
-          </div>
-        }
+
 
         @if (busy()) {
           <p class="muted small center mt-s">Saving… this can take a moment.</p>

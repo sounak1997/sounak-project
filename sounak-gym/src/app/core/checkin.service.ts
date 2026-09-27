@@ -27,8 +27,17 @@ export interface CheckinState {
     checkOutAt: string | null;
     method: string;
     graceSecondsRemaining: number;
+    /** The day's FIRST arrival, when this is a later visit. */
+    firstCheckInAt?: string;
   } | null;
-  nextAction?: 'check_in' | 'check_out' | 'none';
+  /**
+   * What the single button does. There is no 'none': having checked out is not
+   * a reason to be unable to come back, so a member who trains twice in a day
+   * is offered a check-in again.
+   */
+  nextAction?: 'check_in' | 'check_out';
+  /** How many times they have been in today, so the screen can say "visit 2". */
+  visitsToday?: number;
   /** Seconds before check-out is allowed; 0 when it is available now. */
   graceSecondsRemaining?: number;
   summary?: CheckinSummary | null;

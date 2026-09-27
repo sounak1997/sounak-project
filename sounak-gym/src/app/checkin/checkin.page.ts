@@ -423,7 +423,7 @@ export class CheckinPage implements OnDestroy {
       case 'checked_in': return "You're checked in";
       case 'checked_out': return 'Checked out';
       case 'duplicate_ignored': return "You're already checked in";
-      case 'already_complete': return "That's you done for today";
+      case 'already_complete': return 'Already recorded';
       case 'no_subscription': return 'No active membership';
       case 'subscription_expired': return 'Your membership has expired';
     }

@@ -13,6 +13,7 @@ import {
   HandoverPeriod,
   GymService,
   MemberRow,
+  OpenPayment,
   PaymentProvider,
   PaymentRow,
   Plan,
@@ -242,6 +243,7 @@ export class DashboardPage {
       // report is skipped for staff rather than fetched and refused.
       this.payQrUrl.set(this.auth.activeGym()?.payment_qr_url ?? '');
       this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
+      this.openPayments.set(await this.api.openPayments(gymId).catch(() => []));
       if (owner) {
         const [rows, pos, outstanding, page, hist] = await Promise.all([
           this.api.collections(gymId).catch(() => []),
@@ -282,12 +284,14 @@ export class DashboardPage {
    */
   private async refreshMoney(gymId: string): Promise<void> {
     const owner = this.auth.isOwner();
-    const [payments, mine] = await Promise.all([
+    const [payments, mine, open] = await Promise.all([
       this.api.payments(gymId).catch(() => this.payments()),
       this.api.myCashInHand(gymId).catch(() => this.myCash()),
+      this.api.openPayments(gymId).catch(() => this.openPayments()),
     ]);
     this.payments.set(payments);
     this.myCash.set(mine);
+    this.openPayments.set(open);
     if (!owner) return;
 
     const [rows, pos, outstanding] = await Promise.all([
@@ -745,6 +749,88 @@ export class DashboardPage {
     }
   }
 
+  // --- money: one list, one lifecycle --------------------------------------
+
+  readonly openPayments = signal<OpenPayment[]>([]);
+  readonly payFilter = signal<'all' | 'cash' | 'upi'>('all');
+  readonly receiving = signal<string | null>(null);
+  readonly bulkReceiving = signal(false);
+
+  readonly visiblePayments = computed(() => {
+    const f = this.payFilter();
+    if (f === 'all') return this.openPayments();
+    return this.openPayments().filter((p) =>
+      f === 'cash' ? p.method === 'cash' : p.method !== 'cash',
+    );
+  });
+
+  readonly visibleTotal = computed(() =>
+    this.visiblePayments().reduce((sum, p) => sum + Number(p.amount), 0),
+  );
+
+  /** Confirmed, but not yet in the owner's hands — the rows a bulk receive covers. */
+  readonly readyToReceive = computed(() =>
+    this.visiblePayments().filter((p) => p.stage !== 'unconfirmed'),
+  );
+
+  stageLabel(p: OpenPayment): string {
+    if (p.stage === 'unconfirmed') return 'Not confirmed';
+    return p.stage === 'with_staff'
+      ? `With ${p.marked_by_name ?? 'staff'}`
+      : 'Check your account';
+  }
+
+  stagePill(p: OpenPayment): string {
+    return p.stage === 'unconfirmed' ? 'pill--danger'
+      : p.stage === 'with_staff' ? 'pill--warn' : 'pill--neutral';
+  }
+
+  /** Money has reached the owner. The same statement for cash and for UPI. */
+  async receive(p: OpenPayment): Promise<void> {
+    const gym = this.auth.activeGym();
+    if (!gym) return;
+    this.receiving.set(p.id);
+    this.error.set('');
+    try {
+      await this.api.closePayment(gym.id, p.id);
+      this.notice.set(`₹${p.amount} from ${p.full_name} — received.`);
+      await this.refreshMoney(gym.id);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not record that.'));
+    } finally {
+      this.receiving.set(null);
+    }
+  }
+
+  /**
+   * Receive everything currently visible.
+   *
+   * Scoped to the FILTER, so "Cash" then "Receive all" is exactly the Sunday
+   * collection, and it never silently closes UPI the owner has not looked for.
+   */
+  async receiveAllVisible(): Promise<void> {
+    const gym = this.auth.activeGym();
+    const rows = this.readyToReceive();
+    if (!gym || !rows.length) return;
+    this.bulkReceiving.set(true);
+    this.confirmBulk.set(null);
+    this.error.set('');
+    try {
+      let total = 0;
+      for (const p of rows) {
+        await this.api.closePayment(gym.id, p.id);
+        total += Number(p.amount);
+      }
+      this.notice.set(`₹${total} across ${rows.length} payments — received.`);
+      await this.refreshMoney(gym.id);
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not record all of those.'));
+      await this.refreshMoney(gym.id);
+    } finally {
+      this.bulkReceiving.set(false);
+    }
+  }
+
   // --- accounting for money -------------------------------------------------
 
   /**
@@ -810,7 +896,7 @@ export class DashboardPage {
 
   readonly bulkCash = signal(false);
   readonly bulkUpi = signal(false);
-  readonly confirmBulk = signal<'cash' | 'upi' | null>(null);
+  readonly confirmBulk = signal<'cash' | 'upi' | 'receive' | null>(null);
 
   async takeAllCash(): Promise<void> {
     const gym = this.auth.activeGym();

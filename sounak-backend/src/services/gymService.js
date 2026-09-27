@@ -690,6 +690,54 @@ exports.recentSettledPayments = async ({ gymId, limit = 20, offset = 0, outstand
   return { rows, total };
 };
 
+/**
+ * Every payment that is not finished, in one list.
+ *
+ * This replaces three overlapping lists — unconfirmed, cash held by staff, and
+ * UPI awaiting the owner's check. Splitting them meant that confirming a
+ * payment moved it from one list into another, so a count went UP when the
+ * owner had just dealt with something. One list with a stage on each row cannot
+ * do that.
+ *
+ * `stage` is derived, never stored:
+ *   unconfirmed  nobody has said the money arrived
+ *   with_staff   confirmed as cash, still in somebody's pocket
+ *   to_check     confirmed by UPI, owner has not found it in their account
+ *
+ * Anything with handed_over_at set has finished and is absent — it belongs to
+ * the history, not to a list of things to do.
+ */
+exports.openPayments = async ({ gymId, method = null }) => {
+  const result = await pgPool.query(
+    `SELECT p.id, p.amount, p.method, p.status, p.reference,
+            p.verified_at, p.created_at,
+            p.member_id, m.full_name, m.phone,
+            s.plan_name, s.end_date,
+            a.name AS marked_by_name,
+            COALESCE(p.verified_by, p.recorded_by) AS marked_by_id,
+            CASE
+              WHEN p.status IN ('pending', 'pending_verification') THEN 'unconfirmed'
+              WHEN p.method = 'cash'                               THEN 'with_staff'
+              ELSE 'to_check'
+            END AS stage
+       FROM gym_payments p
+       JOIN gym_members m ON m.id = p.member_id
+       JOIN gym_subscriptions s ON s.id = p.subscription_id
+       LEFT JOIN gym_accounts a ON a.id = COALESCE(p.verified_by, p.recorded_by)
+      WHERE p.gym_id = $1
+        AND p.handed_over_at IS NULL
+        AND p.status <> 'failed'
+        AND ($2::text IS NULL
+             OR ($2 = 'cash' AND p.method = 'cash')
+             OR ($2 = 'upi'  AND p.method <> 'cash'))
+      -- Oldest first: the money that has been in limbo longest is the money
+      -- most likely to be lost, and it should not be buried at the bottom.
+      ORDER BY COALESCE(p.verified_at, p.created_at) ASC, p.id ASC`,
+    [gymId, method]
+  );
+  return result.rows;
+};
+
 exports.listMemberPayments = async ({ gymId, memberId }) => {
   const result = await pgPool.query(
     `SELECT p.*, s.plan_name, s.start_date, s.end_date
@@ -892,17 +940,16 @@ exports.closePayment = async ({ gymId, paymentId, closedBy }) => {
   if (!['verified', 'collected'].includes(payment.status)) {
     throw badRequest('That payment is not marked as paid yet.');
   }
-  // Cash has exactly one way to become accounted for: somebody physically hands
-  // it over, which is recordCashHandover. Allowing it to be ticked off here as
-  // well would let the notes leave "cash held by staff" without ever reaching
-  // the owner — the desk would look square while still holding the money, and
-  // the row would become un-undoable on the way out. Two ways to record the
-  // same fact is how ledgers drift.
-  if (payment.method === 'cash') {
-    throw badRequest(
-      'Cash is accounted for by collecting it from whoever took it, not by ticking it off here.'
-    );
-  }
+  // Cash used to be refused here, on the reasoning that it becomes accounted
+  // for only when somebody physically hands it over. That produced two verbs
+  // for one fact — "cash received" on a person, "got it" on a payment — and the
+  // owner had to know which list a row was in before they knew which button to
+  // press.
+  //
+  // It is the same statement either way: this money has reached me. So cash is
+  // allowed here too, recorded identically (handed_over_at / handed_over_to),
+  // and collecting from a person is simply the same action applied to all of
+  // their rows at once. One fact, one shape, two granularities.
   if (payment.handed_over_at) return payment; // already closed; nothing to do
 
   const result = await pgPool.query(

@@ -539,3 +539,27 @@
 .filter__clear:hover { color: var(--danger); background: rgba(192, 57, 43, 0.08); }
 
 .filter__count { margin: 0 0 12px; }
+
+/* Segmented filter — All / UPI / Cash */
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.seg__btn {
+  border: 0;
+  background: var(--surface);
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+}
+
+.seg__btn:last-child { border-right: 0; }
+.seg__btn:hover:not(.seg__btn--on) { background: var(--page); }
+.seg__btn--on { background: var(--purple); color: #fff; }

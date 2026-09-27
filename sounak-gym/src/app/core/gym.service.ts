@@ -145,6 +145,26 @@ export interface PaymentRow {
   end_date: string;
 }
 
+/** A payment that has not finished arriving, at whatever stage. */
+export interface OpenPayment {
+  id: string;
+  member_id: string;
+  full_name: string;
+  phone: string | null;
+  plan_name: string;
+  end_date: string;
+  amount: string;
+  method: 'cash' | 'qr' | 'gateway';
+  status: string;
+  reference: string | null;
+  verified_at: string | null;
+  created_at: string;
+  marked_by_name: string | null;
+  marked_by_id: string | null;
+  /** unconfirmed -> with_staff | to_check -> (gone, once received) */
+  stage: 'unconfirmed' | 'with_staff' | 'to_check';
+}
+
 export interface PaymentProvider {
   provider: string;
   key_id: string;
@@ -288,6 +308,21 @@ export class GymService {
         reference: reference || undefined,
         method,
       }),
+    ).then((r) => r.data);
+  }
+
+  /**
+   * Every payment that has not finished arriving — ONE list.
+   *
+   * Replaces three overlapping ones. With those, confirming a payment moved it
+   * from one list to another, so a count went up just after the owner dealt
+   * with something. A single list with a stage per row cannot do that.
+   */
+  openPayments(gymId: string, method: 'cash' | 'upi' | '' = ''): Promise<OpenPayment[]> {
+    const params: Record<string, string> = {};
+    if (method) params['method'] = method;
+    return firstValueFrom(
+      this.http.get<{ data: OpenPayment[] }>(`${this.base(gymId)}/payments/open`, { params }),
     ).then((r) => r.data);
   }
 

@@ -204,6 +204,9 @@ router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
 // Reviewing and undoing settled payments is the owner's: staff make the marks,
 // so staff erasing their own marks would defeat the point. Declared before the
 // ':paymentId' routes so 'recent' is not read as a payment id.
+// One list of everything unfinished, at whatever stage. Before the ':paymentId'
+// routes so 'open' is not read as an id.
+router.get('/gyms/:gymId/payments/open', gymStaffOnly, gym.openPayments);
 router.get('/gyms/:gymId/payments/recent', gymOwnerOnly, gym.recentSettledPayments);
 router.post('/gyms/:gymId/payments/:paymentId/reverse', gymOwnerOnly, gym.reversePayment);
 // Ticking a payment off as accounted for — the UPI counterpart of a cash

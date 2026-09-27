@@ -4,7 +4,16 @@
   <meta charset="utf-8">
   <title>Gym Check-in</title>
   <base href="/">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- viewport-fit=cover is what makes env(safe-area-inset-*) resolve to
+       anything other than 0. Without it the console's bottom tab bar and the
+       dialog sheets sit under the home indicator on a notched phone. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1B1E20">
+  <!-- Lato was already first in the font stack but was never loaded, so every
+       screen silently fell back to the system sans. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>

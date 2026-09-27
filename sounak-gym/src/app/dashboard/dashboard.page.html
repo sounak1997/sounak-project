@@ -155,177 +155,91 @@
                  which only appears when there is something outstanding. -->
           </div>
         }
-        @if (auth.isOwner() && (staffHoldingCash().length || upiToConfirm().length || outstanding().length)) {
+        @if (openPayments().length) {
           <div class="card">
             <h2>Payments</h2>
-            <!-- Cash collection and ticking off UPI were two cards. They are one
-                 question — has this money actually reached you — so they are one
-                 card, with a bulk action each for settling up in one go. -->
+            <!-- ONE list, one lifecycle. It used to be three — unconfirmed, cash
+                 with staff, UPI to check — and confirming a payment moved it
+                 between them, so a count went UP right after the owner had dealt
+                 with something. A row now changes its stage in place and leaves
+                 only when the money has actually reached the owner. -->
             <p class="muted mb">
-              @if (cashOutstanding() > 0 || upiToConfirmTotal() > 0 || unconfirmedTotal() > 0) {
-                Everything that has not finished arriving:
-                <strong>₹{{ unconfirmedTotal() }}</strong> unconfirmed,
-                <strong>₹{{ cashOutstanding() }}</strong> cash to collect,
-                <strong>₹{{ upiToConfirmTotal() }}</strong> UPI to check.
-              } @else {
-                All square. Nothing unconfirmed, nothing to collect, nothing to check.
-              }
+              Everything that has not reached you yet.
+              <strong>₹{{ visibleTotal() }}</strong> across
+              {{ visiblePayments().length }}
+              {{ visiblePayments().length === 1 ? 'payment' : 'payments' }}.
             </p>
 
+            <div class="seg">
+              <button class="seg__btn" [class.seg__btn--on]="payFilter() === 'all'"
+                      (click)="payFilter.set('all')">All</button>
+              <button class="seg__btn" [class.seg__btn--on]="payFilter() === 'upi'"
+                      (click)="payFilter.set('upi')">UPI</button>
+              <button class="seg__btn" [class.seg__btn--on]="payFilter() === 'cash'"
+                      (click)="payFilter.set('cash')">Cash</button>
+            </div>
 
-            <!-- Money nobody has confirmed yet, in the same card as money that
-                 has been confirmed but not yet accounted for. Both are "this has
-                 not finished arriving"; splitting them meant checking two places
-                 to answer one question. This one comes FIRST because it is the
-                 earliest point money can go missing. -->
-            @if (outstanding().length) {
-
-          <h3 class="sub">Not confirmed by anyone yet</h3>
-          <p class="muted mb">
-            <strong>₹{{ unconfirmedTotal() }}.</strong> These members say they have paid, or
-            were let in without paying. Renewals taken at the desk are already recorded and
-            never appear here.
-          </p>
-
-          <table>
-            <thead>
-              <tr><th>Member</th><th>Plan</th><th>Amount</th><th>How</th><th></th></tr>
-            </thead>
-              <tbody>
-                @for (p of outstanding(); track p.id) {
-                  <tr>
-                    <td>
-                      <strong>{{ p.full_name }}</strong>
-                      @if (p.phone) {
-                        <a class="call block" [href]="'tel:' + p.phone">{{ p.phone }}</a>
-                      }
-                    </td>
-                    <td data-label="Plan">{{ p.plan_name }}<span class="muted block">to {{ day(p.end_date) }}</span></td>
-                    <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
-                    <td data-label="How">
-                      <span class="muted">{{ payLabel(p) }}</span>
-                      @if (p.reference) { <span class="muted block">ref {{ p.reference }}</span> }
-                    </td>
-                    <!-- Two buttons, not one: the METHOD is what decides where the
-                         money ends up, so it is chosen here rather than inherited
-                         from however the renewal was first booked. -->
-                    <td class="right actions">
-                      <!-- Owners take UPI only, so they are not offered cash. -->
-                      @if (!auth.isOwner()) {
-                        <button
-                          class="btn btn--sm"
-                          [disabled]="settling() === p.id"
-                          (click)="markPaid(p, 'cash')">
-                          {{ settling() === p.id ? '…' : 'Paid cash' }}
-                        </button>
-                      }
-                      <button
-                        class="btn btn--sm btn--ghost"
-                        [disabled]="settling() === p.id"
-                        (click)="markPaid(p, 'qr')">
-                        {{ settling() === p.id ? '…' : 'Paid UPI' }}
-                      </button>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-          </table>
-            }
-
-            @if (staffHoldingCash().length > 1 || upiToConfirm().length > 1) {
+            @if (readyToReceive().length > 1) {
               <div class="bulk">
-                <!-- Only worth offering when there is more than one person to
-                     collect from; with one, it duplicates that row's own button. -->
-                @if (staffHoldingCash().length > 1) {
-                  <button class="btn btn--sm" [disabled]="bulkCash()"
-                          (click)="confirmBulk.set('cash')">
-                    {{ bulkCash() ? 'Saving…' : 'Cash received from everyone' }}
-                  </button>
-                }
-                @if (upiToConfirm().length > 1) {
-                  <button class="btn btn--sm" [disabled]="bulkUpi()"
-                          (click)="confirmBulk.set('upi')">
-                    {{ bulkUpi() ? 'Saving…' : 'Got it — all ' + upiToConfirm().length + ' UPI payments' }}
-                  </button>
-                }
+                <button class="btn btn--sm" [disabled]="bulkReceiving()"
+                        (click)="confirmBulk.set('receive')">
+                  {{ bulkReceiving()
+                     ? 'Saving…'
+                     : 'Received all ' + readyToReceive().length + ' — ₹' + visibleTotal() }}
+                </button>
               </div>
             }
 
-            @if (staffHoldingCash().length) {
-              <h3 class="sub">Cash held by staff</h3>
-
-              <table>
-                <thead>
-                  <tr>
-                    <th>Who</th>
-                    <th>Cash to collect</th>
-                    <th>Holding it since</th>
-                    <th class="right"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @for (c of staffHoldingCash(); track c.account_id) {
-                    <tr>
-                      <td>
-                        <strong>{{ c.account_name }}</strong>
-                      </td>
-                      <td data-label="Cash to collect">
-                        <strong>₹{{ c.cash_in_hand }}</strong>
-                        <span class="muted small">({{ c.cash_payments }})</span>
-                      </td>
-                      <!-- How long it has been sitting. The owner comes in once a
-                           week, so "since when" is what tells them whether this is
-                           today's takings or a fortnight of them. -->
-                      <td class="muted" data-label="Holding it since">
-                        @if (c.oldest_unsettled_at) { {{ since(c.oldest_unsettled_at) }} }
-                        @else { — }
-                      </td>
-                      <td class="right">
-                        <button
-                          class="btn btn--sm"
-                          [disabled]="handingOver() === c.account_id"
-                          (click)="takeCash(c)">
-                          {{ handingOver() === c.account_id ? 'Saving…' : 'Cash received' }}
-                        </button>
-                      </td>
-                    </tr>
-                }
-                </tbody>
-              </table>
-            }
-
-            <!-- UPI in the same card, because it is the same question. It stays a
-                 separate list because cash is accounted for PER PERSON (you take
-                 notes from someone) and UPI PER PAYMENT (you find it in your
-                 statement) — one flat table would misrepresent both. -->
-            @if (upiToConfirm().length) {
-              <h3 class="sub">UPI to check in your account</h3>
+            @if (!visiblePayments().length) {
+              <p class="muted">Nothing outstanding in this view.</p>
+            } @else {
               <div class="scroll-y">
                 <table>
                   <thead>
-                    <tr><th>Member</th><th>Amount</th><th>Marked by</th><th>When</th><th class="right"></th></tr>
+                    <tr><th>Member</th><th>Amount</th><th>How</th><th>Stage</th><th class="right"></th></tr>
                   </thead>
                   <tbody>
-                    @for (p of upiToConfirm(); track p.id) {
+                    @for (p of visiblePayments(); track p.id) {
                       <tr>
                         <td>
                           <strong>{{ p.full_name }}</strong>
                           <span class="muted block">{{ p.plan_name }}</span>
                         </td>
                         <td data-label="Amount"><strong>₹{{ p.amount }}</strong></td>
-                        <td data-label="Marked by">{{ p.marked_by_name ?? '—' }}</td>
-                        <td class="muted" data-label="When">{{ p.verified_at ? since(p.verified_at) : '—' }}</td>
+                        <td data-label="How">
+                          <span class="pill" [class.pill--ok]="p.method !== 'cash'"
+                                [class.pill--warn]="p.method === 'cash'">
+                            {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                          </span>
+                        </td>
+                        <td data-label="Stage">
+                          <span class="pill" [class]="'pill ' + stagePill(p)">{{ stageLabel(p) }}</span>
+                        </td>
                         <td class="right actions">
-                          <button class="btn btn--sm btn--ghost"
-                                  [disabled]="reversing() === p.id || closing() === p.id"
-                                  (click)="confirmReverse.set(p)">
-                            {{ reversing() === p.id ? '…' : 'Undo' }}
-                          </button>
-                          <button class="btn btn--sm"
-                                  [disabled]="closing() === p.id || reversing() === p.id"
-                                  (click)="closePaid(p)">
-                            {{ closing() === p.id ? '…' : 'Got it' }}
-                          </button>
+                          <!-- Two verbs only. Confirm that it was paid, then that
+                               it reached you. Cash and UPI take the same path. -->
+                          @if (p.stage === 'unconfirmed') {
+                            <button class="btn btn--sm btn--ghost"
+                                    [disabled]="settling() === p.id"
+                                    (click)="markPaid($any(p), 'cash')">
+                              {{ settling() === p.id ? '…' : 'Paid cash' }}
+                            </button>
+                            <button class="btn btn--sm"
+                                    [disabled]="settling() === p.id"
+                                    (click)="markPaid($any(p), 'qr')">
+                              {{ settling() === p.id ? '…' : 'Paid UPI' }}
+                            </button>
+                          } @else {
+                            @if (auth.isOwner()) {
+                              <button class="btn btn--sm"
+                                      [disabled]="receiving() === p.id"
+                                      (click)="receive(p)">
+                                {{ receiving() === p.id ? '…' : 'Received' }}
+                              </button>
+                            } @else {
+                              <span class="muted small">with you — the owner collects</span>
+                            }
+                          }
                         </td>
                       </tr>
                     }
@@ -1042,27 +956,19 @@
 
 <!-- Taking a renewal at the desk. Staff can do this: it is money coming IN
      against one member, not a view of the gym's books. -->
-@if (confirmBulk(); as which) {
+@if (confirmBulk()) {
   <div class="modal-backdrop" (click)="confirmBulk.set(null)">
     <div class="modal" (click)="$event.stopPropagation()">
-      @if (which === 'cash') {
-        <h2>Collect ₹{{ cashOutstanding() }} from everyone?</h2>
-        <p class="modal__body">
-          Records that every staff member has handed you the cash they were holding.
-          Only do this once the notes are actually in your hands.
-        </p>
-      } @else {
-        <h2>Tick off {{ upiToConfirm().length }} UPI payments?</h2>
-        <p class="modal__body">
-          Confirms you have found all ₹{{ upiToConfirmTotal() }} in your account.
-          They can no longer be undone afterwards.
-        </p>
-      }
+      <h2>Received ₹{{ visibleTotal() }}?</h2>
+      <p class="modal__body">
+        Marks {{ readyToReceive().length }}
+        {{ payFilter() === 'cash' ? 'cash' : payFilter() === 'upi' ? 'UPI' : '' }}
+        payments as having reached you. Only do this once the money is actually
+        with you — afterwards they can no longer be undone.
+      </p>
       <div class="modal__actions">
         <button class="btn btn--ghost" (click)="confirmBulk.set(null)">Cancel</button>
-        <button class="btn" (click)="which === 'cash' ? takeAllCash() : confirmAllUpi()">
-          Yes, {{ which === 'cash' ? 'I have the cash' : 'I have seen them' }}
-        </button>
+        <button class="btn" (click)="receiveAllVisible()">Yes, I have it</button>
       </div>
     </div>
   </div>
