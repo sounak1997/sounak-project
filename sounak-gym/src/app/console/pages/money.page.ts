@@ -49,4 +49,20 @@ export class MoneyPage {
   }
 
   readonly myCashHeld = computed(() => Number(this.store.myCash()?.cash_in_hand ?? 0));
+
+  /**
+   * Which bulk-receive buttons belong on screen right now.
+   *
+   * Tied to payFilter deliberately: showing "Receive 2 UPI" while the owner is
+   * looking at the Cash tab's single row was the actual bug — a button for a
+   * method that is not even on screen. Cash and UPI both appear only on the
+   * All tab, where seeing everything makes two separate, clearly-labelled
+   * buttons unambiguous rather than a stray one.
+   */
+  visibleBulkMethods(): Array<'cash' | 'upi'> {
+    const f = this.store.payFilter();
+    if (f === 'cash') return ['cash'];
+    if (f === 'upi') return ['upi'];
+    return ['cash', 'upi'];
+  }
 }

@@ -332,6 +332,19 @@ a { color: var(--purple); }
 .btn--danger { background: var(--danger); color: #fff; }
 .btn--danger:hover:not(:disabled) { background: #a5322a; }
 
+/* The cash equivalent of .btn--ghost: transparent-on-white washed out to
+   nothing next to a solid purple sibling, and --warn itself is too light for
+   white text (see the tint/ink note at the top of this file) — so cash gets
+   the tint it already carries everywhere else (its badges, its tiles) as a
+   FILL instead, with the dark ink for text. Clearly its own colour, not just
+   "the other button". */
+.btn--warn {
+  background: var(--warn-tint);
+  color: var(--warn-ink);
+  border: 1px solid #f0dcb0;
+}
+.btn--warn:hover:not(:disabled) { background: #f9ecd3; }
+
 @media (max-width: 720px) {
   .modal-backdrop { align-items: flex-end; padding: 0; }
   .modal {

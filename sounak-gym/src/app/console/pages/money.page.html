@@ -219,28 +219,57 @@
       }
     </section>
 
-    <!-- Worth offering only when there is more than one row it would cover;
-         with one, it duplicates that row's own button. Scoped to the filter, so
-         what it does is always what is on screen. -->
-    @if (auth.isOwner() && store.readyToReceive().length > 1) {
-      <div class="actionbar">
-        <div class="grow">
-          <div class="money" style="font-size: 17px; font-weight: 900">
-            ₹{{ store.visibleTotal() }}
+    <!-- Scoped to the tab that is actually open. Cash and UPI are different
+         jobs — counting notes versus checking a bank statement — so each gets
+         its own clearly-labelled button, but only the method(s) currently on
+         screen: the Cash tab offers "Receive cash" and nothing else, so a
+         button never names money the owner cannot see above it. Both appear
+         together only on All, where seeing everything makes two separate
+         buttons unambiguous. With exactly one row, that row's own button
+         already covers it, so a bulk one here would just be noise. -->
+    @if (auth.isOwner()) {
+      @let methods = visibleBulkMethods();
+      <!-- >= 1, not > 1: a bulk button that only sometimes exists, depending on
+           a row count nobody can see, is more confusing than one row's worth
+           of overlap with its own "Received" button. Cash and UPI now offer
+           this consistently, whatever the count. -->
+      @let cashReady = methods.includes('cash') && store.bulkRows('cash').length >= 1;
+      @let upiReady = methods.includes('upi') && store.bulkRows('upi').length >= 1;
+      @if (cashReady || upiReady) {
+        <div class="actionbar actionbar--bulk">
+          <div class="grow">
+            <div class="money" style="font-size: 17px; font-weight: 900">
+              ₹{{ (cashReady ? store.bulkTotal('cash') : 0) + (upiReady ? store.bulkTotal('upi') : 0) }}
+            </div>
+            <div class="muted" style="font-size: 11px">
+              {{ (cashReady ? store.bulkRows('cash').length : 0) + (upiReady ? store.bulkRows('upi').length : 0) }}
+              ready to receive
+            </div>
           </div>
-          <div class="muted" style="font-size: 11px">
-            {{ store.readyToReceive().length }} ready to receive
-          </div>
+          <span class="btnrow">
+            @if (cashReady) {
+              <button
+                type="button"
+                class="btn btn--warn"
+                [disabled]="store.bulkReceiving()"
+                (click)="store.confirmBulk.set('cash')"
+              >
+                {{ store.bulkReceiving() ? 'Saving…' : 'Receive ' + store.bulkRows('cash').length + ' cash' }}
+              </button>
+            }
+            @if (upiReady) {
+              <button
+                type="button"
+                class="btn"
+                [disabled]="store.bulkReceiving()"
+                (click)="store.confirmBulk.set('upi')"
+              >
+                {{ store.bulkReceiving() ? 'Saving…' : 'Receive ' + store.bulkRows('upi').length + ' UPI' }}
+              </button>
+            }
+          </span>
         </div>
-        <button
-          type="button"
-          class="btn"
-          [disabled]="store.bulkReceiving()"
-          (click)="store.confirmBulk.set('receive')"
-        >
-          {{ store.bulkReceiving() ? 'Saving…' : 'Received all' }}
-        </button>
-      </div>
+      }
     }
   }
 

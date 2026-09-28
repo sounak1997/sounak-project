@@ -120,7 +120,7 @@ export class ConsoleStore {
   /** The audit log of undone payments. Read-only by design. */
   readonly reversed = signal<ReversedPayment[]>([]);
 
-  readonly confirmBulk = signal<'receive' | null>(null);
+  readonly confirmBulk = signal<'cash' | 'upi' | null>(null);
   /** Which half of the Money tab is showing. */
   readonly moneyTab = signal<'settle' | 'history'>('settle');
 
@@ -273,11 +273,6 @@ export class ConsoleStore {
     this.visiblePayments().reduce((sum, p) => sum + Number(p.amount), 0),
   );
 
-  /** Confirmed, but not yet in the owner's hands — what a bulk receive covers. */
-  readonly readyToReceive = computed(() =>
-    this.visiblePayments().filter((p) => p.stage !== 'unconfirmed'),
-  );
-
   /** The three stages, for the "needs you" rows on Today. */
   readonly unconfirmed = computed(() =>
     this.openPayments().filter((p) => p.stage === 'unconfirmed'),
@@ -292,7 +287,7 @@ export class ConsoleStore {
   /** Everything that has not reached the owner, in money. */
   readonly outstandingTotal = computed(() => this.sum(this.openPayments()));
 
-  private sum(rows: { amount: string }[]): number {
+  sum(rows: { amount: string }[]): number {
     return rows.reduce((total, r) => total + Number(r.amount), 0);
   }
 
@@ -856,15 +851,29 @@ export class ConsoleStore {
     }
   }
 
+  /** Which queue a bulk receive is acting on — cash held by staff, or UPI to check. */
+  bulkRows(method: 'cash' | 'upi'): OpenPayment[] {
+    return method === 'cash' ? this.withStaff() : this.toCheck();
+  }
+
+  /** What a bulk receive of ONE method is worth, for the button and the dialog. */
+  bulkTotal(method: 'cash' | 'upi'): number {
+    return this.sum(this.bulkRows(method));
+  }
+
   /**
-   * Receive everything currently visible.
+   * Receive every row of ONE method — all cash, or all UPI.
    *
-   * Scoped to the FILTER, so "Cash" then "Received all" is exactly the Sunday
-   * collection, and it never silently closes UPI the owner has not looked for.
+   * Independent of whatever the browsing filter (All / UPI / Cash) happens to
+   * be set to: that filter is for SCANNING the list, and tying the bulk action
+   * to it meant the button vanished on the Cash tab whenever cash alone had
+   * only one row, even though there was plenty to receive overall. "Receive all
+   * cash" and "Receive all UPI" are each their own action now, offered
+   * together, so collecting the week's cash never depends on which tab is open.
    */
-  async receiveAllVisible(): Promise<void> {
+  async receiveAllOf(method: 'cash' | 'upi'): Promise<void> {
     const gym = this.auth.activeGym();
-    const rows = this.readyToReceive();
+    const rows = this.bulkRows(method);
     if (!gym || !rows.length) return;
     this.bulkReceiving.set(true);
     this.confirmBulk.set(null);
@@ -875,7 +884,9 @@ export class ConsoleStore {
         await this.api.closePayment(gym.id, p.id);
         total += Number(p.amount);
       }
-      this.notice.set(`₹${total} across ${rows.length} payments — received.`);
+      this.notice.set(
+        `₹${total} across ${rows.length} ${method === 'cash' ? 'cash' : 'UPI'} payments — received.`,
+      );
       await this.refreshMoney(gym.id);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not record all of those.'));

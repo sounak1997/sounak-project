@@ -475,22 +475,29 @@
   </div>
 }
 
-@if (store.confirmBulk()) {
+@if (store.confirmBulk(); as method) {
   <div class="modal-backdrop" (click)="store.confirmBulk.set(null)">
     <div class="modal" (click)="$event.stopPropagation()">
-      <h2>Received ₹{{ store.visibleTotal() }} across {{ store.readyToReceive().length }} payments?</h2>
+      <h2>
+        Received ₹{{ store.bulkTotal(method) }} across
+        {{ store.bulkRows(method).length }} {{ method === 'cash' ? 'cash' : 'UPI' }} payments?
+      </h2>
       <div class="accent-bar accent-bar--left"></div>
       <p class="modal__body">
-        Records that this money has actually reached you — cash in your hands, or UPI you have found
-        in your account. Only what is on screen now is covered, so the filter you chose is what gets
-        settled.
+        @if (method === 'cash') {
+          Records that every one of these has physically been handed to you — count the notes
+          first. This never touches UPI, whatever the list above happens to be showing.
+        } @else {
+          Records that you have found every one of these in your bank account. This never touches
+          cash, whatever the list above happens to be showing.
+        }
       </p>
       <p class="muted small">They can no longer be undone afterwards.</p>
       <div class="modal__actions">
         <button type="button" class="btn btn--ghost" (click)="store.confirmBulk.set(null)">
           Cancel
         </button>
-        <button type="button" class="btn" (click)="store.receiveAllVisible()">Yes, I have it</button>
+        <button type="button" class="btn" (click)="store.receiveAllOf(method)">Yes, I have it</button>
       </div>
     </div>
   </div>
