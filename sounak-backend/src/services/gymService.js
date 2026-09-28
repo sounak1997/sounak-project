@@ -661,7 +661,16 @@ exports.reversePayment = async ({ gymId, paymentId, reversedBy }) => {
  * second round trip, so the page and its count can never disagree — which they
  * can when a payment is settled between two queries.
  */
-exports.recentSettledPayments = async ({ gymId, limit = 20, offset = 0, outstandingOnly = false }) => {
+exports.recentSettledPayments = async ({
+  gymId,
+  limit = 20,
+  offset = 0,
+  outstandingOnly = false,
+  // '' | 'cash' | 'upi'. Filtered in SQL rather than in the browser: filtering a
+  // single page client-side reports "no cash payments" whenever they happen to
+  // start on page two.
+  method = '',
+}) => {
   const result = await pgPool.query(
     `SELECT p.id, p.amount, p.method, p.status, p.verified_at, p.handed_over_at,
             m.full_name, s.plan_name, s.end_date,
@@ -677,11 +686,15 @@ exports.recentSettledPayments = async ({ gymId, limit = 20, offset = 0, outstand
       WHERE p.gym_id = $1
         AND p.status IN ('verified', 'collected')
         AND ($4::boolean IS NOT TRUE OR p.handed_over_at IS NULL)
+        -- UPI is everything that is not cash: a QR the member scanned and a
+        -- gateway capture both land in the owner's account the same way.
+        AND ($5 = '' OR ($5 = 'cash' AND p.method = 'cash')
+                     OR ($5 = 'upi'  AND p.method <> 'cash'))
       -- Tie-broken by id: without it, two payments settled in the same instant
       -- can swap places between pages, so one is shown twice and another never.
       ORDER BY COALESCE(p.verified_at, p.created_at) DESC, p.id DESC
       LIMIT $2 OFFSET $3`,
-    [gymId, limit, offset, outstandingOnly]
+    [gymId, limit, offset, outstandingOnly, method]
   );
 
   const total = result.rows.length ? Number(result.rows[0].total_count) : 0;

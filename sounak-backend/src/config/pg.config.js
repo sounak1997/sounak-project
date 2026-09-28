@@ -20,7 +20,32 @@ const pool = new Pool({
     ssl: {
         // MUST be set to false for many environments, including Neon on Node.js
         rejectUnauthorized: false 
-    }
+    },
+    // Neon closes connections it considers idle, and a laptop that sleeps drops
+    // them without telling anyone. Retire our own clients first, and keep the
+    // TCP socket probed so a dead one is noticed in seconds rather than at the
+    // OS read timeout minutes later.
+    idleTimeoutMillis: 30_000,
+    keepAlive: true,
+    // A connect that hangs should fail the request rather than hold it open
+    // forever — but Neon scales to zero, and waking it takes a good few seconds,
+    // so this has to be generous enough to survive a cold start. 10s was not:
+    // the first connect after an idle spell timed out before the database was
+    // awake.
+    connectionTimeoutMillis: 30_000,
+});
+
+// A dropped IDLE connection must never take the API down with it.
+//
+// pg-pool emits 'error' on the POOL when a client that is sitting idle fails —
+// typically Neon hanging up, or the machine waking from sleep to find the TLS
+// socket gone ("read ETIMEDOUT"). An EventEmitter that emits 'error' with no
+// listener throws, so without this line the whole server exits: every request
+// after that is a 502, which reads at the browser as though login itself is
+// broken. The pool discards the dead client and opens a fresh one on the next
+// query, so there is nothing to do here but say so and carry on.
+pool.on('error', (err) => {
+    console.error('[pg] idle client error — discarded, pool will reconnect:', err.message);
 });
 
 // Test the connection when the module is imported

@@ -413,12 +413,15 @@ export class GymService {
    */
   recentPayments(
     gymId: string,
-    opts: { outstanding?: boolean; limit?: number; offset?: number } = {},
+    opts: { outstanding?: boolean; limit?: number; offset?: number; method?: 'cash' | 'upi' | '' } = {},
   ): Promise<{ rows: SettledPayment[]; total: number; offset: number; hasMore: boolean }> {
     const params: Record<string, string> = {};
     if (opts.outstanding) params['outstanding'] = 'true';
     if (opts.limit !== undefined) params['limit'] = String(opts.limit);
     if (opts.offset !== undefined) params['offset'] = String(opts.offset);
+    // Filtered on the server: filtering one page in the browser reports "no
+    // cash payments" whenever they start on page two.
+    if (opts.method) params['method'] = opts.method;
 
     return firstValueFrom(
       this.http.get<{ data: SettledPayment[]; total: number; offset: number; hasMore: boolean }>(

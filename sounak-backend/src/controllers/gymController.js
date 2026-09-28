@@ -240,12 +240,16 @@ exports.recentSettledPayments = asyncHandler(async (req, res) => {
   const outstandingOnly = req.query.outstanding === 'true';
   const limit = outstandingOnly ? 200 : Math.min(Number(req.query.limit) || 20, 100);
   const offset = outstandingOnly ? 0 : Math.max(Number(req.query.offset) || 0, 0);
+  // Anything unrecognised means "no filter" rather than an error: a bad query
+  // string should not break the owner's record.
+  const method = ['cash', 'upi'].includes(req.query.method) ? req.query.method : '';
 
   const { rows, total } = await gymService.recentSettledPayments({
     gymId: req.gym.id,
     limit,
     offset,
     outstandingOnly,
+    method,
   });
 
   res.status(200).json({

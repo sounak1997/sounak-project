@@ -1,0 +1,147 @@
+@if (m(); as p) {
+  <div class="sheet">
+    <!-- A real button, so Escape and the keyboard reach it as well as a tap. -->
+    <button type="button" class="sheet__scrim" aria-label="Close" (click)="store.close()"></button>
+
+    <div class="sheet__panel">
+      <span class="sheet__grip"></span>
+
+      <div class="sheet__head">
+        @if (p.photo_id) {
+          <img class="av av--lg" [src]="store.photoUrl(p.photo_id)" [alt]="p.full_name" />
+        } @else {
+          <span class="av av--lg">{{ store.initials(p.full_name) }}</span>
+        }
+        <div class="grow">
+          <h2 class="sheet__name">{{ p.full_name }}</h2>
+          <div class="sheet__meta">
+            <code class="code">{{ p.member_code }}</code>
+            @if (p.phone) {
+              <a class="call" [href]="'tel:' + p.phone">
+                <app-icon name="phone" [size]="14" />
+                {{ p.phone }}
+              </a>
+            }
+          </div>
+        </div>
+        <button type="button" class="sheet__x" aria-label="Close" (click)="store.close()">
+          <app-icon name="close" [size]="18" />
+        </button>
+      </div>
+
+      <!-- What the money buys, and whether it has run out. -->
+      <div class="band" [class]="store.bandClass(p.expiry)">
+        <div class="band__top">
+          <span>{{ headline() }}</span>
+          <span class="money">{{ store.daysLabel(p) }}</span>
+        </div>
+        @if (p.expiry !== 'none') {
+          <div class="band__bar">
+            <div class="band__fill" [style.width.%]="store.elapsedPct(p)"></div>
+          </div>
+        }
+        <span>
+          @switch (p.expiry) {
+            @case ('expired') { Renewing continues from where it ended, so they pay for the gap. }
+            @case ('expiring') { Renewing now adds the full plan on top — no days lost. }
+            @case ('active') { Renewing early adds on to this, rather than replacing it. }
+            @default { Registered, but has never bought a membership. }
+          }
+        </span>
+      </div>
+
+      <div class="grid3">
+        <div class="tile">
+          <div class="tile__label">Status</div>
+          <div class="tile__value tile__value--sm">
+            {{ p.status === 'inactive' ? 'Inactive' : 'Active' }}
+          </div>
+        </div>
+        <div class="tile">
+          <div class="tile__label">On the floor</div>
+          <div class="tile__value tile__value--sm" [class.tile__value--ok]="onFloor()">
+            {{ onFloor() ? 'In now' : 'No' }}
+          </div>
+        </div>
+        <div class="tile">
+          <div class="tile__label">Devices</div>
+          <div class="tile__value tile__value--sm">{{ p.device_count }}</div>
+        </div>
+      </div>
+
+      <!-- Money this member still owes, settled right here rather than on a
+           different tab: the person is standing at the desk. -->
+      @if (openPayment(); as pay) {
+        <div class="pane" style="background: var(--warn-tint); box-shadow: none">
+          <h2 style="color: var(--warn-ink)">₹{{ pay.amount }} outstanding</h2>
+          <p class="muted small" style="color: var(--warn-ink)">
+            {{ store.payLabel(pay) }} · {{ store.stageLabel(pay) }}
+          </p>
+          @if (pay.stage === 'unconfirmed') {
+          <div class="btnrow mt">
+            @if (!auth.isOwner()) {
+              <button
+                type="button"
+                class="btn btn--sm"
+                [disabled]="store.settling() === pay.id"
+                (click)="store.markPaid(pay, 'cash')">
+                {{ store.settling() === pay.id ? '…' : 'Paid cash' }}
+              </button>
+            }
+            <button
+              type="button"
+              class="btn btn--sm btn--ghost"
+              [disabled]="store.settling() === pay.id"
+              (click)="store.markPaid(pay, 'qr')">
+              {{ store.settling() === pay.id ? '…' : 'Paid UPI' }}
+            </button>
+          </div>
+          }
+        </div>
+      }
+
+      <div class="stack--s">
+        <button type="button" class="btn" (click)="renew()">
+          {{ p.expiry === 'none' ? 'Start a plan' : 'Renew' }}
+        </button>
+        <div class="grid2">
+          <button
+            type="button"
+            class="btn btn--ghost"
+            [disabled]="store.marking() === p.id"
+            (click)="store.markPresent(p.id)">
+            <app-icon name="check" [size]="16" />
+            {{ store.marking() === p.id ? '…' : 'Mark present' }}
+          </button>
+          <button type="button" class="btn btn--ghost" (click)="store.startEdit(p)">
+            <app-icon name="edit" [size]="16" />
+            Edit
+          </button>
+        </div>
+      </div>
+
+      @if (p.emergency_contact || p.notes) {
+        <div class="pane" style="box-shadow: none; background: var(--surface-2)">
+          @if (p.emergency_contact) {
+            <div class="sheet__kv">
+              <span class="tile__label">Emergency contact</span>
+              <span>{{ p.emergency_contact }}</span>
+            </div>
+          }
+          @if (p.notes) {
+            <div class="sheet__kv">
+              <span class="tile__label">Notes</span>
+              <span>{{ p.notes }}</span>
+            </div>
+          }
+        </div>
+      }
+
+      <p class="muted small">
+        "Mark present" records the same visit a door scan would — it is for members without a
+        smartphone. The <strong>code</strong> above is what they need to create their own login
+        at <em>/signup</em>.
+      </p>
+    </div>
+  </div>
+}

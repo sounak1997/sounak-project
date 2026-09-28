@@ -37,11 +37,41 @@ export const routes: Routes = [
     title: 'Reset password',
   },
 
+  /**
+   * The owner/staff console.
+   *
+   * Four routed children rather than one screen: finding a member at the desk
+   * and pasting in a payment gateway's keys are different jobs, and on a phone
+   * they were thousands of pixels apart on the same scroll. The shell holds the
+   * top bar, the tab bar (a rail on a laptop) and every dialog.
+   */
   {
     path: 'dashboard',
-    loadComponent: () => import('./dashboard/dashboard.page').then((m) => m.DashboardPage),
+    loadComponent: () => import('./console/console.shell').then((m) => m.ConsoleShell),
     canActivate: [authGuard],
-    title: 'Gym console',
+    children: [
+      {
+        path: 'today',
+        loadComponent: () => import('./console/pages/today.page').then((m) => m.TodayPage),
+        title: 'Today',
+      },
+      {
+        path: 'members',
+        loadComponent: () => import('./console/pages/members.page').then((m) => m.MembersPage),
+        title: 'Members',
+      },
+      {
+        path: 'money',
+        loadComponent: () => import('./console/pages/money.page').then((m) => m.MoneyPage),
+        title: 'Money',
+      },
+      {
+        path: 'setup',
+        loadComponent: () => import('./console/pages/setup.page').then((m) => m.SetupPage),
+        title: 'Setup',
+      },
+      { path: '', redirectTo: 'today', pathMatch: 'full' },
+    ],
   },
 
   /**

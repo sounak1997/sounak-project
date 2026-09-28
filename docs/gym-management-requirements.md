@@ -92,6 +92,9 @@ The gym prints **one static QR** and fixes it by the entrance. Its URL is
 - **FR-8.11** A member's payment history omits the owner's audit columns (who verified, gateway ids). That is bookkeeping, not theirs.
 
 ### 3.3 Presence percentage
+- **FR-3.0** **A member may come and go as often as they like in a day.** Each arrival/departure pair is a session under that day's row. Previously the day itself carried the single in/out, so checking out ended the day: someone training morning and evening found no button at all, and the screen looked broken. There is no longer a "done for today" state.
+- **FR-3.0a** At most one session may be open per day row, enforced by a partial unique index — that is what makes two simultaneous taps safe. Scoped to the DAY rather than the member, because a member who forgot to check out on two separate days legitimately has two unclosed sessions, and that must stay representable rather than forcing a backfill to invent departure times nobody recorded.
+- **FR-3.0b** The day row keeps the FIRST arrival and the LAST departure, so the owner's "who is here" list and the member's history read unchanged.
 - **FR-3.1** Attendance is **one row per member per day** (`UNIQUE (member_id, visit_date)`). Presence is the row's existence; times are detail.
 - **FR-3.2** `visit_date` is computed in **the gym's own timezone**, never UTC. A 5 AM IST session is the previous day in UTC, which would silently skew every percentage.
 - **FR-3.3** Percentage = attended days ÷ days elapsed in the current subscription, **excluding weekdays the gym is closed**.

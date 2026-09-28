@@ -1,0 +1,174 @@
+<div class="split" [class.split--open]="store.selected()">
+  <div class="stack members-col">
+    <div class="toolbar">
+      <div class="findbar">
+        <div class="search grow">
+          <span class="search__icon"><app-icon name="search" [size]="18" /></span>
+          <label class="sr-only" for="q">Search members</label>
+          <input
+            id="q"
+            type="search"
+            placeholder="Name, mobile or member code"
+            autocomplete="off"
+            [ngModel]="store.memberFilter()"
+            (ngModelChange)="store.memberFilter.set($event)"
+          />
+          @if (store.memberFilter().trim()) {
+            <button
+              type="button"
+              class="search__clear"
+              aria-label="Clear search"
+              (click)="store.memberFilter.set('')"
+            >
+              &times;
+            </button>
+          }
+        </div>
+        <button
+          type="button"
+          class="btn btn--sm findbar__add"
+          (click)="store.justAdded.set(null); store.addOpen.set(true)"
+        >
+          <app-icon name="plus" [size]="17" />
+          Add
+        </button>
+      </div>
+
+      <!-- Needs action is the default, because it is what the list is FOR. -->
+      <div class="chips">
+        <button
+          type="button"
+          class="chip"
+          [class.chip--on]="store.scope() === 'attention'"
+          (click)="setScope('attention')"
+        >
+          Needs action {{ store.needsAction().length }}
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.chip--on]="store.scope() === 'active'"
+          (click)="setScope('active')"
+        >
+          Active {{ store.activeMembers().length }}
+        </button>
+        <button
+          type="button"
+          class="chip"
+          [class.chip--on]="store.scope() === 'all'"
+          (click)="setScope('all')"
+        >
+          All {{ store.members().length }}
+        </button>
+      </div>
+    </div>
+
+    <div class="sec-row">
+      <h2 class="sec">
+        @if (store.memberFilter().trim()) {
+          Matches, everyone searched
+        } @else {
+          Soonest to lapse first
+        }
+      </h2>
+      <span class="muted small money">{{ store.visibleMembers().length }} shown</span>
+    </div>
+
+    <!-- Its own container, so the rows answer to the width of the LIST rather
+         than the window: opening a member narrows this to sit beside the
+         detail panel, and the rows fold back to their compact two-line form
+         on their own. No media query knows anything about it. -->
+    <div class="members-list">
+      @if (!store.visibleMembers().length) {
+        <div class="list">
+          <p class="empty">
+            @if (store.memberFilter().trim()) {
+              Nobody matches “{{ store.memberFilter() }}”.
+            } @else if (store.scope() === 'attention') {
+              Nothing to chase — every membership is current.
+            } @else {
+              No members yet. Tap <strong>Add</strong> to register the first one.
+            }
+          </p>
+        </div>
+      } @else {
+        <div class="list">
+          <!-- Column headings, which only exist once the row is wide enough to
+               have columns. -->
+          <div class="list__head" aria-hidden="true">
+            <span></span>
+            <span>Member</span>
+            <span>Code</span>
+            <span>Mobile</span>
+            <span>Plan</span>
+            <span class="right">Status</span>
+            <span></span>
+          </div>
+
+          @for (m of store.visibleMembers(); track m.id; let i = $index) {
+            @if (i === store.firstCurrentIndex()) {
+              <div class="list__divider">Current members</div>
+            }
+            <button
+              type="button"
+              class="row row--member"
+              [class.row--on]="store.selected()?.id === m.id"
+              (click)="store.open(m)"
+            >
+              @if (m.photo_id) {
+                <img class="av" [src]="store.photoUrl(m.photo_id)" [alt]="m.full_name" />
+              } @else {
+                <span class="av">{{ store.initials(m.full_name) }}</span>
+              }
+
+              <span class="row__main">
+                <span class="row__title">{{ m.full_name }}</span>
+                <!-- The narrow row's second line. Wide, these are columns of
+                     their own, so it would be saying everything twice. -->
+                <span class="row__sub">
+                  @if (m.expiry === 'none') {
+                    Registered · never started
+                  } @else {
+                    {{ m.plan_name }} · {{ m.expiry === 'expired' ? 'ended' : 'to' }}
+                    {{ store.day(m.end_date) }}
+                  }
+                </span>
+              </span>
+
+              <span class="cell cell--code"
+                ><code class="code">{{ m.member_code }}</code></span
+              >
+              <span class="cell cell--phone money">{{ m.phone || '—' }}</span>
+              <span class="cell cell--plan">
+                @if (m.expiry === 'none') {
+                  Never started
+                } @else {
+                  {{ m.plan_name }}
+                  <span class="cell__sub">
+                    {{ m.expiry === 'expired' ? 'ended' : 'to' }} {{ store.day(m.end_date) }}
+                  </span>
+                }
+              </span>
+
+              <span class="row__end">
+                @if (store.inGymNow().has(m.id)) {
+                  <span class="badge badge--ok">In now</span>
+                }
+                <!-- A word and a number, never a colour on its own. -->
+                <span class="badge" [class]="store.badgeClass(m.expiry)">
+                  {{ store.daysLabel(m) }}
+                </span>
+              </span>
+
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </button>
+          }
+        </div>
+      }
+    </div>
+  </div>
+
+  @if (store.selected()) {
+    <app-member-sheet />
+  }
+</div>

@@ -1,0 +1,496 @@
+<div class="console-root">
+
+  <header class="console-bar">
+    <!-- An owner of two gyms switches here. A real <select> under the name
+         rather than a menu of our own: it is one tap on a phone and it is
+         already accessible. -->
+    @if (auth.gyms().length > 1) {
+      <label class="console-bar__id console-bar__id--pick">
+        <span class="grow">
+          <span class="console-bar__name">
+            {{ auth.activeGym()?.name }}
+            <app-icon name="chev-down" [size]="15" />
+          </span>
+          <span class="console-bar__who">{{ auth.account()?.name }}</span>
+        </span>
+        <select
+          class="console-bar__pick"
+          aria-label="Switch gym"
+          [value]="auth.activeGymId()"
+          (change)="auth.selectGym($any($event.target).value)">
+          @for (g of auth.gyms(); track g.id) {
+            <option [value]="g.id">{{ g.name }}</option>
+          }
+        </select>
+      </label>
+    } @else {
+      <div class="console-bar__id">
+        <span class="grow">
+          <span class="console-bar__name">{{ auth.activeGym()?.name }}</span>
+          <span class="console-bar__who">
+            {{ auth.account()?.name }}{{ auth.isOwner() ? ' · Owner' : ' · Front desk' }}
+          </span>
+        </span>
+      </div>
+    }
+
+    <button
+      type="button"
+      class="icon-btn"
+      aria-label="Refresh"
+      [disabled]="store.refreshing()"
+      (click)="store.refreshAll()">
+      <app-icon name="refresh" />
+    </button>
+  </header>
+
+  <main class="console-main">
+    @if (store.error()) {
+      <div class="alert alert--error">{{ store.error() }}</div>
+    }
+    @if (store.notice()) {
+      <div class="alert alert--success">
+        {{ store.notice() }}
+        <button type="button" class="alert__x" aria-label="Dismiss" (click)="store.notice.set('')">
+          <app-icon name="close" [size]="15" />
+        </button>
+      </div>
+    }
+
+    @if (auth.activeGym(); as g) {
+      @if (g.status !== 'active') {
+        <div class="alert alert--warn">
+          <strong>{{ g.name }} is suspended.</strong> Its door QR and its own staff's access are
+          switched off — you are seeing this only as the platform administrator.
+          <a routerLink="/admin">Manage gyms</a>
+        </div>
+      }
+    }
+
+    @if (store.loading()) {
+      <div class="pane center"><p class="muted">Loading…</p></div>
+    } @else {
+      <router-outlet />
+    }
+  </main>
+
+  <nav class="console-nav" aria-label="Main">
+    <a
+      class="tab"
+      routerLink="/dashboard/today"
+      routerLinkActive="tab--on"
+      #t1="routerLinkActive"
+      [attr.aria-current]="t1.isActive ? 'page' : null">
+      <span class="tab__mark"></span>
+      <span class="tab__icon"><app-icon name="today" [size]="22" /></span>
+      <span class="tab__label">Today</span>
+    </a>
+
+    <a
+      class="tab"
+      routerLink="/dashboard/members"
+      routerLinkActive="tab--on"
+      #t2="routerLinkActive"
+      [attr.aria-current]="t2.isActive ? 'page' : null">
+      <span class="tab__mark"></span>
+      <span class="tab__icon"><app-icon name="members" [size]="22" /></span>
+      <span class="tab__label">Members</span>
+    </a>
+
+    <a
+      class="tab"
+      routerLink="/dashboard/money"
+      routerLinkActive="tab--on"
+      #t3="routerLinkActive"
+      [attr.aria-current]="t3.isActive ? 'page' : null">
+      <span class="tab__mark"></span>
+      <span class="tab__icon">
+        <app-icon name="money" [size]="22" />
+        <!-- Only when there is something to do; a permanent zero is noise. -->
+        @if (store.moneyTodo() > 0) {
+          <span class="tab__dot">{{ store.moneyTodo() }}</span>
+        }
+      </span>
+      <span class="tab__label">{{ moneyLabel() }}</span>
+    </a>
+
+    <a
+      class="tab"
+      routerLink="/dashboard/setup"
+      routerLinkActive="tab--on"
+      #t4="routerLinkActive"
+      [attr.aria-current]="t4.isActive ? 'page' : null">
+      <span class="tab__mark"></span>
+      <span class="tab__icon"><app-icon name="setup" [size]="22" /></span>
+      <span class="tab__label">Setup</span>
+    </a>
+
+    <!-- Desktop only: on a phone these live on the Setup tab, where there is
+         room for them and no rail to put them in. -->
+    <div class="nav-foot">
+      @if (auth.account()?.platformAdmin) {
+        <a class="nav-foot__link" routerLink="/admin">
+          <app-icon name="qr" [size]="17" />
+          All gyms
+        </a>
+      }
+      <button type="button" class="nav-foot__btn" (click)="auth.signOut()">
+        <app-icon name="out" [size]="17" />
+        Sign out
+      </button>
+    </div>
+  </nav>
+
+</div>
+
+<!-- ========================= dialogs ========================= -->
+
+<!-- Registering a walk-in. A dialog rather than a form permanently occupying
+     the top of the member list: the desk registers someone a few times a day
+     and searches the list a few times an hour. -->
+@if (store.addOpen()) {
+  <div class="modal-backdrop" (click)="store.addOpen.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Add a member</h2>
+      <div class="accent-bar accent-bar--left"></div>
+      <p class="muted mb">
+        Name and mobile number are all the gym needs. They can create their own login later
+        using the member code this gives you.
+      </p>
+
+      @if (store.justAdded(); as m) {
+        <div class="alert alert--success">
+          <strong>{{ m.full_name }}</strong> is registered. Their member code is
+          <code class="code">{{ m.member_code }}</code> — read it out to them.
+        </div>
+      }
+
+      <div class="photo-row">
+        @if (store.newPhotoPreview()) {
+          <img class="av av--xl" [src]="store.newPhotoPreview()" alt="" />
+        } @else {
+          <div class="av av--xl av--empty">+</div>
+        }
+        <div>
+          <!-- capture="environment" opens the camera straight away on a phone,
+               and falls back to a file picker on a desktop. -->
+          <label class="btn btn--ghost btn--sm file-btn">
+            {{ store.newPhotoPreview() ? 'Retake photo' : 'Take photo' }}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              (change)="store.onPhotoPicked($event, 'new')"
+              hidden />
+          </label>
+          @if (store.newPhotoPreview()) {
+            <button type="button" class="btn btn--ghost btn--sm" (click)="store.clearNewPhoto()">
+              Remove
+            </button>
+          }
+          <p class="muted small">Optional — helps the desk recognise them.</p>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="a-name">Full name</label>
+        <input
+          id="a-name"
+          type="text"
+          autocomplete="off"
+          [ngModel]="store.newName()"
+          (ngModelChange)="store.newName.set($event)" />
+      </div>
+      <div class="field">
+        <label for="a-phone">Mobile number</label>
+        <input
+          id="a-phone"
+          type="tel"
+          inputmode="numeric"
+          autocomplete="off"
+          [ngModel]="store.newPhone()"
+          (ngModelChange)="store.newPhone.set($event)"
+          (keyup.enter)="store.addMember()" />
+      </div>
+
+      @if (store.error()) {
+        <div class="alert alert--error mt">{{ store.error() }}</div>
+      }
+
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" (click)="store.addOpen.set(false)">Done</button>
+        <button
+          type="button"
+          class="btn"
+          [disabled]="store.adding() || !store.newName().trim() || !store.newPhone().trim()"
+          (click)="store.addMember()">
+          {{ store.adding() ? 'Adding…' : 'Add member' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Editing someone. A modal rather than a panel below the list: a form opened
+     from halfway down a long list used to render off-screen, so the row
+     appeared to do nothing. -->
+@if (store.editing(); as m) {
+  <div class="modal-backdrop" (click)="store.cancelEdit()">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Edit — {{ m.full_name }}</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      <div class="photo-row mt">
+        @if (store.editPhotoPreview()) {
+          <img class="av av--xl" [src]="store.editPhotoPreview()" alt="" />
+        } @else if (m.photo_id) {
+          <img class="av av--xl" [src]="store.photoUrl(m.photo_id)" [alt]="m.full_name" />
+        } @else {
+          <div class="av av--xl av--empty">{{ store.initials(m.full_name) }}</div>
+        }
+        <div>
+          <label class="btn btn--ghost btn--sm file-btn">
+            {{ m.photo_id || store.editPhotoPreview() ? 'Replace photo' : 'Take photo' }}
+            <input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              (change)="store.onPhotoPicked($event, 'edit')"
+              hidden />
+          </label>
+          @if (m.photo_id) {
+            <button type="button" class="btn btn--ghost btn--sm" (click)="store.removePhoto()">
+              Remove photo
+            </button>
+          }
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="e-name">Full name</label>
+        <input
+          id="e-name"
+          type="text"
+          [ngModel]="store.editName()"
+          (ngModelChange)="store.editName.set($event)" />
+      </div>
+      <div class="field">
+        <label for="e-phone">Mobile number</label>
+        <input
+          id="e-phone"
+          type="tel"
+          inputmode="numeric"
+          [ngModel]="store.editPhone()"
+          (ngModelChange)="store.editPhone.set($event)" />
+        <p class="muted small">How they identify themselves at the door, and how you call them.</p>
+      </div>
+      <div class="field">
+        <label for="e-emg">Emergency contact</label>
+        <input
+          id="e-emg"
+          type="text"
+          [ngModel]="store.editEmergency()"
+          (ngModelChange)="store.editEmergency.set($event)" />
+      </div>
+      <div class="field">
+        <label for="e-notes">Notes</label>
+        <input
+          id="e-notes"
+          type="text"
+          [ngModel]="store.editNotes()"
+          (ngModelChange)="store.editNotes.set($event)" />
+      </div>
+      <div class="field">
+        <label for="e-status">Status</label>
+        <select
+          id="e-status"
+          [ngModel]="store.editStatus()"
+          (ngModelChange)="store.editStatus.set($event)">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive — cannot check in</option>
+        </select>
+      </div>
+
+      @if (store.error()) {
+        <div class="alert alert--error mt">{{ store.error() }}</div>
+      }
+
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" (click)="store.cancelEdit()">Cancel</button>
+        <button
+          type="button"
+          class="btn"
+          [disabled]="store.savingEdit() || !store.editName().trim()"
+          (click)="store.saveEdit()">
+          {{ store.savingEdit() ? 'Saving…' : 'Save changes' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Taking a renewal at the desk. Staff can do this: it is money coming IN
+     against one member, not a view of the gym's books. -->
+@if (store.renewing(); as m) {
+  <div class="modal-backdrop" (click)="store.renewing.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>{{ m.expiry === 'none' ? 'Start a plan' : 'Renew' }} — {{ m.full_name }}</h2>
+      <div class="accent-bar accent-bar--left"></div>
+
+      @if (!store.plans().length) {
+        <p class="muted">
+          This gym has no active plans yet. The owner needs to add one before a membership can be
+          sold.
+        </p>
+      } @else {
+        <div class="field">
+          <label for="plan">Plan</label>
+          <select
+            id="plan"
+            [value]="store.renewPlanId()"
+            (change)="store.renewPlanId.set($any($event.target).value)">
+            @for (p of store.plans(); track p.id) {
+              <option [value]="p.id">{{ p.name }} — ₹{{ p.price }} ({{ p.duration_days }} days)</option>
+            }
+          </select>
+        </div>
+
+        @if (store.canSetPrice()) {
+          <div class="field">
+            <label for="amount">Amount charged</label>
+            <!-- type="text" with inputmode="decimal", NOT type="number": a
+                 number input makes ngModel emit a number, which silently broke
+                 the string handling and surfaced as a useless "could not record
+                 that payment". The keypad is the same. -->
+            <input
+              id="amount"
+              type="text"
+              inputmode="decimal"
+              [placeholder]="'Plan price — ₹' + store.selectedPlanPrice()"
+              [ngModel]="store.renewAmount()"
+              (ngModelChange)="store.renewAmount.set($event)" />
+            <p class="muted small">
+              Blank charges the plan's ₹{{ store.selectedPlanPrice() }}. Owner only — the desk
+              always charges the plan price.
+            </p>
+          </div>
+        }
+
+        @if (store.renewalPeriod(); as period) {
+          <div class="period">
+            <div class="period__dates">
+              {{ store.fmtDay(period.start) }} &rarr; {{ store.fmtDay(period.end) }}
+            </div>
+            @if (period.backdated) {
+              <p class="muted small">
+                Continues from where their last membership ended, so they are paying for the days
+                since it lapsed.
+              </p>
+            } @else if (period.continuing) {
+              <p class="muted small">
+                Added on to their current membership — no days lost by renewing early.
+              </p>
+            } @else {
+              <p class="muted small">Starts today.</p>
+            }
+          </div>
+        }
+
+        <div class="field">
+          <label for="method">Paid by</label>
+          <!-- Cash is the desk's alone: the owner is not at the gym and takes
+               money by UPI only, and the server refuses cash from them. -->
+          <select
+            id="method"
+            [value]="store.renewMethod()"
+            (change)="store.renewMethod.set($any($event.target).value)">
+            @if (!auth.isOwner()) {
+              <option value="cash">Cash at the desk</option>
+            }
+            <option value="qr">UPI / QR</option>
+          </select>
+          <p class="muted small">
+            @if (store.renewMethod() === 'cash') {
+              You are holding this cash until the owner collects it.
+            } @else {
+              Straight to the owner's account — nothing for anyone to hold.
+            }
+          </p>
+        </div>
+      }
+
+      @if (store.error()) {
+        <div class="alert alert--error mt">{{ store.error() }}</div>
+      }
+
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" (click)="store.renewing.set(null)">Cancel</button>
+        <button
+          type="button"
+          class="btn"
+          [disabled]="store.savingRenewal() || !store.renewPlanId()"
+          (click)="store.confirmRenewal()">
+          {{ store.savingRenewal() ? 'Saving…' : 'Record it' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+<!-- Undoing a payment takes away access a member currently has, so it is
+     confirmed with the consequence spelled out. -->
+@if (store.confirmReverse(); as p) {
+  <div class="modal-backdrop" (click)="store.confirmReverse.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Undo ₹{{ p.amount }} from {{ p.full_name }}?</h2>
+      <div class="accent-bar accent-bar--left"></div>
+      <p class="modal__body">
+        Marked {{ p.method === 'cash' ? 'paid in cash' : 'paid by UPI' }}@if (p.marked_by_name) {
+          by {{ p.marked_by_name }}}@if (p.verified_at) {, {{ store.since(p.verified_at) }}}.
+      </p>
+      <ul class="modal__list">
+        <li>the payment goes back to unpaid</li>
+        <li>{{ p.full_name }}'s membership is put on hold — the door will refuse them</li>
+        @if (p.method === 'cash') {
+          <li>it stops counting as cash held by staff</li>
+        } @else {
+          <li>it stops counting as money in your account</li>
+        }
+      </ul>
+      <p class="muted small">The correction is recorded, including that you made it.</p>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" (click)="store.confirmReverse.set(null)">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn--danger"
+          [disabled]="store.reversing() === p.id"
+          (click)="store.undoPaid()">
+          {{ store.reversing() === p.id ? 'Undoing…' : 'Yes, undo it' }}
+        </button>
+      </div>
+    </div>
+  </div>
+}
+
+@if (store.confirmBulk()) {
+  <div class="modal-backdrop" (click)="store.confirmBulk.set(null)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h2>Received ₹{{ store.visibleTotal() }} across {{ store.readyToReceive().length }} payments?</h2>
+      <div class="accent-bar accent-bar--left"></div>
+      <p class="modal__body">
+        Records that this money has actually reached you — cash in your hands, or UPI you have found
+        in your account. Only what is on screen now is covered, so the filter you chose is what gets
+        settled.
+      </p>
+      <p class="muted small">They can no longer be undone afterwards.</p>
+      <div class="modal__actions">
+        <button type="button" class="btn btn--ghost" (click)="store.confirmBulk.set(null)">
+          Cancel
+        </button>
+        <button type="button" class="btn" (click)="store.receiveAllVisible()">Yes, I have it</button>
+      </div>
+    </div>
+  </div>
+}

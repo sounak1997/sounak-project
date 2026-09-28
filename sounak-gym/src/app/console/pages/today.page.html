@@ -1,0 +1,213 @@
+<div class="stack">
+
+  @if (store.summary(); as s) {
+    <section class="hero-stat">
+      <div class="grow stack--s" style="gap: 5px">
+        <div class="accent-bar accent-bar--left" style="margin: 0"></div>
+        <div class="hero-stat__label">In the gym now</div>
+        <div class="hero-stat__value">{{ s.currently_in }}</div>
+      </div>
+      <div class="hero-stat__side">
+        <b class="money">{{ s.visits_today }} visits today</b>
+        <span class="money">{{ s.active_members }} active members</span>
+      </div>
+    </section>
+
+    <div class="tiles">
+      @if (auth.isOwner() && s.collected_this_month !== undefined) {
+        <div class="tile">
+          <div class="tile__label">Collected this month</div>
+          <div class="tile__value">₹{{ s.collected_this_month }}</div>
+        </div>
+      }
+      <div class="tile">
+        <div class="tile__label">Expiring in 7 days</div>
+        <div class="tile__value" [class.tile__value--warn]="expiring().length > 0">
+          {{ expiring().length }}
+        </div>
+      </div>
+      <div class="tile">
+        <div class="tile__label">Lapsed</div>
+        <div class="tile__value" [class.tile__value--danger]="expired().length > 0">
+          {{ expired().length }}
+        </div>
+      </div>
+      <div class="tile">
+        <div class="tile__label">Never started</div>
+        <div class="tile__value">{{ neverStarted().length }}</div>
+      </div>
+    </div>
+  }
+
+  <!-- Only what there is something to do about. Every row is a tap to the screen
+       that fixes it, and the whole section disappears when the gym is square. -->
+  <section>
+    <h2 class="sec">Needs you</h2>
+
+    @if (!anythingToDo()) {
+      <div class="list">
+        <div class="row row--static">
+          <span class="lead lead--ok"><app-icon name="check" [size]="17" /></span>
+          <span class="row__main">
+            <span class="row__title">All clear</span>
+            <span class="row__sub">
+              Every membership is current and there is no money outstanding.
+            </span>
+          </span>
+        </div>
+      </div>
+    } @else {
+      <div class="list">
+
+        @if (expired().length) {
+          <a class="row" routerLink="/dashboard/members">
+            <span class="lead lead--danger"><app-icon name="alert" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">
+                {{ expired().length }} {{ expired().length === 1 ? 'membership' : 'memberships' }} expired
+              </span>
+              <span class="row__sub">{{ names(expired()) }} — tap to call</span>
+            </span>
+            <span class="row__end">
+              <span class="row__amount" style="color: var(--danger-ink)">{{ expired().length }}</span>
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </a>
+        }
+
+        @if (neverStarted().length) {
+          <a class="row" routerLink="/dashboard/members">
+            <span class="lead lead--purple"><app-icon name="members" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">
+                {{ neverStarted().length }} registered but never started
+              </span>
+              <span class="row__sub">{{ names(neverStarted()) }}</span>
+            </span>
+            <span class="row__end">
+              <span class="row__amount">{{ neverStarted().length }}</span>
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </a>
+        }
+
+        <!-- The desk's own drawer: what they have taken in cash and not yet
+             handed over. They need the figure in order to hand it over. -->
+        @if (!auth.isOwner() && myCashHeld() > 0) {
+          <a class="row" routerLink="/dashboard/money">
+            <span class="lead lead--warn"><app-icon name="money" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">Cash you are holding</span>
+              <span class="row__sub">
+                From {{ store.myCash()?.cash_payments }} member(s). Give it to the owner.
+              </span>
+            </span>
+            <span class="row__end">
+              <span class="row__amount" style="color: var(--warn-ink)">
+                ₹{{ store.myCash()?.cash_in_hand }}
+              </span>
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </a>
+        }
+
+        @if (store.unconfirmed().length) {
+          <a class="row" routerLink="/dashboard/money">
+            <span class="lead lead--danger"><app-icon name="alert" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">
+                {{ store.unconfirmed().length }} not confirmed by anyone
+              </span>
+              <span class="row__sub">Members who say they paid, or were let in unpaid</span>
+            </span>
+            <span class="row__end">
+              <span class="row__amount" style="color: var(--danger-ink)">
+                ₹{{ store.unconfirmedTotal() }}
+              </span>
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </a>
+        }
+
+        @if (auth.isOwner() && store.withStaff().length) {
+          <a class="row" routerLink="/dashboard/money">
+            <span class="lead lead--warn"><app-icon name="money" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">Cash sitting with the desk</span>
+              <span class="row__sub">
+                @for (h of store.holders(); track h.name; let last = $last) {
+                  {{ h.name }} ₹{{ h.amount }}{{ last ? '' : ' · ' }}
+                }
+              </span>
+            </span>
+            <span class="row__end">
+              <span class="row__amount" style="color: var(--warn-ink)">
+                ₹{{ store.withStaffTotal() }}
+              </span>
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </a>
+        }
+
+        @if (auth.isOwner() && store.toCheck().length) {
+          <a class="row" routerLink="/dashboard/money">
+            <span class="lead lead--purple"><app-icon name="check-circle" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">UPI to check in your account</span>
+              <span class="row__sub">
+                {{ store.toCheck().length }} payments, marked by the desk
+              </span>
+            </span>
+            <span class="row__end">
+              <span class="row__amount" style="color: var(--purple-ink)">
+                ₹{{ store.toCheckTotal() }}
+              </span>
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </a>
+        }
+
+      </div>
+    }
+  </section>
+
+  <!-- Who is here. The one thing on this screen that changes minute to minute. -->
+  <section>
+    <div class="sec-row">
+      <h2 class="sec">On the floor</h2>
+      @if (store.today(); as t) {
+        <span class="muted small money">{{ t.present }} in now · {{ t.total }} today</span>
+      }
+    </div>
+
+    @if (!floor().length) {
+      <div class="list"><p class="empty">Nobody has checked in yet today.</p></div>
+    } @else {
+      <div class="list scroll-y">
+        @for (v of floor(); track v.member_id) {
+          <button type="button" class="row" (click)="openById(v.member_id)">
+            <span class="av av--sm">{{ store.initials(v.full_name) }}</span>
+            <span class="row__main">
+              <span class="row__title">{{ v.full_name }}</span>
+              <span class="row__sub money">
+                @if (v.check_out_at) {
+                  {{ store.time(v.check_in_at) }} – {{ store.time(v.check_out_at) }}
+                } @else {
+                  in at {{ store.time(v.check_in_at) }}
+                }
+                · {{ v.method === 'manual' ? 'by desk' : 'scanned' }}
+              </span>
+            </span>
+            <span class="row__end">
+              @if (!v.check_out_at) {
+                <span class="badge badge--ok">In now</span>
+              }
+              <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+            </span>
+          </button>
+        }
+      </div>
+    }
+  </section>
+
+</div>

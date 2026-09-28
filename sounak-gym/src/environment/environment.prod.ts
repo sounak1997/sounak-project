@@ -7,4 +7,6 @@
 export const environment = {
   production: true,
   apiUrl: 'https://sounak-backend.onrender.com',
+  /** The origin printed on the door poster. */
+  publicUrl: 'https://suvidhaa-gym.sounak-project.workers.dev',
 };

@@ -585,3 +585,57 @@ EXCEPTION WHEN unique_violation THEN
   RAISE WARNING
     'gym_members_one_phone_per_gym_uq not created: some gym has two members sharing a mobile number. Resolve the duplicates and re-run this file.';
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- MULTIPLE VISITS IN A DAY (added 2026-09-28)
+--
+-- gym_attendance is one row per member per day, which is right for the presence
+-- percentage — "did they come on the 12th" is a yes/no. But it also meant a
+-- member who checked out could not check in again: the day's row was closed and
+-- the door offered no button until tomorrow. Someone who trains in the morning
+-- and returns in the evening was simply stuck, and so was anyone testing the
+-- flow twice.
+--
+-- So the DAY keeps its row, and each in/out pair becomes a session under it.
+-- The percentage still counts days and is unchanged; the door can now open and
+-- close as many times as the day needs.
+--
+-- gym_attendance.check_in_at keeps the FIRST arrival and check_out_at the LAST
+-- departure, so everything already reading those columns — the owner's "who is
+-- here" list, the member's history — keeps working untouched.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gym_attendance_sessions (
+  id            VARCHAR PRIMARY KEY,
+  attendance_id VARCHAR NOT NULL REFERENCES gym_attendance(id) ON DELETE CASCADE,
+  gym_id        VARCHAR NOT NULL REFERENCES gyms(id) ON DELETE CASCADE,
+  member_id     VARCHAR NOT NULL REFERENCES gym_members(id) ON DELETE CASCADE,
+  check_in_at   TIMESTAMPTZ NOT NULL,
+  check_out_at  TIMESTAMPTZ,
+  method        VARCHAR NOT NULL DEFAULT 'self_scan'
+                  CHECK (method IN ('self_scan', 'manual')),
+  recorded_by   VARCHAR,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS gym_attendance_sessions_att_idx
+  ON gym_attendance_sessions (attendance_id);
+
+-- At most one OPEN session per DAY row. This is what makes the state machine
+-- safe under two simultaneous taps: the second cannot open a second session, it
+-- finds the first and closes it.
+--
+-- Scoped to the day rather than to the member, because a member who forgot to
+-- check out on Monday and again on Tuesday legitimately has two unclosed
+-- sessions — that is what a forgotten checkout IS, and it must stay
+-- representable. Scoping to the member would make those two rows illegal and
+-- force the backfill to invent departure times nobody recorded.
+CREATE UNIQUE INDEX IF NOT EXISTS gym_attendance_sessions_one_open_uq
+  ON gym_attendance_sessions (attendance_id)
+  WHERE check_out_at IS NULL;
+
+-- Backfill: every existing day row becomes its first session, so history reads
+-- the same through the new table as it did through the old columns.
+INSERT INTO gym_attendance_sessions (id, attendance_id, gym_id, member_id, check_in_at, check_out_at, method, recorded_by)
+SELECT 'SES_' || a.id, a.id, a.gym_id, a.member_id, a.check_in_at, a.check_out_at, a.method, a.recorded_by
+  FROM gym_attendance a
+ WHERE NOT EXISTS (SELECT 1 FROM gym_attendance_sessions s WHERE s.attendance_id = a.id);

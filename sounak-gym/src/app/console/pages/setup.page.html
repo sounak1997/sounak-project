@@ -1,0 +1,235 @@
+<div class="stack">
+
+  <!-- The poster IS the member-facing product, so the QR is rendered here
+       rather than handing the owner a URL and a trip to some other site. -->
+  <section class="pane poster-card">
+    <h2>Door poster</h2>
+    <p class="muted mb">
+      Print this and stick it by the entrance. Members point their phone camera at it — nothing to
+      install.
+    </p>
+
+    @if (store.posterQr()) {
+      <div class="qr-wrap">
+        <img class="qr" [src]="store.posterQr()" alt="Check-in QR code" />
+        <p class="qr-caption">{{ auth.activeGym()?.name }} — scan to check in</p>
+      </div>
+      <button type="button" class="btn btn--ghost no-print" (click)="store.printPoster()">
+        <app-icon name="qr" [size]="17" />
+        Print the poster
+      </button>
+    }
+
+    <details class="why mt">
+      <summary>The raw link</summary>
+      <code class="poster mt">{{ store.posterUrl() }}</code>
+    </details>
+  </section>
+
+  @if (auth.isOwner()) {
+    <!-- The gym's UPI QR. This is the payment method today: the member scans it
+         at the door, pays in their own app, shows the desk, and staff confirm.
+         Owner only — it is their bank account behind it. -->
+    <section class="pane">
+      <h2>Your payment QR</h2>
+      <p class="muted mb">
+        Members see this when they renew at the door. Money from here lands in your account, so it
+        never sits with staff.
+      </p>
+
+      @if (store.payQrUrl()) {
+        <img class="payqr-preview mb" [src]="store.payQrUrl()" alt="Your gym's UPI payment QR" />
+      } @else {
+        <div class="alert alert--warn">
+          No QR set yet, so the door screen can only tell members to pay at the desk — which means
+          everything comes in as cash.
+        </div>
+      }
+
+      <div class="field">
+        <label for="payqr">Image link to your UPI QR</label>
+        <input
+          id="payqr"
+          type="url"
+          placeholder="https://…"
+          [ngModel]="store.payQrUrl()"
+          (ngModelChange)="store.payQrUrl.set($event)" />
+        <p class="muted small">
+          Save your UPI QR as an image somewhere public and paste the link. Any UPI app's "my QR"
+          screenshot works.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="btn"
+        [disabled]="store.savingQr() || !store.payQrUrl().trim()"
+        (click)="store.savePaymentQr()">
+        {{ store.savingQr() ? 'Saving…' : 'Save QR' }}
+      </button>
+    </section>
+
+    <!-- Razorpay. Secondary now: the QR above is how these gyms take money, and
+         the door screen prefers it. Still offered in full, including connecting
+         it for the first time — a gym that later wants payments to confirm
+         themselves should not need this rebuilt. -->
+    <section class="pane">
+      <h2>Online payment (UPI)</h2>
+
+      @if (store.provider()?.enabled) {
+        <p class="muted mb">
+          <span class="pill pill--ok">Connected</span>
+          Members can renew by UPI from the check-in screen, and payments mark themselves paid — you
+          only confirm cash.
+        </p>
+        <p class="muted small">
+          Key <code class="code">{{ store.provider()?.key_id }}</code>
+          @if (store.provider()?.key_id?.startsWith('rzp_test_')) {
+            <span class="pill pill--warn">Test mode — no real money</span>
+          }
+        </p>
+        <button
+          type="button"
+          class="btn btn--ghost btn--sm mt"
+          [disabled]="store.testing()"
+          (click)="store.testKeys()">
+          {{ store.testing() ? 'Checking…' : 'Test connection' }}
+        </button>
+        @if (store.testResult()) {
+          <p class="muted small mt-s">{{ store.testResult() }}</p>
+        }
+        @if (!store.provider()?.webhook_configured) {
+          <div class="alert alert--warn mt">
+            No webhook secret saved yet. Without it, payments still arrive but are confirmed by
+            polling rather than instantly.
+          </div>
+        }
+      } @else {
+        <p class="muted mb">
+          Not connected. Members can't pay online yet, so every membership has to be marked paid by
+          hand.
+        </p>
+      }
+
+      @if (!store.showKeys()) {
+        <button type="button" class="btn btn--ghost mt" (click)="store.showKeys.set(true)">
+          {{ store.provider() ? 'Update keys' : 'Connect a payment account' }}
+        </button>
+      } @else {
+        <p class="muted small mb">
+          From your own Razorpay dashboard. The money settles to <em>your</em> bank account — it
+          never passes through us.
+        </p>
+        <div class="field">
+          <label for="kid">Key ID</label>
+          <input
+            id="kid"
+            type="text"
+            placeholder="rzp_live_..."
+            [ngModel]="store.keyId()"
+            (ngModelChange)="store.keyId.set($event)" />
+        </div>
+        <div class="field">
+          <label for="ksec">Key Secret</label>
+          <app-password-field fieldId="ksec" autocomplete="off" [(value)]="store.keySecret" />
+        </div>
+        <div class="field">
+          <label for="wsec">Webhook Secret <span class="muted">(optional)</span></label>
+          <app-password-field fieldId="wsec" autocomplete="off" [(value)]="store.webhookSecret" />
+        </div>
+        @if (store.webhookUrl()) {
+          <p class="muted small">
+            Add this as a webhook in Razorpay, for <em>payment.captured</em> and
+            <em>payment.failed</em>:
+          </p>
+          <code class="poster">{{ store.webhookUrl() }}</code>
+          @if (!store.webhookReachable()) {
+            <div class="alert alert--warn mt-s">
+              That's a localhost address — Razorpay can't reach it, so don't paste it in yet. Leave
+              the webhook secret blank for now: payments are still confirmed by the browser and by
+              polling.
+            </div>
+          }
+        }
+        <button
+          type="button"
+          class="btn mt"
+          [disabled]="store.savingKeys() || !store.keyId().trim() || !store.keySecret().trim()"
+          (click)="store.saveKeys()">
+          {{ store.savingKeys() ? 'Saving…' : 'Save' }}
+        </button>
+        <button type="button" class="btn btn--ghost mt-s" (click)="store.showKeys.set(false)">
+          Cancel
+        </button>
+      }
+    </section>
+  }
+
+  <!-- What can be sold. Read-only here: the renewal dialog is where a plan is
+       used, and plan editing is not yet a screen. -->
+  <section>
+    <div class="sec-row">
+      <h2 class="sec">Plans</h2>
+      <span class="muted small money">{{ store.plans().length }} active</span>
+    </div>
+    @if (!store.plans().length) {
+      <div class="list">
+        <p class="empty">
+          No active plans yet. A membership can't be sold until there is one.
+        </p>
+      </div>
+    } @else {
+      <div class="list">
+        @for (p of store.plans(); track p.id) {
+          <div class="row row--static">
+            <span class="row__main">
+              <span class="row__title">{{ p.name }}</span>
+              <span class="row__sub">
+                {{ p.duration_days }} days@if (p.description) { · {{ p.description }} }
+              </span>
+            </span>
+            <span class="row__amount">₹{{ p.price }}</span>
+          </div>
+        }
+      </div>
+    }
+  </section>
+
+  <section>
+    <h2 class="sec">This account</h2>
+    <div class="list">
+      <div class="row row--static">
+        <span class="row__main">
+          <span class="row__title">{{ auth.account()?.name }}</span>
+          <span class="row__sub">
+            {{ auth.account()?.email }} · {{ auth.isOwner() ? 'Owner' : 'Front desk' }}
+          </span>
+        </span>
+      </div>
+      @if (auth.isMember()) {
+        <a class="row" routerLink="/me">
+          <span class="row__main">
+            <span class="row__title">My own membership</span>
+            <span class="row__sub">Your visits and payments as a member</span>
+          </span>
+          <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+        </a>
+      }
+      @if (auth.account()?.platformAdmin) {
+        <a class="row" routerLink="/admin">
+          <span class="row__main">
+            <span class="row__title">All gyms</span>
+            <span class="row__sub">Platform administration</span>
+          </span>
+          <span class="row__chev"><app-icon name="chev" [size]="17" /></span>
+        </a>
+      }
+      <button type="button" class="row" (click)="auth.signOut()">
+        <span class="lead lead--danger"><app-icon name="out" [size]="17" /></span>
+        <span class="row__main">
+          <span class="row__title">Sign out</span>
+        </span>
+      </button>
+    </div>
+  </section>
+
+</div>

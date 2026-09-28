@@ -1,0 +1,316 @@
+<div class="stack">
+
+  <!-- The desk's own drawer. Not the gym's books: money they are personally
+       accountable for at the end of a shift, and they need the figure in order
+       to hand it over. -->
+  @if (!auth.isOwner()) {
+    <section class="hero-stat">
+      <div class="grow stack--s" style="gap: 5px">
+        <div class="accent-bar accent-bar--left" style="margin: 0"></div>
+        <div class="hero-stat__label">Cash you are holding</div>
+        <div class="hero-stat__value">₹{{ store.myCash()?.cash_in_hand ?? '0' }}</div>
+      </div>
+      <div class="hero-stat__side">
+        <b class="money">{{ store.myCash()?.cash_payments ?? 0 }} payments</b>
+        <span>give it to the owner</span>
+      </div>
+    </section>
+    <p class="muted small">
+      Taken in cash at the desk. Once the owner marks it received this goes back to zero. The gym's
+      takings are the owner's to see.
+    </p>
+  }
+
+  @if (auth.isOwner()) {
+    <div class="seg">
+      <button
+        type="button"
+        [attr.aria-pressed]="store.moneyTab() === 'settle'"
+        (click)="store.moneyTab.set('settle')">
+        Outstanding
+      </button>
+      <button
+        type="button"
+        [attr.aria-pressed]="store.moneyTab() === 'history'"
+        (click)="store.moneyTab.set('history')">
+        History
+      </button>
+    </div>
+  }
+
+  @if (!auth.isOwner() || store.moneyTab() === 'settle') {
+
+    @if (auth.isOwner() && store.position(); as pos) {
+      <!-- Two figures, because there are only two places money can be. No "cash
+           with the owner": they are not at the gym and never take cash at the
+           desk, so a tile for it would invent a place money does not sit. Money
+           that has NOT been paid is not anywhere — it is in the list below,
+           where it can be acted on. -->
+      <div class="tiles">
+        <div class="tile">
+          <div class="tile__label">In your bank</div>
+          <div class="tile__value">₹{{ pos.in_bank }}</div>
+          <div class="tile__hint">Paid by UPI, straight into your account. Nothing to collect.</div>
+        </div>
+        <div class="tile">
+          <div class="tile__label">Held by the desk</div>
+          <div class="tile__value" [class.tile__value--warn]="+pos.cash_with_staff > 0">
+            ₹{{ pos.cash_with_staff }}
+          </div>
+          <div class="tile__hint">
+            @if (+pos.cash_with_staff > 0) {
+              Cash. Collect it on your next visit — whose it is shows on each row.
+            } @else {
+              Your staff is not holding any cash right now.
+            }
+          </div>
+        </div>
+        <!-- Not a place money sits — it is money nobody has vouched for yet.
+             It earns a tile here because it is the figure most likely to be
+             wrong, and the row that fixes it is directly below. -->
+        <div class="tile">
+          <div class="tile__label">Not confirmed</div>
+          <div class="tile__value" [class.tile__value--danger]="store.unconfirmedTotal() > 0">
+            ₹{{ store.unconfirmedTotal() }}
+          </div>
+          <div class="tile__hint">
+            @if (store.unconfirmed().length) {
+              {{ store.unconfirmed().length }} nobody has confirmed as paid.
+            } @else {
+              Every payment has been confirmed by somebody.
+            }
+          </div>
+        </div>
+        <!-- NOT "collected": the server sums every payment marked verified or
+             collected this month, whether or not it has since reached the
+             owner, so calling it collected would double-count against the two
+             tiles to its left. -->
+        <div class="tile">
+          <div class="tile__label">Confirmed this month</div>
+          <div class="tile__value">₹{{ store.summary()?.collected_this_month ?? '0' }}</div>
+          <div class="tile__hint">Marked paid since the 1st, including what is still on its way.</div>
+        </div>
+      </div>
+    }
+
+    <section>
+      <div class="sec-row">
+        <h2 class="sec">Not reached you yet</h2>
+        <span class="muted small money">
+          ₹{{ store.visibleTotal() }} · {{ store.visiblePayments().length }}
+          {{ store.visiblePayments().length === 1 ? 'payment' : 'payments' }}
+        </span>
+      </div>
+
+      <div class="seg mb">
+        @for (f of filters; track f.key) {
+          <button
+            type="button"
+            [attr.aria-pressed]="store.payFilter() === f.key"
+            (click)="store.payFilter.set(f.key)">
+            {{ f.label }}
+          </button>
+        }
+      </div>
+
+      @if (!store.visiblePayments().length) {
+        <div class="list">
+          <div class="row row--static">
+            <span class="lead lead--ok"><app-icon name="check" [size]="17" /></span>
+            <span class="row__main">
+              <span class="row__title">
+                {{ store.payFilter() === 'all' ? 'All square' : 'Nothing outstanding here' }}
+              </span>
+              <span class="row__sub">
+                @if (store.payFilter() === 'all') {
+                  Every payment has been confirmed and has reached you.
+                } @else {
+                  Try <strong>All</strong> to see the other payment methods.
+                }
+              </span>
+            </span>
+          </div>
+        </div>
+      } @else {
+        <div class="list scroll-y">
+          @for (p of store.visiblePayments(); track p.id) {
+            <div class="row row--act row--static">
+              <div class="row__line">
+                <span class="row__main">
+                  <span class="row__title">{{ p.full_name }}</span>
+                  <span class="row__sub">
+                    {{ p.plan_name }} · to {{ store.day(p.end_date) }}
+                    @if (p.reference) { · ref {{ p.reference }} }
+                  </span>
+                </span>
+                <span class="row__end">
+                  <span class="pill" [class]="p.method === 'cash' ? 'pill--warn' : 'pill--ok'">
+                    {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                  </span>
+                  <span class="row__amount">₹{{ p.amount }}</span>
+                </span>
+              </div>
+              <div class="row__line">
+                <!-- Where on the journey this row is, in words rather than by
+                     which list it happens to be in. -->
+                <span class="pill" [class]="store.stagePill(p)">{{ store.stageLabel(p) }}</span>
+
+                @if (p.stage === 'unconfirmed') {
+                  <!-- Two buttons, not one: the METHOD decides where the money
+                       ends up, so it is chosen here rather than inherited from
+                       however the renewal was first booked. Owners take UPI
+                       only, so they are not offered cash. -->
+                  <span class="btnrow">
+                    @if (!auth.isOwner()) {
+                      <button
+                        type="button"
+                        class="btn btn--sm btn--ghost"
+                        [disabled]="store.settling() === p.id"
+                        (click)="store.markPaid(p, 'cash')">
+                        {{ store.settling() === p.id ? '…' : 'Paid cash' }}
+                      </button>
+                    }
+                    <button
+                      type="button"
+                      class="btn btn--sm"
+                      [disabled]="store.settling() === p.id"
+                      (click)="store.markPaid(p, 'qr')">
+                      {{ store.settling() === p.id ? '…' : 'Paid UPI' }}
+                    </button>
+                  </span>
+                } @else if (auth.isOwner()) {
+                  <!-- The two things the owner can say about a confirmed
+                       payment, in the one place they are looking at it: it
+                       reached me, or it never should have been marked paid.
+                       Undo used to live only in the history, a tab away from
+                       the row it was about. -->
+                  <span class="btnrow">
+                    <button
+                      type="button"
+                      class="btn btn--sm btn--ghost"
+                      [disabled]="store.reversing() === p.id || store.receiving() === p.id"
+                      (click)="store.confirmReverse.set(p)">
+                      {{ store.reversing() === p.id ? '…' : 'Undo' }}
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--sm"
+                      [disabled]="store.receiving() === p.id || store.reversing() === p.id"
+                      (click)="store.receive(p)">
+                      {{ store.receiving() === p.id ? '…' : 'Received' }}
+                    </button>
+                  </span>
+                } @else {
+                  <span class="muted small">with you — the owner collects</span>
+                }
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- Worth offering only when there is more than one row it would cover;
+         with one, it duplicates that row's own button. Scoped to the filter, so
+         what it does is always what is on screen. -->
+    @if (auth.isOwner() && store.readyToReceive().length > 1) {
+      <div class="actionbar">
+        <div class="grow">
+          <div class="money" style="font-size: 17px; font-weight: 900">₹{{ store.visibleTotal() }}</div>
+          <div class="muted" style="font-size: 11px">
+            {{ store.readyToReceive().length }} ready to receive
+          </div>
+        </div>
+        <button
+          type="button"
+          class="btn"
+          [disabled]="store.bulkReceiving()"
+          (click)="store.confirmBulk.set('receive')">
+          {{ store.bulkReceiving() ? 'Saving…' : 'Received all' }}
+        </button>
+      </div>
+    }
+  }
+
+  @if (auth.isOwner() && store.moneyTab() === 'history') {
+
+    <section>
+      <div class="sec-row">
+        <h2 class="sec">Payments received</h2>
+        <span class="muted small money">
+          {{ store.loadingPaid() ? 'Loading…' : store.paidRangeLabel() }}
+        </span>
+      </div>
+
+      <!-- A plain log, newest first. It used to open on a day/week/month
+           roll-up with the payments underneath, which answered the same
+           question twice at two zooms and meant holding one in your head to
+           read the other. The filter is applied by the SERVER, so "Cash" means
+           every cash payment, not the cash ones that happen to be on this
+           page. -->
+      <div class="seg mb">
+        @for (f of logFilters; track f.key) {
+          <button
+            type="button"
+            [attr.aria-pressed]="store.logMethod() === f.key"
+            [disabled]="store.loadingPaid()"
+            (click)="store.setLogMethod(f.key)">
+            {{ f.label }}
+          </button>
+        }
+      </div>
+
+      @if (!store.recentPaid().length) {
+        <div class="list">
+          <p class="empty">
+            @if (store.logMethod()) {
+              Nothing here yet for that payment method.
+            } @else {
+              Nothing received yet. Mark a payment <strong>Received</strong> under
+              <strong>Outstanding</strong> and it will show up here.
+            }
+          </p>
+        </div>
+      } @else {
+        <div class="list">
+          @for (p of store.recentPaid(); track p.id) {
+            <div class="row row--static">
+              <span class="row__main">
+                <span class="row__title">{{ p.full_name }}</span>
+                <span class="row__sub">
+                  {{ p.plan_name }} · {{ p.marked_by_name ?? '—' }}
+                  @if (p.verified_at) { , {{ store.since(p.verified_at) }} }
+                </span>
+              </span>
+              <span class="row__end">
+                <span class="pill" [class]="p.method === 'cash' ? 'pill--warn' : 'pill--ok'">
+                  {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                </span>
+                <span class="row__amount">₹{{ p.amount }}</span>
+              </span>
+            </div>
+          }
+        </div>
+      }
+
+      <div class="pager">
+        <button
+          type="button"
+          class="btn btn--ghost btn--sm"
+          [disabled]="store.paidOffset() === 0 || store.loadingPaid()"
+          (click)="store.prevPaidPage()">
+          Newer
+        </button>
+        <span class="muted small money">{{ store.paidRangeLabel() }}</span>
+        <button
+          type="button"
+          class="btn btn--ghost btn--sm"
+          [disabled]="!store.paidHasMore() || store.loadingPaid()"
+          (click)="store.nextPaidPage()">
+          Older
+        </button>
+      </div>
+    </section>
+  }
+
+</div>

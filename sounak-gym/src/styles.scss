@@ -546,7 +546,9 @@ a { color: var(--purple); }
   .tab__mark { display: none; }
   .tab__dot { position: static; transform: none; margin-left: auto; }
 
-  .console-main { padding: 20px 24px; max-width: 1400px; }
+  /* Capped for readability, centred so a wide monitor does not leave the
+     whole surplus as a gutter on one side. */
+  .console-main { padding: 20px 24px; max-width: 1400px; margin-inline: auto; width: 100%; }
 }
 
 /* --- section headings, in the .sub motif the console already used --- */
@@ -816,8 +818,12 @@ a { color: var(--purple); }
 
 .chip--on { background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 900; }
 
-/* --- segmented control --- */
+/* --- segmented control ---
+   Capped: a two-way switch stretched across a laptop reads as two enormous
+   buttons rather than one control. Wider than a phone, so it stays full width
+   there. */
 .seg {
+  max-width: 460px;
   display: flex;
   gap: 4px;
   padding: 4px;
@@ -899,11 +905,17 @@ a { color: var(--purple); }
 
 .sheet__grip { width: 40px; height: 4px; border-radius: 2px; background: var(--border); margin: 0 auto; }
 
-@media (min-width: 1024px) {
+@media (min-width: 1200px) {
   .sheet {
     position: static;
     display: block;
     z-index: auto;
+    /* The panel's own width is what its contents answer to. The container has
+       to be this wrapper, not the panel itself — an element cannot be queried
+       against its own size, which is why putting it on .sheet__panel silently
+       did nothing. */
+    container-type: inline-size;
+    container-name: sheet;
   }
   .sheet__scrim { display: none; }
   .sheet__grip { display: none; }
@@ -920,8 +932,12 @@ a { color: var(--purple); }
 /* --- members: list, then panel beside it once there is room --- */
 .split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 
-@media (min-width: 1024px) {
-  .split { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
+@media (min-width: 1200px) {
+  /* Two columns ONLY once there is a panel to put in the second one. The grid
+     used to reserve it unconditionally, so arriving at the member list — with
+     nobody selected yet, which is how you always arrive — left a 420px list
+     against an empty half-screen. */
+  .split--open { grid-template-columns: minmax(0, 420px) minmax(0, 1fr); }
 }
 
 /* --- a sticky action bar above the tab bar --- */
@@ -1087,4 +1103,317 @@ a { color: var(--purple); }
   .poster-card .why,
   .no-print { display: none !important; }
   .qr { max-width: 460px; border: 0; }
+}
+
+/* --- pieces the console's markup needs ------------------------------------ */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.alert { position: relative; }
+
+.alert__x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.alert__x:hover { background: rgba(0, 0, 0, 0.08); }
+
+/* The gym switcher: a real <select>, invisible over the name it changes. One
+   tap on a phone, and the keyboard and screen reader get a native control. */
+.console-bar__id--pick { position: relative; }
+
+.console-bar__pick {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  border: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.console-bar__name { display: flex; align-items: center; gap: 6px; }
+
+/* Rail footer. Hidden on a phone, where these live on the Setup tab instead —
+   there is no rail to put them in and the tab bar is for destinations. */
+.nav-foot { display: none; }
+
+@media (min-width: 1024px) {
+  .nav-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: auto;
+  }
+
+  .nav-foot__link,
+  .nav-foot__btn {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 700;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .nav-foot__link { background: rgba(255, 255, 255, 0.07); color: var(--cyan); border: 0; }
+  .nav-foot__link:hover { background: rgba(255, 255, 255, 0.14); color: var(--cyan); }
+
+  .nav-foot__btn {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    color: rgba(255, 255, 255, 0.85);
+    text-align: left;
+  }
+
+  .nav-foot__btn:hover { background: rgba(255, 255, 255, 0.1); }
+}
+
+/* Search and Add, on one line. Add is a button rather than a permanent form:
+   the desk looks someone up many times an hour and registers someone a few
+   times a day. */
+.findbar { display: flex; gap: 9px; align-items: stretch; }
+
+.findbar__add {
+  flex: 0 0 auto;
+  min-height: 48px;
+  padding: 0 14px;
+  font-weight: 900;
+}
+
+/* --- the member sheet's own bits --- */
+.sheet__head { display: flex; align-items: flex-start; gap: 13px; }
+
+.sheet__name {
+  margin: 0 0 5px;
+  font-size: var(--fs-title);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.sheet__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+}
+
+.sheet__meta .call { display: inline-flex; align-items: center; gap: 5px; }
+
+.sheet__x {
+  flex: 0 0 auto;
+  width: var(--tap);
+  height: var(--tap);
+  margin: -4px -4px 0 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sheet__x:hover { background: var(--border); }
+
+.sheet__kv { display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; line-height: 1.5; }
+.sheet__kv + .sheet__kv { margin-top: 10px; }
+
+/* --- photo capture --- */
+.photo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* A <label> wrapping a hidden file input — the only way to style the control
+   consistently across browsers. */
+.file-btn {
+  display: inline-flex;
+  cursor: pointer;
+  width: auto;
+  margin-right: 8px;
+}
+
+/* The span of days being bought. Shown prominently because it is what the money
+   buys, and it is not always "starting today". */
+.period {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+
+.period__dates { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+.period p { margin: 0; }
+
+.accent-bar--left { margin: 0 0 14px; }
+
+/* Buttons that carry an icon beside their label. flex, not inline-flex: the
+   base .btn is full width and block-like, and inline-flex would add a baseline
+   gap under it. .btn--sm opts back into inline-flex with its own width. */
+.btn { display: flex; align-items: center; justify-content: center; gap: 7px; }
+.btn--ghost.file-btn { min-height: var(--tap); }
+
+/* The sheet's three small facts read as labels, not as headline figures. */
+.tile__value--sm { font-size: 16px; }
+.tile__value--ok { color: var(--ok-ink); }
+
+/* --- the member list earns its width ---------------------------------------
+   A row stretched across a laptop with a name at one end and a badge at the
+   other is the same white space as an empty column, just spread thinner. Past
+   760px the row becomes a real set of columns — code, mobile and plan, which
+   are exactly what an owner scans for — and the second line folds away because
+   it would then be saying everything twice.
+
+   Driven by a CONTAINER query, so it is the list's own width that decides. The
+   same list is full-width with nothing selected and 420px beside an open member,
+   and it corrects itself both ways without knowing the window size. */
+.members-col {
+  container-type: inline-size;
+  container-name: col;
+}
+
+.cell { display: none; }
+.list__head { display: none; }
+
+@container col (min-width: 720px) {
+  .list__head,
+  .row--member {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1.4fr) minmax(0, 1.2fr) 148px 18px;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .list__head {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 9.5px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+  }
+
+  .row--member { min-height: 60px; padding: 8px 14px; }
+
+  /* The plan and its dates are a column of their own up here. */
+  .row--member .row__sub { display: none; }
+
+  .cell--plan {
+    display: block;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cell__sub { display: block; font-size: 11.5px; color: var(--text-faint); }
+  /* A fixed track, not `auto`: each ROW is its own grid, so an auto-sized
+     status column resolved differently per row and every column to its left
+     drifted with it — the headings lined up with nothing. */
+  .row--member .row__end { justify-self: end; }
+  .list__head > .right { text-align: right; }
+}
+
+/* Code and mobile only once there is room for them to be readable rather than
+   two more truncated columns. */
+@container col (min-width: 900px) {
+  .list__head,
+  .row--member {
+    grid-template-columns:
+      40px minmax(0, 1.3fr) 104px minmax(0, 0.9fr) minmax(0, 1.1fr) 148px 18px;
+  }
+
+  .cell--code,
+  .cell--phone {
+    display: block;
+    min-width: 0;
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Where the worklist ends. Without it the ordering is real but invisible — you
+   have to notice the badges stop being red to know you have left the work. */
+.list__divider {
+  grid-column: 1 / -1;
+  padding: 9px 14px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 9.5px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* Search, filters and Add stack on a phone and share one line once the column
+   is wide enough — two full-width bars above a list is a lot of vertical space
+   spent on controls that are each a few hundred pixels wide. */
+.toolbar { display: flex; flex-direction: column; gap: 10px; }
+
+@container col (min-width: 820px) {
+  .toolbar { flex-direction: row; align-items: center; gap: 14px; }
+  /* A search box the width of a laptop is not easier to type into. */
+  .findbar { flex: 0 1 420px; }
+  .chips { margin-left: auto; flex: 0 0 auto; }
+}
+
+/* --- the detail panel uses its own width ---
+   Beside a 420px list the panel gets most of the screen, and a single column of
+   stacked blocks in it is the same stretched-thin problem the list had. Past
+   620px it lays out in two, with who-and-what across the top. Again a container
+   query: it is the PANEL's width that matters, not the window's. */
+@container sheet (min-width: 620px) {
+  .sheet__panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    align-items: start;
+  }
+
+  /* Identity and validity run the full width; the details sit in two columns
+     underneath. */
+  .sheet__head,
+  .sheet__panel > .band {
+    grid-column: 1 / -1;
+  }
 }
