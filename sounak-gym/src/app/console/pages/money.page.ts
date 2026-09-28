@@ -31,11 +31,22 @@ export class MoneyPage {
     { key: 'cash', label: 'Cash' },
   ];
 
-  readonly logFilters: ReadonlyArray<{ key: '' | 'cash' | 'upi'; label: string }> = [
-    { key: '', label: 'All' },
-    { key: 'upi', label: 'UPI' },
-    { key: 'cash', label: 'Cash' },
+  readonly logFilters: ReadonlyArray<{
+    key: string;
+    label: string;
+    view: 'received' | 'undone';
+    method: '' | 'cash' | 'upi';
+  }> = [
+    { key: 'all', label: 'All', view: 'received', method: '' },
+    { key: 'upi', label: 'UPI', view: 'received', method: 'upi' },
+    { key: 'cash', label: 'Cash', view: 'received', method: 'cash' },
+    { key: 'undone', label: 'Undone', view: 'undone', method: '' },
   ];
+
+  /** Which segment is lit. */
+  activeLog(): string {
+    return this.store.logView() === 'undone' ? 'undone' : this.store.logMethod() || 'all';
+  }
 
   readonly myCashHeld = computed(() => Number(this.store.myCash()?.cash_in_hand ?? 0));
 }

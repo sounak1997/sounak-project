@@ -11,6 +11,7 @@ import {
   MemberRow,
   OpenPayment,
   PaymentProvider,
+  ReversedPayment,
   Plan,
   SettledPayment,
   Today,
@@ -111,6 +112,14 @@ export class ConsoleStore {
   readonly closing = signal<string | null>(null);
   /** Which payments the history log shows. Applied by the server, not here. */
   readonly logMethod = signal<'' | 'cash' | 'upi'>('');
+  /**
+   * Which log History shows: what reached you, or what was undone. Two
+   * genuinely different lists, so two views rather than one filtered one.
+   */
+  readonly logView = signal<'received' | 'undone'>('received');
+  /** The audit log of undone payments. Read-only by design. */
+  readonly reversed = signal<ReversedPayment[]>([]);
+
   readonly confirmBulk = signal<'receive' | null>(null);
   /** Which half of the Money tab is showing. */
   readonly moneyTab = signal<'settle' | 'history'>('settle');
@@ -422,6 +431,7 @@ export class ConsoleStore {
         this.paidOffset.set(page.offset);
         this.paidTotal.set(page.total);
         this.paidHasMore.set(page.hasMore);
+        this.reversed.set(await this.api.reversedPayments(gymId).catch(() => []));
       } else {
         this.position.set(null);
         this.recentPaid.set([]);
@@ -470,6 +480,7 @@ export class ConsoleStore {
     ]);
     this.position.set(pos);
     this.outstandingPaid.set(outstanding.rows);
+    this.reversed.set(await this.api.reversedPayments(gymId).catch(() => this.reversed()));
     // Back to page one: settling something changes what the record contains,
     // and an old offset would show a page that has shifted underneath it.
     await this.loadPaidPage(0);
@@ -540,11 +551,18 @@ export class ConsoleStore {
     }
   }
 
-  /** Changing the filter changes what the pages contain, so it starts again. */
-  setLogMethod(method: '' | 'cash' | 'upi'): void {
-    if (this.logMethod() === method) return;
+  /**
+   * Switch the history log. Changing the method changes what each page holds, so
+   * paging starts over; the undone view pages nothing — it is a bounded window,
+   * not a growing record.
+   */
+  setLog(view: 'received' | 'undone', method: '' | 'cash' | 'upi'): void {
+    if (this.logView() === view && this.logMethod() === method) return;
+    this.logView.set(view);
+    if (view === 'undone') return;
+    const changed = this.logMethod() !== method;
     this.logMethod.set(method);
-    void this.loadPaidPage(0);
+    if (changed) void this.loadPaidPage(0);
   }
 
   nextPaidPage(): void {

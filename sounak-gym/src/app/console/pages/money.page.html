@@ -1,5 +1,4 @@
 <div class="stack">
-
   <!-- The desk's own drawer. Not the gym's books: money they are personally
        accountable for at the end of a shift, and they need the figure in order
        to hand it over. -->
@@ -26,20 +25,21 @@
       <button
         type="button"
         [attr.aria-pressed]="store.moneyTab() === 'settle'"
-        (click)="store.moneyTab.set('settle')">
+        (click)="store.moneyTab.set('settle')"
+      >
         Outstanding
       </button>
       <button
         type="button"
         [attr.aria-pressed]="store.moneyTab() === 'history'"
-        (click)="store.moneyTab.set('history')">
+        (click)="store.moneyTab.set('history')"
+      >
         History
       </button>
     </div>
   }
 
   @if (!auth.isOwner() || store.moneyTab() === 'settle') {
-
     @if (auth.isOwner() && store.position(); as pos) {
       <!-- Two figures, because there are only two places money can be. No "cash
            with the owner": they are not at the gym and never take cash at the
@@ -88,7 +88,9 @@
         <div class="tile">
           <div class="tile__label">Confirmed this month</div>
           <div class="tile__value">₹{{ store.summary()?.collected_this_month ?? '0' }}</div>
-          <div class="tile__hint">Marked paid since the 1st, including what is still on its way.</div>
+          <div class="tile__hint">
+            Marked paid since the 1st, including what is still on its way.
+          </div>
         </div>
       </div>
     }
@@ -107,7 +109,8 @@
           <button
             type="button"
             [attr.aria-pressed]="store.payFilter() === f.key"
-            (click)="store.payFilter.set(f.key)">
+            (click)="store.payFilter.set(f.key)"
+          >
             {{ f.label }}
           </button>
         }
@@ -140,7 +143,9 @@
                   <span class="row__title">{{ p.full_name }}</span>
                   <span class="row__sub">
                     {{ p.plan_name }} · to {{ store.day(p.end_date) }}
-                    @if (p.reference) { · ref {{ p.reference }} }
+                    @if (p.reference) {
+                      · ref {{ p.reference }}
+                    }
                   </span>
                 </span>
                 <span class="row__end">
@@ -166,7 +171,8 @@
                         type="button"
                         class="btn btn--sm btn--ghost"
                         [disabled]="store.settling() === p.id"
-                        (click)="store.markPaid(p, 'cash')">
+                        (click)="store.markPaid(p, 'cash')"
+                      >
                         {{ store.settling() === p.id ? '…' : 'Paid cash' }}
                       </button>
                     }
@@ -174,7 +180,8 @@
                       type="button"
                       class="btn btn--sm"
                       [disabled]="store.settling() === p.id"
-                      (click)="store.markPaid(p, 'qr')">
+                      (click)="store.markPaid(p, 'qr')"
+                    >
                       {{ store.settling() === p.id ? '…' : 'Paid UPI' }}
                     </button>
                   </span>
@@ -189,14 +196,16 @@
                       type="button"
                       class="btn btn--sm btn--ghost"
                       [disabled]="store.reversing() === p.id || store.receiving() === p.id"
-                      (click)="store.confirmReverse.set(p)">
+                      (click)="store.confirmReverse.set(p)"
+                    >
                       {{ store.reversing() === p.id ? '…' : 'Undo' }}
                     </button>
                     <button
                       type="button"
                       class="btn btn--sm"
                       [disabled]="store.receiving() === p.id || store.reversing() === p.id"
-                      (click)="store.receive(p)">
+                      (click)="store.receive(p)"
+                    >
                       {{ store.receiving() === p.id ? '…' : 'Received' }}
                     </button>
                   </span>
@@ -216,7 +225,9 @@
     @if (auth.isOwner() && store.readyToReceive().length > 1) {
       <div class="actionbar">
         <div class="grow">
-          <div class="money" style="font-size: 17px; font-weight: 900">₹{{ store.visibleTotal() }}</div>
+          <div class="money" style="font-size: 17px; font-weight: 900">
+            ₹{{ store.visibleTotal() }}
+          </div>
           <div class="muted" style="font-size: 11px">
             {{ store.readyToReceive().length }} ready to receive
           </div>
@@ -225,7 +236,8 @@
           type="button"
           class="btn"
           [disabled]="store.bulkReceiving()"
-          (click)="store.confirmBulk.set('receive')">
+          (click)="store.confirmBulk.set('receive')"
+        >
           {{ store.bulkReceiving() ? 'Saving…' : 'Received all' }}
         </button>
       </div>
@@ -233,12 +245,17 @@
   }
 
   @if (auth.isOwner() && store.moneyTab() === 'history') {
-
     <section>
       <div class="sec-row">
-        <h2 class="sec">Payments received</h2>
+        <h2 class="sec">
+          {{ store.logView() === 'undone' ? 'Payments undone' : 'Payments received' }}
+        </h2>
         <span class="muted small money">
-          {{ store.loadingPaid() ? 'Loading…' : store.paidRangeLabel() }}
+          @if (store.logView() === 'undone') {
+            {{ store.reversed().length }} in the last 90 days
+          } @else {
+            {{ store.loadingPaid() ? 'Loading…' : store.paidRangeLabel() }}
+          }
         </span>
       </div>
 
@@ -252,65 +269,101 @@
         @for (f of logFilters; track f.key) {
           <button
             type="button"
-            [attr.aria-pressed]="store.logMethod() === f.key"
+            [attr.aria-pressed]="activeLog() === f.key"
             [disabled]="store.loadingPaid()"
-            (click)="store.setLogMethod(f.key)">
+            (click)="store.setLog(f.view, f.method)"
+          >
             {{ f.label }}
           </button>
         }
       </div>
 
-      @if (!store.recentPaid().length) {
-        <div class="list">
-          <p class="empty">
-            @if (store.logMethod()) {
-              Nothing here yet for that payment method.
-            } @else {
-              Nothing received yet. Mark a payment <strong>Received</strong> under
-              <strong>Outstanding</strong> and it will show up here.
+      @if (store.logView() === 'undone') {
+        <!-- An audit log. Every row here has already been rolled back, so there
+             is nothing to act on: the member went back to how they were, and
+             the way forward is a fresh renewal taken at the desk. What this
+             answers is who marked it paid and who said it was wrong. -->
+        @if (!store.reversed().length) {
+          <div class="list">
+            <p class="empty">Nothing has been undone in the last 90 days.</p>
+          </div>
+        } @else {
+          <div class="list">
+            @for (p of store.reversed(); track p.id) {
+              <div class="row row--static">
+                <span class="row__main">
+                  <span class="row__title">{{ p.full_name }}</span>
+                  <span class="row__sub">
+                    {{ p.plan_name }} · marked paid by {{ p.marked_by_name ?? '—' }} · undone by
+                    {{ p.reversed_by_name ?? '—' }}, {{ store.since(p.reversed_at) }}
+                  </span>
+                </span>
+                <span class="row__end">
+                  <span class="pill" [class]="p.method === 'cash' ? 'pill--warn' : 'pill--ok'">
+                    {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                  </span>
+                  <span class="row__amount">₹{{ p.amount }}</span>
+                </span>
+              </div>
             }
-          </p>
-        </div>
+          </div>
+        }
       } @else {
-        <div class="list">
-          @for (p of store.recentPaid(); track p.id) {
-            <div class="row row--static">
-              <span class="row__main">
-                <span class="row__title">{{ p.full_name }}</span>
-                <span class="row__sub">
-                  {{ p.plan_name }} · {{ p.marked_by_name ?? '—' }}
-                  @if (p.verified_at) { , {{ store.since(p.verified_at) }} }
+        @if (!store.recentPaid().length) {
+          <div class="list">
+            <p class="empty">
+              @if (store.logMethod()) {
+                Nothing here yet for that payment method.
+              } @else {
+                Nothing received yet. Mark a payment <strong>Received</strong> under
+                <strong>Outstanding</strong> and it will show up here.
+              }
+            </p>
+          </div>
+        } @else {
+          <div class="list">
+            @for (p of store.recentPaid(); track p.id) {
+              <div class="row row--static">
+                <span class="row__main">
+                  <span class="row__title">{{ p.full_name }}</span>
+                  <span class="row__sub">
+                    {{ p.plan_name }} · {{ p.marked_by_name ?? '—' }}
+                    @if (p.verified_at) {
+                      , {{ store.since(p.verified_at) }}
+                    }
+                  </span>
                 </span>
-              </span>
-              <span class="row__end">
-                <span class="pill" [class]="p.method === 'cash' ? 'pill--warn' : 'pill--ok'">
-                  {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                <span class="row__end">
+                  <span class="pill" [class]="p.method === 'cash' ? 'pill--warn' : 'pill--ok'">
+                    {{ p.method === 'cash' ? 'Cash' : 'UPI' }}
+                  </span>
+                  <span class="row__amount">₹{{ p.amount }}</span>
                 </span>
-                <span class="row__amount">₹{{ p.amount }}</span>
-              </span>
-            </div>
-          }
+              </div>
+            }
+          </div>
+        }
+
+        <div class="pager">
+          <button
+            type="button"
+            class="btn btn--ghost btn--sm"
+            [disabled]="store.paidOffset() === 0 || store.loadingPaid()"
+            (click)="store.prevPaidPage()"
+          >
+            Newer
+          </button>
+          <span class="muted small money">{{ store.paidRangeLabel() }}</span>
+          <button
+            type="button"
+            class="btn btn--ghost btn--sm"
+            [disabled]="!store.paidHasMore() || store.loadingPaid()"
+            (click)="store.nextPaidPage()"
+          >
+            Older
+          </button>
         </div>
       }
-
-      <div class="pager">
-        <button
-          type="button"
-          class="btn btn--ghost btn--sm"
-          [disabled]="store.paidOffset() === 0 || store.loadingPaid()"
-          (click)="store.prevPaidPage()">
-          Newer
-        </button>
-        <span class="muted small money">{{ store.paidRangeLabel() }}</span>
-        <button
-          type="button"
-          class="btn btn--ghost btn--sm"
-          [disabled]="!store.paidHasMore() || store.loadingPaid()"
-          (click)="store.nextPaidPage()">
-          Older
-        </button>
-      </div>
     </section>
   }
-
 </div>

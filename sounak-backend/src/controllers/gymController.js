@@ -539,3 +539,13 @@ exports.openPayments = asyncHandler(async (req, res) => {
   const rows = await gymService.openPayments({ gymId: req.gym.id, method });
   res.status(200).json({ success: true, count: rows.length, data: rows });
 });
+
+// @desc    Payments that were undone — an audit log, nothing actionable
+// @route   GET /api/gym/gyms/:gymId/payments/reversed
+// @access  Gym owner
+exports.reversedPayments = asyncHandler(async (req, res) => {
+  // Clamped: a corrections window, not an unbounded export.
+  const days = Math.min(Math.max(Number(req.query.days) || 90, 1), 365);
+  const rows = await gymService.reversedPayments({ gymId: req.gym.id, days });
+  res.status(200).json({ success: true, count: rows.length, days, data: rows });
+});

@@ -704,6 +704,44 @@ exports.recentSettledPayments = async ({
 };
 
 /**
+ * Payments that were undone. An AUDIT LOG, never a worklist.
+ *
+ * Undoing rolls a payment back completely — it does not linger as "not
+ * confirmed" waiting for somebody to act on it, and openPayments excludes it
+ * for exactly that reason. What is left is the question an audit log answers:
+ * who was marked paid, by whom, and who later said it was wrong.
+ *
+ * Its own function rather than a third mode on recentSettledPayments, which
+ * warns in its own comment that conflating its two callers would be a quiet
+ * bug. These rows are not settled and never will be.
+ *
+ * Bounded to a window rather than paged: corrections are rare, and nobody
+ * pages through old ones.
+ */
+exports.reversedPayments = async ({ gymId, days = 90 }) => {
+  const result = await pgPool.query(
+    `SELECT p.id, p.amount, p.method, p.reversed_at, p.created_at,
+            p.member_id, m.full_name,
+            s.plan_name, s.end_date,
+            ra.name AS reversed_by_name,
+            -- verified_by is cleared by the reversal, so this falls back to
+            -- whoever entered the payment in the first place.
+            ma.name AS marked_by_name
+       FROM gym_payments p
+       JOIN gym_members m ON m.id = p.member_id
+       JOIN gym_subscriptions s ON s.id = p.subscription_id
+       LEFT JOIN gym_accounts ra ON ra.id = p.reversed_by
+       LEFT JOIN gym_accounts ma ON ma.id = COALESCE(p.verified_by, p.recorded_by)
+      WHERE p.gym_id = $1
+        AND p.reversed_at IS NOT NULL
+        AND p.reversed_at > now() - ($2 || \' days\')::interval
+      ORDER BY p.reversed_at DESC, p.id DESC`,
+    [gymId, days]
+  );
+  return result.rows;
+};
+
+/**
  * Every payment that is not finished, in one list.
  *
  * This replaces three overlapping lists — unconfirmed, cash held by staff, and
@@ -740,6 +778,12 @@ exports.openPayments = async ({ gymId, method = null }) => {
       WHERE p.gym_id = $1
         AND p.handed_over_at IS NULL
         AND p.status <> 'failed'
+        -- An undone payment is VOID, not "not confirmed yet". Leaving it here
+        -- put it back at the top of the to-do list offering "Paid cash / Paid
+        -- UPI", which would quietly re-activate a membership the owner had
+        -- just decided was never paid for. The way back is a fresh renewal,
+        -- taken by staff or the owner; there is no re-confirming this row.
+        AND p.reversed_at IS NULL
         AND ($2::text IS NULL
              OR ($2 = 'cash' AND p.method = 'cash')
              OR ($2 = 'upi'  AND p.method <> 'cash'))

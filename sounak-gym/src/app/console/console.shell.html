@@ -449,13 +449,14 @@
           by {{ p.marked_by_name }}}@if (p.verified_at) {, {{ store.since(p.verified_at) }}}.
       </p>
       <ul class="modal__list">
-        <li>the payment goes back to unpaid</li>
-        <li>{{ p.full_name }}'s membership is put on hold — the door will refuse them</li>
+        <li>this payment is rolled back — it does not stay on your list waiting to be confirmed</li>
+        <li>{{ p.full_name }} goes back to how they were before it: the door will refuse them</li>
         @if (p.method === 'cash') {
           <li>it stops counting as cash held by staff</li>
         } @else {
           <li>it stops counting as money in your account</li>
         }
+        <li>to let them back in, take a <strong>fresh renewal</strong> — there is no re-confirming this one</li>
       </ul>
       <p class="muted small">The correction is recorded, including that you made it.</p>
       <div class="modal__actions">

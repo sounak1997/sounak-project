@@ -165,6 +165,25 @@ export interface OpenPayment {
   stage: 'unconfirmed' | 'with_staff' | 'to_check';
 }
 
+/**
+ * A payment that was undone. An audit record: who was marked paid, by whom, and
+ * who later said it was wrong. Deliberately carries nothing actionable — the
+ * way back is a fresh renewal, not re-confirming this row.
+ */
+export interface ReversedPayment {
+  id: string;
+  amount: string;
+  method: 'cash' | 'qr' | 'gateway';
+  reversed_at: string;
+  created_at: string;
+  member_id: string;
+  full_name: string;
+  plan_name: string;
+  end_date: string;
+  reversed_by_name: string | null;
+  marked_by_name: string | null;
+}
+
 export interface PaymentProvider {
   provider: string;
   key_id: string;
@@ -323,6 +342,15 @@ export class GymService {
     if (method) params['method'] = method;
     return firstValueFrom(
       this.http.get<{ data: OpenPayment[] }>(`${this.base(gymId)}/payments/open`, { params }),
+    ).then((r) => r.data);
+  }
+
+  /** Owner only: the audit log of undone payments. Nothing here is actionable. */
+  reversedPayments(gymId: string, days = 90): Promise<ReversedPayment[]> {
+    return firstValueFrom(
+      this.http.get<{ data: ReversedPayment[] }>(`${this.base(gymId)}/payments/reversed`, {
+        params: { days: String(days) },
+      }),
     ).then((r) => r.data);
   }
 

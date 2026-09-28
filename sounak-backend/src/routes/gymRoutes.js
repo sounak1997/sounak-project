@@ -208,6 +208,9 @@ router.get('/gyms/:gymId/payments', gymStaffOnly, gym.listPayments);
 // routes so 'open' is not read as an id.
 router.get('/gyms/:gymId/payments/open', gymStaffOnly, gym.openPayments);
 router.get('/gyms/:gymId/payments/recent', gymOwnerOnly, gym.recentSettledPayments);
+// Owner-only, like the rest of the money record: staff make the marks, so who
+// undid one is the owner's business, not the desk's.
+router.get('/gyms/:gymId/payments/reversed', gymOwnerOnly, gym.reversedPayments);
 router.post('/gyms/:gymId/payments/:paymentId/reverse', gymOwnerOnly, gym.reversePayment);
 // Ticking a payment off as accounted for — the UPI counterpart of a cash
 // handover, and what stops Undo hanging around for ever.
