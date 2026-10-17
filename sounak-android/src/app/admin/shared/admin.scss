@@ -1,0 +1,405 @@
+/* ---------------------------------------------------------------------------
+ * Admin panel — shared by every admin page (each lists this in styleUrls).
+ *
+ * Plainer than the customer screens on purpose: these are work tools used to
+ * enter a lot of data quickly, so the job is legibility and big tap targets.
+ * Colours come from Ionic's variables so the system dark palette (imported in
+ * global.scss) applies without extra rules; the brand amber/green appear only
+ * as accents.
+ * ------------------------------------------------------------------------- */
+
+:host {
+  /* Ionic's default primary is a stock blue the rest of the app never set;
+     the admin screens take the brand green for toggles, buttons and focus. */
+  --ion-color-primary: #1f6b5c;
+  --ion-color-primary-rgb: 31, 107, 92;
+  --ion-color-primary-contrast: #ffffff;
+  --ion-color-primary-contrast-rgb: 255, 255, 255;
+  --ion-color-primary-shade: #1b5e51;
+  --ion-color-primary-tint: #357a6c;
+
+  --admin-amber: #e3a32e;
+  --admin-amber-ink: #3a2a05;
+  --admin-green: #1f6b5c;
+  --admin-clay: #b54a34;
+  /* Ionic's dark palette defines the *-step-* mixes and leaves them unset in
+     light mode, so each fallback is the light value and dark mode needs no
+     extra rule. (These are the Ionic 8+ names; the old --ion-color-step-*
+     ones are never set any more.) */
+  --admin-page: #f6f5f2;
+  --admin-card: var(--ion-item-background, var(--ion-background-color, #fff));
+  --admin-line: var(--ion-background-color-step-150, rgba(0, 0, 0, 0.1));
+  --admin-soft: var(--ion-text-color-step-400, #6d6459);
+}
+
+/* The same green, lifted enough to read on the dark palette. */
+@media (prefers-color-scheme: dark) {
+  :host {
+    --ion-color-primary: #4fb39d;
+    --ion-color-primary-rgb: 79, 179, 157;
+    --ion-color-primary-contrast: #0f1f1b;
+    --ion-color-primary-contrast-rgb: 15, 31, 27;
+    --ion-color-primary-shade: #469e8a;
+    --ion-color-primary-tint: #61bba7;
+    --admin-green: #4fb39d;
+    /* Cards are --ion-item-background; the page sits one step darker. */
+    --admin-page: var(--ion-background-color, #121212);
+  }
+}
+
+.admin-content {
+  --background: var(--admin-page);
+}
+
+/* Ionic marks a touched, valid field in its stock bright green; use the brand
+   colour so a filled-in form doesn't flash a second green. */
+ion-input,
+ion-textarea {
+  --highlight-color-valid: var(--ion-color-primary);
+}
+
+.admin-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 12px 12px 120px;
+}
+
+/* --- States ---------------------------------------------------------------- */
+.state-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 56px 16px;
+  text-align: center;
+  color: var(--admin-soft);
+
+  p { margin: 0; max-width: 36ch; line-height: 1.5; }
+}
+
+/* --- Search + filter chips ------------------------------------------------- */
+.admin-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.admin-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--admin-card);
+  border: 1px solid var(--admin-line);
+
+  ion-icon { color: var(--admin-soft); font-size: 18px; flex-shrink: 0; }
+
+  input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--ion-text-color);
+    font-size: 15px;
+  }
+}
+
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--admin-line);
+  background: var(--admin-card);
+  color: var(--ion-text-color);
+  font-size: 13px;
+  cursor: pointer;
+
+  &.on {
+    background: var(--admin-amber);
+    border-color: var(--admin-amber);
+    color: var(--admin-amber-ink);
+    font-weight: 600;
+  }
+}
+
+.result-meta {
+  font-size: 12.5px;
+  color: var(--admin-soft);
+  margin: 0 4px 8px;
+}
+
+/* --- Rows (a product, a doctor, a test) ------------------------------------ */
+.admin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--admin-card);
+  border: 1px solid var(--admin-line);
+
+  &.inactive .row-main { opacity: 0.55; }
+}
+
+.row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-thumb {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--ion-color-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--admin-soft);
+  font-size: 20px;
+
+  &.round { border-radius: 50%; }
+  img { width: 100%; height: 100%; object-fit: cover; }
+}
+
+.row-body { min-width: 0; flex: 1; }
+
+.row-title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-sub {
+  font-size: 12.5px;
+  color: var(--admin-soft);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.row-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--ion-color-light);
+  color: var(--admin-soft);
+
+  &.hidden-badge { background: rgba(181, 74, 52, 0.14); color: var(--admin-clay); }
+  &.out-badge { background: rgba(227, 163, 46, 0.18); color: #8a5e10; }
+}
+
+.row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.toggle-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--admin-soft);
+
+  ion-toggle { --handle-width: 18px; --handle-height: 18px; height: 22px; width: 40px; }
+}
+
+/* --- Group cards (a clinic with its doctors, a lab with its tests) --------- */
+.admin-card {
+  border-radius: 16px;
+  background: var(--admin-card);
+  border: 1px solid var(--admin-line);
+  margin-bottom: 12px;
+  overflow: hidden;
+
+  &.inactive .card-head-main { opacity: 0.55; }
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+}
+
+.card-head-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.card-title { font-size: 16px; font-weight: 700; }
+.card-sub { font-size: 12.5px; color: var(--admin-soft); margin-top: 3px; line-height: 1.4; }
+
+.card-children {
+  border-top: 1px solid var(--admin-line);
+
+  .admin-row {
+    border: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--admin-line);
+    background: transparent;
+  }
+}
+
+.card-empty {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--admin-soft);
+  border-bottom: 1px solid var(--admin-line);
+}
+
+.add-child {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--admin-green);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- Forms ------------------------------------------------------------------ */
+.form-section {
+  margin-bottom: 16px;
+
+  ion-list {
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid var(--admin-line);
+    padding: 0;
+  }
+}
+
+.section-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--admin-soft);
+  margin: 0 6px 8px;
+}
+
+.hint {
+  font-size: 12.5px;
+  color: var(--admin-soft);
+  margin: 6px 6px 0;
+  line-height: 1.45;
+}
+
+/* "At Maiti Medical" above a doctor or test form. */
+.at-place {
+  margin: 0 6px 14px;
+  font-size: 14px;
+}
+
+/* Required-field marker, inside an ion-input's label slot. */
+.req { color: var(--admin-clay); }
+
+.suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px 12px;
+}
+
+/* Sits in ion-content's "fixed" slot, so it stays put while the form scrolls.
+   .admin-page's bottom padding keeps the last field clear of it. */
+.save-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: var(--ion-background-color, #fff);
+  border-top: 1px solid var(--admin-line);
+}
+
+.save-buttons {
+  max-width: 760px;
+  margin: 0 auto;
+  display: flex;
+  gap: 8px;
+
+  ion-button { flex: 1; margin: 0; text-transform: none; letter-spacing: normal; font-size: 15px; }
+}
+
+/* Label + explanation inside an ion-toggle's label slot. */
+.toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: normal;
+
+  small { font-size: 12.5px; color: var(--admin-soft); }
+}
+
+.form-error {
+  margin: 0 6px 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(181, 74, 52, 0.12);
+  color: var(--admin-clay);
+  font-size: 13.5px;
+}
+
+@media (min-width: 768px) {
+  .admin-page { padding: 20px 20px 120px; }
+}

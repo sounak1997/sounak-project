@@ -1,0 +1,56 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Coupons</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (error()) {
+      <div class="state-row">
+        <p>{{ error() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else if (coupons().length === 0) {
+      <div class="state-row">
+        <p>No coupons yet. Customers enter a coupon code at checkout to get the discount.</p>
+        <ion-button (click)="add()">Create a coupon</ion-button>
+      </div>
+    } @else {
+      <div class="admin-list">
+        @for (c of coupons(); track c.id) {
+          <div class="admin-row" [class.inactive]="!c.active">
+            <button class="row-main" (click)="open(c)">
+              <span class="row-body">
+                <div class="row-title">{{ c.code }}</div>
+                <div class="row-sub">{{ discount(c) }}</div>
+                <div class="row-sub">{{ usage(c) }}</div>
+                @if (!c.active || problem(c)) {
+                  <div class="row-badges">
+                    @if (!c.active) { <span class="badge hidden-badge">Switched off</span> }
+                    @if (problem(c); as p) { <span class="badge out-badge">{{ p }}</span> }
+                  </div>
+                }
+              </span>
+            </button>
+            <label class="toggle-line">
+              On
+              <ion-toggle [checked]="c.active" (ionChange)="setActive(c, $event.detail.checked)" aria-label="Coupon active"></ion-toggle>
+            </label>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  <ion-fab slot="fixed" vertical="bottom" horizontal="end">
+    <ion-fab-button (click)="add()" aria-label="Create coupon">
+      <ion-icon name="add-outline"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+</ion-content>

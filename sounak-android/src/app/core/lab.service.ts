@@ -6,9 +6,14 @@ import { environment } from '../../environments/environment';
 
 export interface LabTest {
   id: string;
+  lab_id: string;
   name: string;
   price: string | null;
   description: string | null;
+  sample_type: string | null;
+  preparation: string | null;
+  report_time: string | null;
+  active: boolean;
 }
 
 export interface Lab {
@@ -16,6 +21,11 @@ export interface Lab {
   name: string;
   address: string | null;
   phone: string;
+  opening_hours: string | null;
+  accreditation: string | null;
+  map_url: string | null;
+  photo_url: string | null;
+  active: boolean;
   tests: LabTest[];
 }
 

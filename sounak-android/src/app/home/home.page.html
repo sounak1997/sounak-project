@@ -120,6 +120,17 @@
       </section>
     }
 
+    @if (isAdmin()) {
+      <button class="admin-entry" (click)="goToAdmin()">
+        <span class="admin-entry-icon"><ion-icon name="construct-outline"></ion-icon></span>
+        <span class="opt-text">
+          <span class="opt-title">Admin panel</span>
+          <span class="opt-sub">Add grocery items, doctors, test centres and coupons</span>
+        </span>
+        <ion-icon class="opt-chevron" name="arrow-forward-outline"></ion-icon>
+      </button>
+    }
+
     <section class="actions">
       @for (item of shortcuts; track item.id) {
         <button class="option-card" [class]="'opt-' + item.tone" (click)="goTo(item.id)">

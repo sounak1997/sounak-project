@@ -1,0 +1,107 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin/labs"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ isNew() ? 'New test centre' : 'Edit test centre' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (loadError()) {
+      <div class="state-row">
+        <p>{{ loadError() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <section class="form-section">
+        <h2 class="section-title">Test centre</h2>
+        <ion-list lines="full">
+          <app-photo-field label="Photo of the centre (optional)" [(value)]="form.photoUrl"></app-photo-field>
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              placeholder="e.g. Suraksha Diagnostics, Salt Lake"
+              autocapitalize="words"
+              [(ngModel)]="form.name"
+              name="name"
+            ><div slot="label">Name <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              type="tel"
+              inputmode="tel"
+              placeholder="e.g. 033 2456 7890"
+              [(ngModel)]="form.phone"
+              name="phone"
+            ><div slot="label">Phone <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-textarea
+              label="Address"
+              labelPlacement="stacked"
+              placeholder="Street, area, landmark"
+              [autoGrow]="true"
+              rows="2"
+              [(ngModel)]="form.address"
+              name="address"
+            ></ion-textarea>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Opening hours"
+              labelPlacement="stacked"
+              placeholder="e.g. Mon–Sat 7 AM – 8 PM, Sun 7 AM – 1 PM"
+              [(ngModel)]="form.openingHours"
+              name="openingHours"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Accreditation"
+              labelPlacement="stacked"
+              placeholder="e.g. NABL"
+              [(ngModel)]="form.accreditation"
+              name="accreditation"
+            ></ion-input>
+          </ion-item>
+          <div class="suggestions">
+            @for (a of accreditations; track a) {
+              <button type="button" class="chip" [class.on]="form.accreditation === a" (click)="form.accreditation = a">{{ a }}</button>
+            }
+          </div>
+          <ion-item>
+            <ion-input
+              label="Google Maps link"
+              labelPlacement="stacked"
+              type="url"
+              inputmode="url"
+              placeholder="https://maps.app.goo.gl/…"
+              [(ngModel)]="form.mapUrl"
+              name="mapUrl"
+            ></ion-input>
+          </ion-item>
+        </ion-list>
+        <p class="hint">Patients go to the centre for their test, so the address, hours and map link are what they'll rely on.</p>
+      </section>
+
+      @if (formError()) {
+        <p class="form-error" role="alert">{{ formError() }}</p>
+      }
+    }
+  </div>
+
+  @if (!loading() && !loadError()) {
+    <div class="save-bar" slot="fixed">
+      <div class="save-buttons">
+        <ion-button [disabled]="saving()" (click)="save()">
+          @if (saving()) { <ion-spinner name="dots"></ion-spinner> } @else { {{ isNew() ? 'Add test centre' : 'Save changes' }} }
+        </ion-button>
+      </div>
+    </div>
+  }
+</ion-content>

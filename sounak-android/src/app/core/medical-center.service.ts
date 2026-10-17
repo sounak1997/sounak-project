@@ -12,8 +12,17 @@ export interface DoctorScheduleSlot {
 
 export interface Doctor {
   id: string;
+  center_id: string;
   name: string;
   specialization: string | null;
+  qualification: string | null;
+  experience_years: number | null;
+  consultation_fee: string | null;
+  registration_no: string | null;
+  languages: string | null;
+  about: string | null;
+  photo_url: string | null;
+  active: boolean;
   schedule: DoctorScheduleSlot[];
 }
 
@@ -22,6 +31,9 @@ export interface MedicalCenter {
   name: string;
   address: string | null;
   phone: string;
+  map_url: string | null;
+  photo_url: string | null;
+  active: boolean;
   doctors: Doctor[];
 }
 

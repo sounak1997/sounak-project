@@ -1,0 +1,111 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Grocery items</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    <div class="admin-filters">
+      <label class="admin-search">
+        <ion-icon name="search-outline"></ion-icon>
+        <input
+          type="search"
+          placeholder="Search items by name"
+          aria-label="Search items"
+          [value]="search()"
+          (input)="onSearch($any($event.target).value)"
+        />
+      </label>
+
+      @if (categories().length) {
+        <div class="chip-row">
+          <button class="chip" [class.on]="category() === null" (click)="selectCategory(null)">All</button>
+          @for (cat of categories(); track cat.category) {
+            <button class="chip" [class.on]="category() === cat.category" (click)="selectCategory(cat.category)">
+              {{ cat.category }}
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (error()) {
+      <div class="state-row">
+        <p>{{ error() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else if (products().length === 0) {
+      <div class="state-row">
+        <p>{{ search() || category() ? 'No items match that.' : 'No grocery items yet.' }}</p>
+        <ion-button (click)="add()">Add the first item</ion-button>
+      </div>
+    } @else {
+      <p class="result-meta">{{ resultLabel() }}</p>
+      <div class="admin-list">
+        @for (product of products(); track product.id) {
+          <div class="admin-row" [class.inactive]="!product.active">
+            <button class="row-main" (click)="open(product)">
+              <span class="row-thumb">
+                @if (thumb(product); as src) {
+                  <img [src]="src" alt="" loading="lazy" />
+                } @else {
+                  <ion-icon name="image-outline"></ion-icon>
+                }
+              </span>
+              <span class="row-body">
+                <div class="row-title">{{ product.name }}</div>
+                <div class="row-sub">
+                  ₹{{ product.price }}
+                  @if (product.mrp && +product.mrp > +product.price) { · MRP ₹{{ product.mrp }} }
+                  · {{ product.stock }} in stock
+                  @if (product.category) { · {{ product.category }} }
+                </div>
+                @if (!product.active || !product.in_stock || !product.image_urls.length) {
+                  <div class="row-badges">
+                    @if (!product.active) { <span class="badge hidden-badge">Hidden</span> }
+                    @if (!product.in_stock) { <span class="badge out-badge">Out of stock</span> }
+                    @if (!product.image_urls.length) { <span class="badge">No photo</span> }
+                  </div>
+                }
+              </span>
+            </button>
+            <div class="row-side">
+              <label class="toggle-line">
+                In stock
+                <ion-toggle
+                  [checked]="product.in_stock"
+                  (ionChange)="setInStock(product, $event.detail.checked)"
+                  aria-label="In stock"
+                ></ion-toggle>
+              </label>
+              <label class="toggle-line">
+                Visible
+                <ion-toggle
+                  [checked]="product.active"
+                  (ionChange)="setVisible(product, $event.detail.checked)"
+                  aria-label="Visible to customers"
+                ></ion-toggle>
+              </label>
+            </div>
+          </div>
+        }
+      </div>
+
+      <ion-infinite-scroll [disabled]="!hasMore()" (ionInfinite)="loadMore($any($event))">
+        <ion-infinite-scroll-content loadingSpinner="dots"></ion-infinite-scroll-content>
+      </ion-infinite-scroll>
+    }
+  </div>
+
+  <ion-fab slot="fixed" vertical="bottom" horizontal="end">
+    <ion-fab-button (click)="add()" aria-label="Add item">
+      <ion-icon name="add-outline"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+</ion-content>

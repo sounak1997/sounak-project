@@ -8,6 +8,8 @@ export interface Product {
   id: string;
   name: string;
   price: string;
+  /** Printed MRP; shown struck through when it is above `price`. */
+  mrp: string | null;
   category: string;
   stock: number;
   in_stock: boolean;
@@ -76,6 +78,18 @@ export class ProductService {
   imageUrl(product: Product): string | null {
     if (!product.image_urls?.length) return null;
     return `${this.apiUrl}${product.image_urls[0]}`;
+  }
+
+  /** The MRP to show struck through, or null when there is none or it isn't above the price. */
+  mrp(product: Product): number | null {
+    const mrp = Number(product.mrp);
+    return product.mrp && mrp > Number(product.price) ? mrp : null;
+  }
+
+  /** Whole-number "% off" against the MRP, or null when there is no MRP to compare. */
+  percentOff(product: Product): number | null {
+    const mrp = this.mrp(product);
+    return mrp ? Math.round(((mrp - Number(product.price)) / mrp) * 100) : null;
   }
 
   /** All images, for the detail page gallery. */

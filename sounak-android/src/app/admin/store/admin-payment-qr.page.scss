@@ -1,0 +1,38 @@
+.qr-card {
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--admin-card);
+  border: 1px solid var(--admin-line);
+  margin-bottom: 12px;
+  text-align: center;
+
+  .hint { margin: 10px 0 12px; }
+}
+
+.qr-frame {
+  width: 100%;
+  max-width: 300px;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff; /* a QR needs a light ground to scan, even in dark mode */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  img { width: 100%; height: 100%; object-fit: contain; }
+}
+
+.qr-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: #6d6459;
+  font-size: 13.5px;
+  line-height: 1.45;
+
+  ion-icon { font-size: 56px; color: #b8b0a6; }
+}

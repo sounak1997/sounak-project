@@ -51,6 +51,10 @@
         <h1 class="title">{{ p.name }}</h1>
         <div class="meta-row">
           <span class="price">₹{{ p.price }}</span>
+          @if (mrp(); as m) {
+            <s class="mrp">MRP ₹{{ m }}</s>
+            <span class="off">{{ percentOff() }}% off</span>
+          }
           <ion-chip [color]="p.in_stock ? 'success' : 'medium'" class="stock-chip">
             {{ p.in_stock ? 'In stock' : 'Out of stock' }}
           </ion-chip>

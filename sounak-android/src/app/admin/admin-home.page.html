@@ -1,0 +1,32 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/home"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Admin</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    <header class="intro">
+      <h1>Manage Sohay</h1>
+      <p>Everything customers see in the app is entered here. Changes show up for them straight away.</p>
+    </header>
+
+    <nav class="tiles">
+      @for (section of sections; track section.path) {
+        <a class="tile" [class]="'tone-' + section.tone" [routerLink]="section.path">
+          <span class="tile-icon"><ion-icon [name]="section.icon"></ion-icon></span>
+          <span class="tile-text">
+            <span class="tile-title">{{ section.title }}</span>
+            <span class="tile-sub">{{ section.sub }}</span>
+          </span>
+          <ion-icon class="tile-chevron" name="chevron-forward-outline"></ion-icon>
+        </a>
+      }
+    </nav>
+
+    <p class="hint signed-in">Signed in as {{ auth.user()?.email }}</p>
+  </div>
+</ion-content>

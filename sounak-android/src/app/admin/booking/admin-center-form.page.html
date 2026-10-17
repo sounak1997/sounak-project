@@ -1,0 +1,84 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin/doctors"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ isNew() ? 'New clinic' : 'Edit clinic' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (loadError()) {
+      <div class="state-row">
+        <p>{{ loadError() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <section class="form-section">
+        <h2 class="section-title">Clinic</h2>
+        <ion-list lines="full">
+          <app-photo-field label="Photo of the clinic (optional)" [(value)]="form.photoUrl"></app-photo-field>
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              placeholder="e.g. Maiti Medical"
+              autocapitalize="words"
+              [(ngModel)]="form.name"
+              name="name"
+            ><div slot="label">Name <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              type="tel"
+              inputmode="tel"
+              placeholder="e.g. 98300 11223"
+              [(ngModel)]="form.phone"
+              name="phone"
+            ><div slot="label">Phone <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-textarea
+              label="Address"
+              labelPlacement="stacked"
+              placeholder="Street, area, landmark"
+              [autoGrow]="true"
+              rows="2"
+              [(ngModel)]="form.address"
+              name="address"
+            ></ion-textarea>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Google Maps link"
+              labelPlacement="stacked"
+              type="url"
+              inputmode="url"
+              placeholder="https://maps.app.goo.gl/…"
+              [(ngModel)]="form.mapUrl"
+              name="mapUrl"
+            ></ion-input>
+          </ion-item>
+        </ion-list>
+        <p class="hint">Staff call this number to confirm each booking. For the map link, open the place in Google Maps, tap Share and copy the link.</p>
+      </section>
+
+      @if (formError()) {
+        <p class="form-error" role="alert">{{ formError() }}</p>
+      }
+    }
+  </div>
+
+  @if (!loading() && !loadError()) {
+    <div class="save-bar" slot="fixed">
+      <div class="save-buttons">
+        <ion-button [disabled]="saving()" (click)="save()">
+          @if (saving()) { <ion-spinner name="dots"></ion-spinner> } @else { {{ isNew() ? 'Add clinic' : 'Save changes' }} }
+        </ion-button>
+      </div>
+    </div>
+  }
+</ion-content>

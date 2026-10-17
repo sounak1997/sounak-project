@@ -1,5 +1,6 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/auth.guard';
+import { adminGuard } from './core/admin.guard';
 
 export const routes: Routes = [
   {
@@ -49,6 +50,13 @@ export const routes: Routes = [
     path: 'helper',
     loadComponent: () => import('./helper/helper.page').then((m) => m.HelperPage),
     canActivate: [authGuard],
+  },
+  // Admin panel — data entry for everything the customer screens show.
+  // Lazy, so customers never download it.
+  {
+    path: 'admin',
+    canActivate: [adminGuard],
+    loadChildren: () => import('./admin/admin.routes').then((m) => m.ADMIN_ROUTES),
   },
   {
     path: '',

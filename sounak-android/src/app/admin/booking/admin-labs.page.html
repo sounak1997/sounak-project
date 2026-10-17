@@ -1,0 +1,107 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Test centres</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (error()) {
+      <div class="state-row">
+        <p>{{ error() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else if (labs().length === 0) {
+      <div class="state-row">
+        <p>No test centres yet. Add a lab first, then the tests it offers.</p>
+        <ion-button (click)="addLab()">Add a test centre</ion-button>
+      </div>
+    } @else {
+      <div class="admin-filters">
+        <label class="admin-search">
+          <ion-icon name="search-outline"></ion-icon>
+          <input
+            type="search"
+            placeholder="Search labs or tests"
+            aria-label="Search labs and tests"
+            [value]="search()"
+            (input)="search.set($any($event.target).value.trim())"
+          />
+        </label>
+      </div>
+      <p class="result-meta">{{ plural(labs().length, 'test centre') }} · {{ plural(testCount(), 'test') }}</p>
+
+      @for (lab of visible(); track lab.id) {
+        <section class="admin-card" [class.inactive]="!lab.active">
+          <div class="card-head">
+            <button class="card-head-main" (click)="editLab(lab)">
+              <span class="row-thumb">
+                @if (images.src(lab.photo_url); as src) {
+                  <img [src]="src" alt="" />
+                } @else {
+                  <ion-icon name="flask-outline"></ion-icon>
+                }
+              </span>
+              <span class="row-body">
+                <div class="card-title">{{ lab.name }}</div>
+                <div class="card-sub">{{ labLine(lab) }}</div>
+                @if (!lab.active) {
+                  <div class="row-badges"><span class="badge hidden-badge">Hidden</span></div>
+                }
+              </span>
+            </button>
+            <label class="toggle-line">
+              Visible
+              <ion-toggle
+                [checked]="lab.active"
+                (ionChange)="setLabVisible(lab, $event.detail.checked)"
+                aria-label="Test centre visible to customers"
+              ></ion-toggle>
+            </label>
+          </div>
+
+          <div class="card-children">
+            @for (test of lab.tests; track test.id) {
+              <div class="admin-row" [class.inactive]="!test.active">
+                <button class="row-main" (click)="editTest(test)">
+                  <span class="row-body">
+                    <div class="row-title">{{ test.name }}</div>
+                    <div class="row-sub">{{ testLine(test) }}</div>
+                    @if (!test.active) {
+                      <div class="row-badges"><span class="badge hidden-badge">Hidden</span></div>
+                    }
+                  </span>
+                </button>
+                <label class="toggle-line">
+                  <ion-toggle
+                    [checked]="test.active"
+                    (ionChange)="setTestVisible(test, $event.detail.checked)"
+                    aria-label="Test visible to customers"
+                  ></ion-toggle>
+                </label>
+              </div>
+            } @empty {
+              <div class="card-empty">No tests added yet.</div>
+            }
+            <button class="add-child" (click)="addTest(lab)">
+              <ion-icon name="add-outline"></ion-icon> Add test
+            </button>
+          </div>
+        </section>
+      } @empty {
+        <div class="state-row"><p>Nothing matches “{{ search() }}”.</p></div>
+      }
+    }
+  </div>
+
+  <ion-fab slot="fixed" vertical="bottom" horizontal="end">
+    <ion-fab-button (click)="addLab()" aria-label="Add test centre">
+      <ion-icon name="add-outline"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+</ion-content>

@@ -1,0 +1,119 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Doctors &amp; clinics</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (error()) {
+      <div class="state-row">
+        <p>{{ error() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else if (centers().length === 0) {
+      <div class="state-row">
+        <p>No clinics yet. Add a clinic first, then add the doctors who sit there.</p>
+        <ion-button (click)="addCenter()">Add a clinic</ion-button>
+      </div>
+    } @else {
+      <div class="admin-filters">
+        <label class="admin-search">
+          <ion-icon name="search-outline"></ion-icon>
+          <input
+            type="search"
+            placeholder="Search clinics, doctors or specialities"
+            aria-label="Search clinics and doctors"
+            [value]="search()"
+            (input)="search.set($any($event.target).value.trim())"
+          />
+        </label>
+      </div>
+      <p class="result-meta">{{ plural(centers().length, 'clinic') }} · {{ plural(doctorCount(), 'doctor') }}</p>
+
+      @for (center of visible(); track center.id) {
+        <section class="admin-card" [class.inactive]="!center.active">
+          <div class="card-head">
+            <button class="card-head-main" (click)="editCenter(center)">
+              <span class="row-thumb">
+                @if (images.src(center.photo_url); as src) {
+                  <img [src]="src" alt="" />
+                } @else {
+                  <ion-icon name="business-outline"></ion-icon>
+                }
+              </span>
+              <span class="row-body">
+                <div class="card-title">{{ center.name }}</div>
+                <div class="card-sub">
+                  {{ center.phone }}@if (center.address) { · {{ center.address }} }
+                </div>
+                @if (!center.active) {
+                  <div class="row-badges"><span class="badge hidden-badge">Hidden</span></div>
+                }
+              </span>
+            </button>
+            <label class="toggle-line">
+              Visible
+              <ion-toggle
+                [checked]="center.active"
+                (ionChange)="setCenterVisible(center, $event.detail.checked)"
+                aria-label="Clinic visible to customers"
+              ></ion-toggle>
+            </label>
+          </div>
+
+          <div class="card-children">
+            @for (doctor of center.doctors; track doctor.id) {
+              <div class="admin-row" [class.inactive]="!doctor.active">
+                <button class="row-main" (click)="editDoctor(doctor)">
+                  <span class="row-thumb round">
+                    @if (images.src(doctor.photo_url); as src) {
+                      <img [src]="src" alt="" />
+                    } @else {
+                      <ion-icon name="person-outline"></ion-icon>
+                    }
+                  </span>
+                  <span class="row-body">
+                    <div class="row-title">{{ doctor.name }}</div>
+                    <div class="row-sub">{{ doctorLine(doctor) }}</div>
+                    @if (!doctor.active || !doctor.schedule.length) {
+                      <div class="row-badges">
+                        @if (!doctor.active) { <span class="badge hidden-badge">Hidden</span> }
+                        @if (!doctor.schedule.length) { <span class="badge out-badge">No hours</span> }
+                      </div>
+                    }
+                  </span>
+                </button>
+                <label class="toggle-line">
+                  <ion-toggle
+                    [checked]="doctor.active"
+                    (ionChange)="setDoctorVisible(doctor, $event.detail.checked)"
+                    aria-label="Doctor visible to customers"
+                  ></ion-toggle>
+                </label>
+              </div>
+            } @empty {
+              <div class="card-empty">No doctors added yet.</div>
+            }
+            <button class="add-child" (click)="addDoctor(center)">
+              <ion-icon name="add-outline"></ion-icon> Add doctor
+            </button>
+          </div>
+        </section>
+      } @empty {
+        <div class="state-row"><p>Nothing matches “{{ search() }}”.</p></div>
+      }
+    }
+  </div>
+
+  <ion-fab slot="fixed" vertical="bottom" horizontal="end">
+    <ion-fab-button (click)="addCenter()" aria-label="Add clinic">
+      <ion-icon name="add-outline"></ion-icon>
+    </ion-fab-button>
+  </ion-fab>
+</ion-content>

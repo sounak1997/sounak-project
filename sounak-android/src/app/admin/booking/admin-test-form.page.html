@@ -1,0 +1,121 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin/labs"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ isNew() ? 'New test' : 'Edit test' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (loadError()) {
+      <div class="state-row">
+        <p>{{ loadError() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <p class="hint at-place">At <strong>{{ labName() }}</strong></p>
+
+      <section class="form-section">
+        <h2 class="section-title">Test</h2>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              placeholder="e.g. Lipid profile"
+              [(ngModel)]="form.name"
+              name="name"
+            ><div slot="label">Name <span class="req">*</span></div></ion-input>
+          </ion-item>
+          @if (isNew()) {
+            <div class="suggestions">
+              @for (t of commonTests; track t) {
+                <button type="button" class="chip" [class.on]="form.name === t" (click)="form.name = t">{{ t }}</button>
+              }
+            </div>
+          }
+          <ion-item>
+            <ion-input
+              label="Price (₹)"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              placeholder="Leave blank to show “ask for price”"
+              [(ngModel)]="form.price"
+              name="price"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-textarea
+              label="What it checks"
+              labelPlacement="stacked"
+              placeholder="e.g. Cholesterol, HDL, LDL and triglycerides"
+              [autoGrow]="true"
+              rows="2"
+              [(ngModel)]="form.description"
+              name="description"
+            ></ion-textarea>
+          </ion-item>
+        </ion-list>
+      </section>
+
+      <section class="form-section">
+        <h2 class="section-title">For the patient</h2>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-input label="Sample" labelPlacement="stacked" placeholder="e.g. Blood" [(ngModel)]="form.sampleType" name="sampleType"></ion-input>
+          </ion-item>
+          <div class="suggestions">
+            @for (s of sampleTypes; track s) {
+              <button type="button" class="chip" [class.on]="form.sampleType === s" (click)="form.sampleType = s">{{ s }}</button>
+            }
+          </div>
+          <ion-item>
+            <ion-input
+              label="Preparation"
+              labelPlacement="stacked"
+              placeholder="e.g. 10–12 hours fasting"
+              [(ngModel)]="form.preparation"
+              name="preparation"
+            ></ion-input>
+          </ion-item>
+          <div class="suggestions">
+            @for (p of preparations; track p) {
+              <button type="button" class="chip" [class.on]="form.preparation === p" (click)="form.preparation = p">{{ p }}</button>
+            }
+          </div>
+          <ion-item>
+            <ion-input label="Report ready in" labelPlacement="stacked" placeholder="e.g. Same day" [(ngModel)]="form.reportTime" name="reportTime"></ion-input>
+          </ion-item>
+          <div class="suggestions">
+            @for (r of reportTimes; track r) {
+              <button type="button" class="chip" [class.on]="form.reportTime === r" (click)="form.reportTime = r">{{ r }}</button>
+            }
+          </div>
+        </ion-list>
+        <p class="hint">Preparation is the detail patients most often get wrong — a test taken without fasting usually has to be repeated.</p>
+      </section>
+
+      @if (formError()) {
+        <p class="form-error" role="alert">{{ formError() }}</p>
+      }
+    }
+  </div>
+
+  @if (!loading() && !loadError()) {
+    <div class="save-bar" slot="fixed">
+      <div class="save-buttons">
+        @if (isNew()) {
+          <ion-button fill="outline" [disabled]="saving()" (click)="save(true)">Save &amp; add another</ion-button>
+        }
+        <ion-button [disabled]="saving()" (click)="save()">
+          @if (saving()) { <ion-spinner name="dots"></ion-spinner> } @else { {{ isNew() ? 'Add test' : 'Save changes' }} }
+        </ion-button>
+      </div>
+    </div>
+  }
+</ion-content>

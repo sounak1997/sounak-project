@@ -1,0 +1,177 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin/doctors"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ isNew() ? 'New doctor' : 'Edit doctor' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (loadError()) {
+      <div class="state-row">
+        <p>{{ loadError() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <p class="hint at-place">At <strong>{{ centerName() }}</strong></p>
+
+      <section class="form-section">
+        <h2 class="section-title">Doctor</h2>
+        <ion-list lines="full">
+          <app-photo-field label="Photo (optional)" shape="round" [(value)]="form.photoUrl"></app-photo-field>
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              placeholder="e.g. Dr. Ananya Sen"
+              autocapitalize="words"
+              [(ngModel)]="form.name"
+              name="name"
+            ><div slot="label">Name <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Specialization"
+              labelPlacement="stacked"
+              placeholder="e.g. General physician"
+              autocapitalize="sentences"
+              [(ngModel)]="form.specialization"
+              name="specialization"
+            ></ion-input>
+          </ion-item>
+          <div class="suggestions">
+            @for (s of specializations; track s) {
+              <button type="button" class="chip" [class.on]="form.specialization === s" (click)="form.specialization = s">{{ s }}</button>
+            }
+          </div>
+          <ion-item>
+            <ion-input
+              label="Degree / qualifications"
+              labelPlacement="stacked"
+              placeholder="e.g. MBBS, MD (Medicine)"
+              autocapitalize="characters"
+              [(ngModel)]="form.qualification"
+              name="qualification"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Experience (years)"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              placeholder="e.g. 12"
+              [(ngModel)]="form.experienceYears"
+              name="experienceYears"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Consultation fee (₹)"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              placeholder="e.g. 400"
+              [(ngModel)]="form.consultationFee"
+              name="consultationFee"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Registration number"
+              labelPlacement="stacked"
+              placeholder="Medical council registration, e.g. WBMC 12345"
+              [(ngModel)]="form.registrationNo"
+              name="registrationNo"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Languages spoken"
+              labelPlacement="stacked"
+              placeholder="e.g. Bengali, Hindi, English"
+              [(ngModel)]="form.languages"
+              name="languages"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-textarea
+              label="About"
+              labelPlacement="stacked"
+              placeholder="Anything a patient should know — areas of focus, what to bring"
+              [autoGrow]="true"
+              rows="3"
+              [(ngModel)]="form.about"
+              name="about"
+            ></ion-textarea>
+          </ion-item>
+        </ion-list>
+      </section>
+
+      <section class="form-section">
+        <h2 class="section-title">Visiting hours</h2>
+        <div class="week">
+          @for (day of week(); track day.dayOfWeek) {
+            <div class="day" [class.off]="!day.sittings.length">
+              <div class="day-head">
+                <span class="day-name">{{ day.long }}</span>
+                @if (day.sittings.length) {
+                  <button type="button" class="link-btn" (click)="copyDay(day)">
+                    <ion-icon name="copy-outline"></ion-icon> Same hours on…
+                  </button>
+                } @else {
+                  <span class="day-off">Not visiting</span>
+                }
+              </div>
+              @for (sitting of day.sittings; track $index; let i = $index) {
+                <div class="sitting">
+                  <input
+                    type="time"
+                    class="time-input"
+                    [value]="sitting.start"
+                    (change)="setTime(day, i, 'start', $any($event.target).value)"
+                    [attr.aria-label]="day.long + ' from'"
+                  />
+                  <span class="to">to</span>
+                  <input
+                    type="time"
+                    class="time-input"
+                    [value]="sitting.end"
+                    (change)="setTime(day, i, 'end', $any($event.target).value)"
+                    [attr.aria-label]="day.long + ' until'"
+                  />
+                  <button type="button" class="icon-btn" (click)="removeSitting(day, i)" [attr.aria-label]="'Remove ' + day.long + ' hours'">
+                    <ion-icon name="close-outline"></ion-icon>
+                  </button>
+                </div>
+              }
+              <button type="button" class="link-btn add" (click)="addSitting(day)">
+                <ion-icon name="add-outline"></ion-icon> {{ day.sittings.length ? 'Add another sitting' : 'Add hours' }}
+              </button>
+            </div>
+          }
+        </div>
+        <p class="hint">Patients see these hours and pick a day; staff then call the clinic to fix the exact time.</p>
+      </section>
+
+      @if (formError()) {
+        <p class="form-error" role="alert">{{ formError() }}</p>
+      }
+    }
+  </div>
+
+  @if (!loading() && !loadError()) {
+    <div class="save-bar" slot="fixed">
+      <div class="save-buttons">
+        <ion-button [disabled]="saving()" (click)="save()">
+          @if (saving()) { <ion-spinner name="dots"></ion-spinner> } @else { {{ isNew() ? 'Add doctor' : 'Save changes' }} }
+        </ion-button>
+      </div>
+    </div>
+  }
+</ion-content>

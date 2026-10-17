@@ -11,6 +11,7 @@ import {
   arrowForwardOutline,
   searchOutline,
   cartOutline,
+  constructOutline,
 } from 'ionicons/icons';
 import { AuthService } from '../core/auth.service';
 import { Category, Product, ProductService } from '../core/product.service';
@@ -82,6 +83,9 @@ export class HomePage {
     { id: 'helper', title: 'Helper', sub: 'Call someone to help', icon: 'hand-left-outline', tone: 'helper' },
   ];
 
+  /** Drives the admin-panel entry; the /admin routes check the role again. */
+  readonly isAdmin = computed(() => this.auth.user()?.role === 'admin');
+
   readonly firstName = computed(
     () => (this.auth.user()?.name ?? '').trim().split(/\s+/)[0] || 'there'
   );
@@ -109,6 +113,7 @@ export class HomePage {
       medkitOutline,
       handLeftOutline,
       arrowForwardOutline,
+      constructOutline,
     });
     this.loadPicks();
     this.loadCategories();
@@ -160,6 +165,10 @@ export class HomePage {
 
   openProduct(product: Product): void {
     this.router.navigateByUrl(`/product/${product.id}`);
+  }
+
+  goToAdmin(): void {
+    this.router.navigateByUrl('/admin');
   }
 
   goTo(section: Shortcut['id'] | 'grocery'): void {

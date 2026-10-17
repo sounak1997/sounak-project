@@ -1,0 +1,172 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin/products"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ isNew() ? 'New item' : 'Edit item' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (loadError()) {
+      <div class="state-row">
+        <p>{{ loadError() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <section class="form-section">
+        <h2 class="section-title">Photos</h2>
+        <div class="photo-grid">
+          @for (url of photos(); track url; let i = $index; let first = $first; let last = $last) {
+            <div class="photo-tile" [class.cover]="first">
+              <img [src]="images.src(url)" alt="" />
+              @if (first) { <span class="cover-tag">Cover</span> }
+              <div class="photo-tools">
+                <button type="button" [disabled]="first" (click)="move(i, -1)" aria-label="Move left">
+                  <ion-icon name="chevron-back-outline"></ion-icon>
+                </button>
+                <button type="button" [disabled]="first" (click)="makeCover(i)" aria-label="Make cover photo">
+                  <ion-icon [name]="first ? 'star' : 'star-outline'"></ion-icon>
+                </button>
+                <button type="button" [disabled]="last" (click)="move(i, 1)" aria-label="Move right">
+                  <ion-icon name="chevron-forward-outline"></ion-icon>
+                </button>
+                <button type="button" (click)="removePhoto(i)" aria-label="Remove photo">
+                  <ion-icon name="trash-outline"></ion-icon>
+                </button>
+              </div>
+            </div>
+          }
+          @for (n of pendingTiles(); track $index) {
+            <div class="photo-tile pending"><ion-spinner name="dots"></ion-spinner></div>
+          }
+          <button type="button" class="photo-tile add-photo" (click)="picker.click()">
+            <ion-icon name="add-outline"></ion-icon>
+            <span>Add photos</span>
+          </button>
+        </div>
+        <input #picker type="file" accept="image/*" multiple hidden (change)="onPhotosPicked($event)" />
+        <p class="hint">The first photo is the one customers see in the list. Photos are resized automatically.</p>
+      </section>
+
+      <section class="form-section">
+        <h2 class="section-title">Details</h2>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              placeholder="e.g. Basmati Rice, 1 kg"
+              [(ngModel)]="form.name"
+              name="name"
+              autocapitalize="words"
+            ><div slot="label">Name <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Category"
+              labelPlacement="stacked"
+              placeholder="e.g. Staples"
+              [(ngModel)]="form.category"
+              name="category"
+              autocapitalize="words"
+            ></ion-input>
+          </ion-item>
+          @if (categories().length) {
+            <div class="suggestions">
+              @for (cat of categories(); track cat) {
+                <button type="button" class="chip" [class.on]="form.category === cat" (click)="form.category = cat">{{ cat }}</button>
+              }
+            </div>
+          }
+          <ion-item>
+            <ion-textarea
+              label="Description"
+              labelPlacement="stacked"
+              placeholder="Brand, pack size, anything a customer would ask"
+              [autoGrow]="true"
+              rows="3"
+              [(ngModel)]="form.description"
+              name="description"
+            ></ion-textarea>
+          </ion-item>
+        </ion-list>
+        <p class="hint">Put the pack size in the name (“Mustard Oil, 1 L”) so each size is its own item.</p>
+      </section>
+
+      <section class="form-section">
+        <h2 class="section-title">Price &amp; stock</h2>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              placeholder="0"
+              [(ngModel)]="form.price"
+              name="price"
+            ><div slot="label">Selling price (₹) <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="MRP (₹)"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              placeholder="Optional — printed price on the pack"
+              [(ngModel)]="form.mrp"
+              name="mrp"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Quantity in stock"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="numeric"
+              min="0"
+              placeholder="0"
+              [(ngModel)]="form.stock"
+              name="stock"
+            ></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-toggle [(ngModel)]="form.inStock" name="inStock">
+              <span class="toggle-label">Available to order<small>Turn off when it runs out</small></span>
+            </ion-toggle>
+          </ion-item>
+          <ion-item>
+            <ion-toggle [(ngModel)]="form.active" name="active">
+              <span class="toggle-label">Visible to customers<small>Off hides it without deleting it</small></span>
+            </ion-toggle>
+          </ion-item>
+        </ion-list>
+        @if (discountLabel(); as label) {
+          <p class="hint">{{ label }}</p>
+        }
+        <p class="hint">Customers can order up to the quantity in stock.</p>
+      </section>
+
+      @if (formError()) {
+        <p class="form-error" role="alert">{{ formError() }}</p>
+      }
+    }
+  </div>
+
+  @if (!loading() && !loadError()) {
+    <div class="save-bar" slot="fixed">
+      <div class="save-buttons">
+        @if (isNew()) {
+          <ion-button fill="outline" [disabled]="saving()" (click)="save(true)">Save &amp; add another</ion-button>
+        }
+        <ion-button [disabled]="saving()" (click)="save()">
+          @if (saving()) { <ion-spinner name="dots"></ion-spinner> } @else { {{ isNew() ? 'Add item' : 'Save changes' }} }
+        </ion-button>
+      </div>
+    </div>
+  }
+</ion-content>

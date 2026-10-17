@@ -1,0 +1,48 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Payment QR</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (error()) {
+      <div class="state-row">
+        <p>{{ error() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <section class="qr-card">
+        <div class="qr-frame">
+          @if (uploading()) {
+            <ion-spinner name="dots"></ion-spinner>
+          } @else if (images.src(qr()?.qr_image_url); as src) {
+            <img [src]="src" alt="Current payment QR" />
+          } @else {
+            <div class="qr-empty">
+              <ion-icon name="qr-code-outline"></ion-icon>
+              <span>No QR yet — customers can only pay cash on delivery.</span>
+            </div>
+          }
+        </div>
+        @if (updatedLabel(); as label) {
+          <p class="hint">Live since {{ label }}</p>
+        }
+        <ion-button expand="block" [disabled]="uploading()" (click)="picker.click()">
+          {{ qr()?.qr_image_url ? 'Upload a new QR' : 'Upload your UPI QR' }}
+        </ion-button>
+        <input #picker type="file" accept="image/*" hidden (change)="onPicked($event)" />
+      </section>
+
+      <p class="hint">
+        Use the QR from your UPI or bank app (a screenshot is fine). Customers see it at checkout under
+        “Scan &amp; Pay”, pay, and enter the UPI reference number with their order.
+      </p>
+    }
+  </div>
+</ion-content>

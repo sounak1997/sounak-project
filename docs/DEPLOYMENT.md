@@ -111,6 +111,23 @@ blueprint-create command**, so this step is the dashboard.
 > vector store is wiped on restart. Documents need re-ingesting after a cold
 > start.
 
+### Postgres schema changes
+
+`schema.sql` and `schema_doctors_tests.sql` only ever add (tables, nullable
+columns), and Render does not apply them. When either file changes, apply it
+to Neon **before** deploying the backend that uses it:
+
+```bash
+cd sounak-backend && node scripts/applySchema.js   # safe to re-run
+```
+
+The running backend ignores columns it doesn't know about, so applying first
+is harmless; deploying first makes every admin save fail on a missing column.
+(The gym schema has its own path: `node scripts/seedGym.js`.)
+
+Uploaded images (admin product/doctor/lab photos, the payment QR) live in the
+`catalog_images` table, not on Render's disk, so they survive restarts.
+
 ## Phase 3 — Atlas network access
 
 Render uses dynamic egress IPs, so the old single-IP whitelist will not work.
@@ -153,6 +170,8 @@ The 401 is the point: it proves the guard is live.
 | First request takes ~1 min | Render cold start; expected |
 | AI answers ignore your documents | service restarted, Chroma wiped — re-ingest |
 | Services stop mid-month | 750 instance-hours exhausted — remove any keep-alive pinger |
+| Admin saves fail with a column "does not exist" | backend deployed before `scripts/applySchema.js` was run |
+| Admin toggles fail in the browser but work in curl | `PATCH` missing from the CORS `methods` in server.js |
 
 ## Alternative: a real VM
 

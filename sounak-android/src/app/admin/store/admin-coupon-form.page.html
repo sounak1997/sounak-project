@@ -1,0 +1,108 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin/coupons"></ion-back-button>
+    </ion-buttons>
+    <ion-title>{{ isNew() ? 'New coupon' : 'Edit coupon' }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="admin-content">
+  <div class="admin-page">
+    @if (loading()) {
+      <div class="state-row"><ion-spinner name="dots"></ion-spinner></div>
+    } @else if (loadError()) {
+      <div class="state-row">
+        <p>{{ loadError() }}</p>
+        <ion-button fill="outline" (click)="load()">Try again</ion-button>
+      </div>
+    } @else {
+      <section class="form-section">
+        <h2 class="section-title">Coupon</h2>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              placeholder="e.g. DIWALI20"
+              autocapitalize="characters"
+              [readonly]="!isNew()"
+              [(ngModel)]="form.code"
+              name="code"
+            ><div slot="label">Code customers type <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-segment [(ngModel)]="form.discountType" name="discountType">
+              <ion-segment-button value="percentage"><ion-label>% off</ion-label></ion-segment-button>
+              <ion-segment-button value="flat"><ion-label>₹ off</ion-label></ion-segment-button>
+            </ion-segment>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              labelPlacement="stacked"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              [placeholder]="form.discountType === 'percentage' ? 'e.g. 20' : 'e.g. 50'"
+              [(ngModel)]="form.value"
+              name="value"
+            ><div slot="label">{{ form.discountType === 'percentage' ? 'Discount (%)' : 'Discount (₹)' }} <span class="req">*</span></div></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Minimum order (₹)"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="decimal"
+              min="0"
+              placeholder="Optional"
+              [(ngModel)]="form.minCartValue"
+              name="minCartValue"
+            ></ion-input>
+          </ion-item>
+        </ion-list>
+        @if (!isNew()) {
+          <p class="hint">The code can't be changed once customers may have it. Used {{ timesUsed() }} times so far.</p>
+        }
+      </section>
+
+      <section class="form-section">
+        <h2 class="section-title">Limits</h2>
+        <ion-list lines="full">
+          <ion-item>
+            <ion-input label="Valid from" labelPlacement="stacked" type="date" [(ngModel)]="form.validFrom" name="validFrom"></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input label="Valid until (including that day)" labelPlacement="stacked" type="date" [(ngModel)]="form.validTo" name="validTo"></ion-input>
+          </ion-item>
+          <ion-item>
+            <ion-input
+              label="Total uses allowed"
+              labelPlacement="stacked"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              placeholder="Optional — leave blank for unlimited"
+              [(ngModel)]="form.usageLimit"
+              name="usageLimit"
+            ></ion-input>
+          </ion-item>
+        </ion-list>
+        <p class="hint">Leave “valid until” blank for a coupon with no end date. Switch a coupon off from the list at any time.</p>
+      </section>
+
+      @if (formError()) {
+        <p class="form-error" role="alert">{{ formError() }}</p>
+      }
+    }
+  </div>
+
+  @if (!loading() && !loadError()) {
+    <div class="save-bar" slot="fixed">
+      <div class="save-buttons">
+        <ion-button [disabled]="saving()" (click)="save()">
+          @if (saving()) { <ion-spinner name="dots"></ion-spinner> } @else { {{ isNew() ? 'Create coupon' : 'Save changes' }} }
+        </ion-button>
+      </div>
+    </div>
+  }
+</ion-content>

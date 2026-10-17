@@ -221,6 +221,10 @@ export class GroceryPage implements OnInit {
     return this.productService.imageUrl(product);
   }
 
+  mrpFor(product: Product): number | null {
+    return this.productService.mrp(product);
+  }
+
   goToCart(): void {
     this.router.navigateByUrl('/cart');
   }

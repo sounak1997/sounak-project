@@ -1,5 +1,5 @@
 // src/app/product/product.page.ts — product detail (FR-3.2)
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonHeader, IonToolbar, IonTitle, IonButtons, IonBackButton, IonContent,
@@ -37,6 +37,15 @@ export class ProductPage implements OnInit {
   adding = signal(false);
 
   cartCount = this.cartService.itemCount;
+
+  readonly mrp = computed(() => {
+    const p = this.product();
+    return p ? this.productService.mrp(p) : null;
+  });
+  readonly percentOff = computed(() => {
+    const p = this.product();
+    return p ? this.productService.percentOff(p) : null;
+  });
 
   constructor() {
     addIcons({ cartOutline });

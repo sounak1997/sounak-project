@@ -110,7 +110,10 @@
             </div>
 
             <div class="product-foot">
-              <span class="product-price">₹{{ product.price }}</span>
+              <span class="product-price">
+                ₹{{ product.price }}
+                @if (mrpFor(product); as mrp) { <s class="product-mrp">₹{{ mrp }}</s> }
+              </span>
 
               @if (product.in_stock) {
                 <div class="buy">

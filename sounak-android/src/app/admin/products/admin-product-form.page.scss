@@ -1,0 +1,68 @@
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.photo-tile {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--admin-card);
+  border: 1px solid var(--admin-line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  img { width: 100%; height: 100%; object-fit: cover; }
+
+  &.cover { border: 2px solid var(--admin-amber); }
+}
+
+.cover-tag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: var(--admin-amber);
+  color: var(--admin-amber-ink);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.photo-tools {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-around;
+  padding: 3px 2px;
+  background: rgba(0, 0, 0, 0.55);
+
+  button {
+    padding: 4px;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 16px;
+    display: flex;
+    cursor: pointer;
+
+    &:disabled { opacity: 0.35; }
+  }
+}
+
+.add-photo {
+  flex-direction: column;
+  gap: 4px;
+  border-style: dashed;
+  color: var(--admin-green);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+
+  ion-icon { font-size: 26px; }
+}
