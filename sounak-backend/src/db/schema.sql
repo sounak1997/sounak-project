@@ -144,6 +144,46 @@ CREATE TABLE IF NOT EXISTS service_requests (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- ---------------------------------------------------------------------------
+-- Admin panel additions (2026-10-13)
+--
+-- `mrp` is the printed maximum retail price. Optional: when set and above
+-- `price`, the customer screens show it struck through next to the selling
+-- price. Nothing else (cart, orders, coupons) reads it — `price` stays the
+-- only number money is computed from.
+-- ---------------------------------------------------------------------------
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS mrp NUMERIC;
+
+-- ---------------------------------------------------------------------------
+-- Catalogue images, stored as BYTES IN POSTGRES (2026-10-13)
+--
+-- Every image the admin panel uploads — product photos, doctor / clinic / lab
+-- photos, the payment QR — lands here and is served from GET /images/:id.
+--
+-- Not on disk, for the reason recorded at MEMBER PHOTOS in schema_gym.sql and
+-- in commit ae26747: Render's filesystem is ephemeral, so a file written to
+-- uploads/ in production is gone on the next restart while the row that points
+-- at it survives. That made every admin upload a picture with a shelf life of
+-- a few hours, and the payment QR — the one image checkout depends on — the
+-- worst of them. The images already under uploads/products/ are committed to
+-- git and keep being served from /uploads; only new uploads come here.
+--
+-- Each image is resized to webp before it is stored (~20-120 KB), so even a
+-- thousand of them sit comfortably inside Neon's free tier.
+--
+-- The id is random and is the whole URL, so it is safe to cache for ever: a
+-- replaced image always gets a new id rather than new bytes under the old one.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS catalog_images (
+  id         VARCHAR PRIMARY KEY,
+  mime       VARCHAR NOT NULL DEFAULT 'image/webp',
+  bytes      BYTEA   NOT NULL,
+  byte_size  INTEGER NOT NULL,
+  created_by VARCHAR,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_service_requests_status ON service_requests(status);

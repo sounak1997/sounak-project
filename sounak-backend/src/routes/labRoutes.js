@@ -10,6 +10,8 @@ const requireAdmin = [requireAuth, requireRole('admin')];
 
 router.get('/', requireAuth, labTestController.listLabs);
 router.post('/', requireAdmin, labTestController.createLab);
+router.get('/:id', requireAdmin, labTestController.getLab);
+router.put('/:id', requireAdmin, labTestController.updateLab);
 router.patch('/:id/active', requireAdmin, labTestController.setLabActive);
 router.post('/:id/tests', requireAdmin, labTestController.createTest);
 

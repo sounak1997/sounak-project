@@ -1,5 +1,6 @@
 const rateLimit = require('express-rate-limit');
 const { RedisStore } = require('rate-limit-redis');
+const jwt = require('jsonwebtoken');
 const redis = require('../config/redis.config');
 
 // Use Redis store only when Redis is connected, otherwise fall back to memory
@@ -27,10 +28,33 @@ const isGymCheckinPath = (req) => req.path.startsWith('/gym/checkin');
 // their own console, which is what happened.
 const isGymPath = (req) => req.path.startsWith('/gym/');
 
-// General API: 100 requests per 15 minutes per IP
+// The grocery admin panel has the same problem the gym console had: data entry
+// is many small requests (open a product, upload two photos, save, back to the
+// list), and at 100 per 15 minutes an admin adding a morning's stock is locked
+// out after about twenty items. So a request carrying a valid ADMIN access
+// token gets the gym console's ceiling instead.
+//
+// The signature is verified, so the role claim cannot be forged. It can be up
+// to an hour stale for someone demoted since — acceptable here, because this
+// only decides how many requests to allow. What a request may actually DO is
+// still decided by roleMiddleware against the user re-read from the database.
+const ADMIN_LIMIT = 600;
+const DEFAULT_LIMIT = 100;
+
+const isAdminToken = (req) => {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return false;
+  try {
+    return jwt.verify(header.slice(7), process.env.JWT_SECRET).role === 'admin';
+  } catch {
+    return false; // expired or invalid: the normal limit applies, and auth rejects it later
+  }
+};
+
+// General API: 100 requests per 15 minutes per IP (600 for an admin)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: (req) => (isAdminToken(req) ? ADMIN_LIMIT : DEFAULT_LIMIT),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests — please try again later.' },

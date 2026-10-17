@@ -24,11 +24,27 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 }, // 8MB raw upload cap, pre-compression
   fileFilter: (req, file, cb) => {
     if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image files are allowed.'));
+      const err = new Error('Only image files are allowed.');
+      err.statusCode = 400;
+      return cb(err);
     }
     cb(null, true);
   },
 });
+
+/**
+ * `upload.single(field)`, but a rejected file answers 400 rather than 500.
+ * multer hands its errors (wrong type, over the size cap) straight to the
+ * error handler, which only knows a status if the error carries one.
+ */
+const singleImage = (field = 'image') => (req, res, next) =>
+  upload.single(field)(req, res, (err) => {
+    if (err && !err.statusCode) {
+      err.statusCode = 400;
+      if (err.code === 'LIMIT_FILE_SIZE') err.message = 'That image is too large — the limit is 8 MB.';
+    }
+    next(err);
+  });
 
 /**
  * Resize/compress an in-memory image buffer and save it under
@@ -60,4 +76,4 @@ async function deleteUploadedImage(urlPath) {
   await fs.unlink(filePath).catch(() => {}); // ignore if already gone
 }
 
-module.exports = { upload, saveResizedImage, deleteUploadedImage, UPLOADS_DIR };
+module.exports = { upload, singleImage, saveResizedImage, deleteUploadedImage, UPLOADS_DIR };

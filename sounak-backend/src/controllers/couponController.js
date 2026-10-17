@@ -2,6 +2,15 @@
 const asyncHandler = require('express-async-handler');
 const couponService = require('../services/couponService');
 
+// Checkout caps a discount at the cart total, so a 150% coupon would not go
+// negative — it would quietly make every order free. Refused here instead.
+const rejectOverHundredPercent = (res, discountType, value) => {
+  if (discountType === 'percentage' && Number(value) > 100) {
+    res.status(400);
+    throw new Error('A percentage discount cannot be more than 100%.');
+  }
+};
+
 // @desc    Admin creates a coupon — FR-2.5
 // @route   POST /api/coupons
 exports.createCoupon = asyncHandler(async (req, res) => {
@@ -19,6 +28,7 @@ exports.createCoupon = asyncHandler(async (req, res) => {
     res.status(400);
     throw new Error('value must be greater than 0.');
   }
+  rejectOverHundredPercent(res, discountType, value);
 
   let coupon;
   try {
@@ -45,6 +55,7 @@ exports.listCoupons = asyncHandler(async (req, res) => {
 // @route   PUT /api/coupons/:id
 exports.updateCoupon = asyncHandler(async (req, res) => {
   const { discountType, value, minCartValue, usageLimit, validFrom, validTo } = req.body;
+  rejectOverHundredPercent(res, discountType, value);
 
   let coupon;
   try {

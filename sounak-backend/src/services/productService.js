@@ -1,6 +1,7 @@
 // src/services/productService.js
 const pgPool = require('../config/pg.config');
 const cache = require('./cacheService');
+const catalogImageService = require('./catalogImageService');
 const { genId } = require('../utils/id');
 
 const KEYS = {
@@ -55,7 +56,7 @@ exports.listProducts = async ({ page, limit, category, search, includeInactive =
 
     const listParams = [...params, limitNum, offset];
     const rowsResult = await pgPool.query(
-      `SELECT id, name, price, category, stock, in_stock, active, image_urls
+      `SELECT id, name, price, mrp, category, stock, in_stock, active, image_urls
        FROM products ${whereClause}
        ORDER BY name ASC
        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
@@ -154,11 +155,15 @@ exports.getProductInfo = async (productId) => {
 };
 
 // --- 4. Create product (Admin) — FR-2.1 ---
-exports.createProduct = async ({ name, description, price, category, stock }) => {
+// mrp / imageUrls / inStock / active are optional so the seed scripts, which
+// pass only the original five fields, keep working unchanged.
+exports.createProduct = async ({
+  name, description, price, mrp, category, stock, imageUrls, inStock, active,
+}) => {
   const id = genId('PROD');
   const sqlQuery = `
-    INSERT INTO products (id, name, description, price, category, stock)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO products (id, name, description, price, mrp, category, stock, image_urls, in_stock, active)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10)
     RETURNING *
   `;
   try {
@@ -167,8 +172,12 @@ exports.createProduct = async ({ name, description, price, category, stock }) =>
       name,
       description || null,
       price,
+      mrp ?? null,
       category || null,
       stock || 0,
+      JSON.stringify(imageUrls || []),
+      inStock ?? true,
+      active ?? true,
     ]);
     await invalidateProductCaches(id);
     return result.rows[0];
@@ -179,13 +188,23 @@ exports.createProduct = async ({ name, description, price, category, stock }) =>
 };
 
 // --- 5. Update product fields (Admin) — FR-2.2, e.g. "change product cost" ---
-const UPDATABLE_COLUMNS = ['name', 'description', 'price', 'category', 'stock'];
+// Keys are column names. `undefined` leaves a column alone; `null` clears it.
+// image_urls is the full, ordered list (first = cover photo), so the admin
+// form can add, remove and reorder photos in the same save.
+const UPDATABLE_COLUMNS = [
+  'name', 'description', 'price', 'mrp', 'category', 'stock', 'in_stock', 'active', 'image_urls',
+];
 
 exports.updateProduct = async (productId, fields) => {
   const setClauses = [];
   const params = [];
   for (const column of UPDATABLE_COLUMNS) {
     if (fields[column] === undefined) continue;
+    if (column === 'image_urls') {
+      params.push(JSON.stringify(fields[column]));
+      setClauses.push(`image_urls = $${params.length}::jsonb`);
+      continue;
+    }
     params.push(fields[column]);
     setClauses.push(`${column} = $${params.length}`);
   }
@@ -197,16 +216,31 @@ exports.updateProduct = async (productId, fields) => {
   setClauses.push('updated_at = now()');
   params.push(productId);
 
-  const sqlQuery = `UPDATE products SET ${setClauses.join(', ')} WHERE id = $${params.length} RETURNING *`;
+  // Read the old photo list in the same statement as the write, so photos the
+  // admin removed can be released afterwards.
+  const sqlQuery = `
+    WITH before AS (SELECT image_urls FROM products WHERE id = $${params.length})
+    UPDATE products SET ${setClauses.join(', ')}
+    WHERE id = $${params.length}
+    RETURNING products.*, (SELECT image_urls FROM before) AS previous_image_urls
+  `;
+  let updated;
   try {
     const result = await pgPool.query(sqlQuery, params);
     if (result.rows.length === 0) return null;
+    updated = result.rows[0];
     await invalidateProductCaches(productId);
-    return result.rows[0];
   } catch (error) {
     console.error('Database Error updating product (Postgres):', error.message);
     throw new Error('POSTGRES_ERROR: Could not update the product.');
   }
+
+  const { previous_image_urls: previous, ...product } = updated;
+  if (fields.image_urls !== undefined) {
+    const removed = (previous || []).filter((url) => !product.image_urls.includes(url));
+    await catalogImageService.releaseImages(removed);
+  }
+  return product;
 };
 
 // --- 6. Soft delete / reactivate (Admin) — FR-2.3 ---

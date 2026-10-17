@@ -7,6 +7,8 @@ const labTestController = require('../controllers/labTestController');
 
 const requireAdmin = [passport.authenticate('jwt', { session: false }), requireRole('admin')];
 
+router.get('/:id', requireAdmin, labTestController.getTest);
+router.put('/:id', requireAdmin, labTestController.updateTest);
 router.patch('/:id/active', requireAdmin, labTestController.setTestActive);
 
 module.exports = router;

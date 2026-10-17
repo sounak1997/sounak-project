@@ -1,7 +1,8 @@
 // src/controllers/paymentConfigController.js
 const asyncHandler = require('express-async-handler');
 const paymentConfigService = require('../services/paymentConfigService');
-const { saveResizedImage, deleteUploadedImage } = require('../utils/imageUpload');
+const catalogImageService = require('../services/catalogImageService');
+const { deleteUploadedImage } = require('../utils/imageUpload');
 
 // @desc    Get the current live payment QR — shown to customers at checkout (FR-3.8)
 // @route   GET /api/payment-config/qr
@@ -19,13 +20,20 @@ exports.uploadQr = asyncHandler(async (req, res) => {
   }
 
   const previous = await paymentConfigService.getCurrentQr();
-  const imageUrl = await saveResizedImage(req.file.buffer, 'payment-qr', 800);
+  // Stored in Postgres, not uploads/: on Render's ephemeral disk a QR saved as a
+  // file vanished on the next restart, and checkout showed a broken image.
+  const imageUrl = await catalogImageService.saveImage({
+    buffer: req.file.buffer,
+    maxWidth: 800,
+    createdBy: String(req.user._id),
+  });
   const config = await paymentConfigService.setQr(imageUrl, String(req.user._id));
 
-  // Best-effort cleanup of the old file now that it's no longer referenced —
-  // only one QR is ever "live" (FR-2.9).
+  // Best-effort cleanup of the old image now that it's no longer referenced —
+  // only one QR is ever "live" (FR-2.9). An older QR may still be a file.
   if (previous.qr_image_url) {
     deleteUploadedImage(previous.qr_image_url).catch(() => {});
+    await catalogImageService.releaseImages([previous.qr_image_url]);
   }
 
   res.status(200).json({ success: true, data: config });

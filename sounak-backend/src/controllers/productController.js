@@ -1,6 +1,8 @@
 // src/controllers/productController.js
 const productService = require('../services/productService');
-const { saveResizedImage } = require('../utils/imageUpload');
+const catalogImageService = require('../services/catalogImageService');
+
+const { isValidImageUrl } = catalogImageService;
 
 
 // --- 1. Get List of Products Controller ---
@@ -143,19 +145,86 @@ exports.getProductInfo = async (req, res) => {
 };
 
 
+// --- Admin form input -------------------------------------------------------
+// One reader for create and update, so both apply the same rules. Returns
+// { fields } keyed by column name, or { error } with a message the admin form
+// shows as-is. On update (`partial`), a field missing from the body is left
+// out (unchanged); an empty string clears an optional field.
+const blankToNull = (value) => (value === '' ? null : value);
+
+function readProductFields(body, { partial }) {
+    const fields = {};
+    const has = (key) => body[key] !== undefined;
+
+    if (has('name') || !partial) {
+        const name = typeof body.name === 'string' ? body.name.trim() : '';
+        if (!name) return { error: 'name is required.' };
+        fields.name = name;
+    }
+    if (has('price') || !partial) {
+        const price = Number(body.price);
+        if (body.price === '' || body.price === null || body.price === undefined || Number.isNaN(price) || price < 0) {
+            return { error: 'price must be a non-negative number.' };
+        }
+        fields.price = price;
+    }
+    if (has('mrp')) {
+        const mrp = blankToNull(body.mrp);
+        if (mrp !== null && (Number.isNaN(Number(mrp)) || Number(mrp) < 0)) {
+            return { error: 'MRP must be a non-negative number.' };
+        }
+        fields.mrp = mrp === null ? null : Number(mrp);
+    }
+    if (has('stock')) {
+        const stock = Number(blankToNull(body.stock) ?? 0);
+        if (!Number.isInteger(stock) || stock < 0) return { error: 'stock must be a whole number, 0 or more.' };
+        fields.stock = stock;
+    }
+    if (has('description')) fields.description = blankToNull(String(body.description ?? '').trim());
+    if (has('category')) fields.category = blankToNull(String(body.category ?? '').trim());
+    if (has('inStock')) {
+        if (typeof body.inStock !== 'boolean') return { error: 'inStock must be true or false.' };
+        fields.in_stock = body.inStock;
+    }
+    if (has('active')) {
+        if (typeof body.active !== 'boolean') return { error: 'active must be true or false.' };
+        fields.active = body.active;
+    }
+    if (has('imageUrls')) {
+        if (!Array.isArray(body.imageUrls) || !body.imageUrls.every(isValidImageUrl)) {
+            return { error: 'imageUrls must be a list of uploaded image paths.' };
+        }
+        fields.image_urls = [...new Set(body.imageUrls)];
+    }
+
+    // Compare against the price being saved; on a partial update that leaves
+    // price alone, the check is skipped rather than guessed.
+    if (fields.mrp != null && fields.price !== undefined && fields.mrp < fields.price) {
+        return { error: 'MRP cannot be lower than the selling price.' };
+    }
+    return { fields };
+}
+
+
 // --- 4. Admin: Create Product — FR-2.1 ---
 exports.createProduct = async (req, res) => {
-    const { name, price, description, category, stock } = req.body;
-
-    if (!name || price === undefined || price === null) {
-        return res.status(400).json({ success: false, message: 'name and price are required.' });
-    }
-    if (Number.isNaN(Number(price)) || Number(price) < 0) {
-        return res.status(400).json({ success: false, message: 'price must be a non-negative number.' });
+    const { fields, error: invalid } = readProductFields(req.body, { partial: false });
+    if (invalid) {
+        return res.status(400).json({ success: false, message: invalid });
     }
 
     try {
-        const product = await productService.createProduct({ name, description, price, category, stock });
+        const product = await productService.createProduct({
+            name: fields.name,
+            description: fields.description,
+            price: fields.price,
+            mrp: fields.mrp,
+            category: fields.category,
+            stock: fields.stock,
+            imageUrls: fields.image_urls,
+            inStock: fields.in_stock,
+            active: fields.active,
+        });
         return res.status(201).json({ success: true, data: product });
     } catch (error) {
         console.error('Controller Error (Create):', error.message);
@@ -170,14 +239,13 @@ exports.createProduct = async (req, res) => {
 // --- 5. Admin: Update Product (incl. price/"change product cost") — FR-2.2 ---
 exports.updateProduct = async (req, res) => {
     const productId = req.params.id;
-    const { name, price, description, category, stock } = req.body;
-
-    if (price !== undefined && (Number.isNaN(Number(price)) || Number(price) < 0)) {
-        return res.status(400).json({ success: false, message: 'price must be a non-negative number.' });
+    const { fields, error: invalid } = readProductFields(req.body, { partial: true });
+    if (invalid) {
+        return res.status(400).json({ success: false, message: invalid });
     }
 
     try {
-        const product = await productService.updateProduct(productId, { name, price, description, category, stock });
+        const product = await productService.updateProduct(productId, fields);
         if (!product) {
             return res.status(404).json({ success: false, message: `Product '${productId}' not found.` });
         }
@@ -187,7 +255,7 @@ exports.updateProduct = async (req, res) => {
         const status = error.status || 500;
         return res.status(status).json({
             success: false,
-            message: 'Could not update the product.',
+            message: status === 400 ? error.message : 'Could not update the product.',
             detail: error.message,
         });
     }
@@ -251,7 +319,11 @@ exports.uploadImage = async (req, res) => {
             return res.status(404).json({ success: false, message: `Product '${productId}' not found.` });
         }
 
-        const imageUrl = await saveResizedImage(req.file.buffer, 'products');
+        // Stored in Postgres rather than uploads/ — see catalogImageService.
+        const imageUrl = await catalogImageService.saveImage({
+            buffer: req.file.buffer,
+            createdBy: String(req.user._id),
+        });
         const product = await productService.addProductImage(productId, imageUrl);
         return res.status(200).json({ success: true, data: product });
     } catch (error) {

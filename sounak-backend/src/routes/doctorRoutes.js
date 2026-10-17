@@ -1,6 +1,6 @@
 // src/routes/doctorRoutes.js
-// Separate from medicalCenterRoutes because these two act directly on a
-// doctor by id, not scoped under a center's path.
+// Separate from medicalCenterRoutes because these act directly on a doctor by
+// id, not scoped under a center's path.
 const express = require('express');
 const router = express.Router();
 const passport = require('passport');
@@ -9,6 +9,8 @@ const doctorBookingController = require('../controllers/doctorBookingController'
 
 const requireAdmin = [passport.authenticate('jwt', { session: false }), requireRole('admin')];
 
+router.get('/:id', requireAdmin, doctorBookingController.getDoctor);
+router.put('/:id', requireAdmin, doctorBookingController.updateDoctor);
 router.patch('/:id/active', requireAdmin, doctorBookingController.setDoctorActive);
 router.put('/:id/schedule', requireAdmin, doctorBookingController.setDoctorSchedule);
 

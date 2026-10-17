@@ -68,7 +68,10 @@ const corsOrigins = process.env.CORS_ORIGIN
   : '*';
 app.use(cors({
   origin: corsOrigins,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  // PATCH must be listed: every show/hide and in-stock toggle in the admin
+  // panel is a PATCH, and the Ionic app calls this API cross-origin, so a
+  // browser preflight that doesn't name it blocks the request outright.
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 app.use(loggerMiddleware);
@@ -101,6 +104,9 @@ const testRoutes = require('./src/routes/testRoutes');
 // (many independent gyms) and fully self-contained: its own tables, its own
 // accounts, and no overlap with the portals above.
 const gymRoutes = require('./src/routes/gymRoutes');
+// Admin panel image uploads (products, doctors, labs, payment QR).
+const catalogImageRoutes = require('./src/routes/catalogImageRoutes');
+const catalogImageController = require('./src/controllers/catalogImageController');
 
 app.use('/api/auth/register', registerLimiter);
 app.use('/api/auth', authLimiter, authRoutes);
@@ -118,6 +124,12 @@ app.use('/api/doctors', doctorRoutes);
 app.use('/api/labs', labRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/gym', gymRoutes);
+app.use('/api/images', catalogImageRoutes);
+
+// Stored catalogue images (see src/services/catalogImageService.js). Outside
+// /api on purpose: a page of products is dozens of image requests, and they
+// must not use up the per-IP API rate limit.
+app.get('/images/:id', catalogImageController.serveImage);
 
 // Uploaded product images and the payment QR (NFR-3). Registered before the
 // production catch-all below so it isn't swallowed by the Angular SPA route.

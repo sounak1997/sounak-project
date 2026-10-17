@@ -10,6 +10,8 @@ const requireAdmin = [requireAuth, requireRole('admin')];
 
 router.get('/', requireAuth, doctorBookingController.listCenters);
 router.post('/', requireAdmin, doctorBookingController.createCenter);
+router.get('/:id', requireAdmin, doctorBookingController.getCenter);
+router.put('/:id', requireAdmin, doctorBookingController.updateCenter);
 router.patch('/:id/active', requireAdmin, doctorBookingController.setCenterActive);
 router.post('/:id/doctors', requireAdmin, doctorBookingController.createDoctor);
 

@@ -3,7 +3,7 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 const { requireRole } = require('../middleware/roleMiddleware');
-const { upload } = require('../utils/imageUpload');
+const { singleImage } = require('../utils/imageUpload');
 const productController = require('../controllers/productController');
 
 // Protected for the same reason as userRoutes: the AI agent reaches these
@@ -23,7 +23,7 @@ router.post('/', requireAdmin, productController.createProduct);
 router.put('/:id', requireAdmin, productController.updateProduct);
 router.patch('/:id/active', requireAdmin, productController.setActive);
 router.patch('/:id/stock', requireAdmin, productController.setInStock);
-router.post('/:id/image', requireAdmin, upload.single('image'), productController.uploadImage);
+router.post('/:id/image', requireAdmin, singleImage('image'), productController.uploadImage);
 
 // 2. GET /api/products/:id (Details endpoints)
 router.get('/:id/info', requireAuth, productController.getProductInfo);
