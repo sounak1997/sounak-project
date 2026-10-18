@@ -188,6 +188,12 @@ exports.updateMember = async ({ gymId, memberId, fullName, phone, emergencyConta
     throw badRequest("status must be 'active' or 'inactive'.");
   }
 
+  // A blank box means "no number yet", never an empty-string number. Stored as
+  // '' it counts as a phone in the one-number-per-gym index, so the SECOND
+  // member saved without one — an imported member getting only a photo — would
+  // fail as a duplicate.
+  if (phone !== undefined && phone !== null && !String(phone).trim()) phone = null;
+
   // The same rule as registration. Without it the block above is sidestepped in
   // two steps: add a member on any number, then edit it to the refused one.
   if (phone) {
@@ -258,13 +264,19 @@ exports.listMembers = async ({ gymId, search, status, expiry, expiringWithinDays
               ELSE 'active'
             END AS expiry,
             (SELECT COUNT(*)::int FROM gym_device_tokens d
-              WHERE d.member_id = m.id AND d.revoked = false) AS device_count
+              WHERE d.member_id = m.id AND d.revoked = false) AS device_count,
+            -- Every match, not just this page: the All members view pages
+            -- through a gym's whole register and has to say how many there are.
+            COUNT(*) OVER ()::int AS total_count
        FROM gym_members m
        CROSS JOIN today t
        LEFT JOIN current_sub s ON s.member_id = m.id
       WHERE m.gym_id = $1
-        AND ($3::text IS NULL OR m.full_name ILIKE '%' || $3 || '%'
-                              OR m.phone     ILIKE '%' || $3 || '%')
+        AND ($3::text IS NULL OR m.full_name   ILIKE '%' || $3 || '%'
+                              OR m.phone       ILIKE '%' || $3 || '%'
+                              -- The register number a gym's members already
+                              -- know themselves by, carried over on import.
+                              OR m.member_code ILIKE '%' || $3 || '%')
         AND ($4::text IS NULL OR m.status = $4)
       ORDER BY m.full_name ASC
       LIMIT $5 OFFSET $6`,
@@ -454,6 +466,15 @@ exports.createSubscription = async ({
         chargedAmount,
         recordedBy,
       ]
+    );
+
+    // Selling a plan to an inactive member brings them back — an expired name
+    // from the old register who walks in again. Without this they would pay
+    // and still be refused at the door, which only checks active members.
+    await client.query(
+      `UPDATE gym_members SET status = 'active', updated_at = now()
+        WHERE id = $1 AND status = 'inactive'`,
+      [memberId]
     );
 
     // Every subscription gets a payment row, even an unpaid one, so "who owes

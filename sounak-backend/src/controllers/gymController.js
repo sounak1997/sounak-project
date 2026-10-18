@@ -102,7 +102,9 @@ exports.listMembers = asyncHandler(async (req, res) => {
     limit: Math.min(Number(req.query.limit) || 200, 500),
     offset: Number(req.query.offset) || 0,
   });
-  res.status(200).json({ success: true, count: members.length, data: members });
+  // `total` counts every match, so a paged view knows whether there is more.
+  const total = members.length ? members[0].total_count : 0;
+  res.status(200).json({ success: true, count: members.length, total, data: members });
 });
 
 // @desc    Register an athlete — name and phone are all that is needed
