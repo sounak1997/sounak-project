@@ -1274,7 +1274,14 @@ a { color: var(--purple); }
   display: inline-flex;
   cursor: pointer;
   width: auto;
-  margin-right: 8px;
+}
+
+/* Open camera / Choose file / Remove, wrapping onto a second line on a phone
+   rather than squeezing. */
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* The span of days being bought. Shown prominently because it is what the money
@@ -1430,3 +1437,9 @@ a { color: var(--purple); }
     grid-column: 1 / -1;
   }
 }
+
+/* --- All members --- */
+/* Carries a search of active members over to everyone; sits under the
+   heading, not stretched across the column like a primary action. */
+.search-all { align-self: flex-start; }
+.load-more { margin-top: 12px; }

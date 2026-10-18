@@ -34,8 +34,18 @@
         </button>
       </div>
 
-      <!-- Needs action is the default, because it is what the list is FOR. -->
+      <!-- Active members is the default: the people who actually train here.
+           All members adds every lapsed name kept on the register, which can
+           run to thousands, so it is fetched a page at a time. -->
       <div class="chips">
+        <button
+          type="button"
+          class="chip"
+          [class.chip--on]="store.scope() === 'all'"
+          (click)="setScope('all')"
+        >
+          Active members {{ store.members().length }}
+        </button>
         <button
           type="button"
           class="chip"
@@ -50,39 +60,57 @@
           [class.chip--on]="store.scope() === 'active'"
           (click)="setScope('active')"
         >
-          Active {{ store.activeMembers().length }}
+          Paid up {{ store.activeMembers().length }}
         </button>
         <button
           type="button"
           class="chip"
-          [class.chip--on]="store.scope() === 'all'"
-          (click)="setScope('all')"
+          [class.chip--on]="store.scope() === 'everyone'"
+          (click)="setScope('everyone')"
         >
-          All {{ store.members().length }}
+          All members {{ store.registerTotal() ?? '' }}
         </button>
       </div>
     </div>
 
     <div class="sec-row">
       <h2 class="sec">
-        @if (store.memberFilter().trim()) {
-          Matches, everyone searched
+        @if (store.scope() === 'everyone') {
+          {{ store.memberFilter().trim() ? 'Matches in all members' : 'All members, A to Z' }}
+        } @else if (store.memberFilter().trim()) {
+          Matches among active members
         } @else {
           Soonest to lapse first
         }
       </h2>
-      <span class="muted small money">{{ store.visibleMembers().length }} shown</span>
+      <span class="muted small money">
+        @if (store.scope() === 'everyone' && store.everyoneTotal() !== null) {
+          {{ store.everyone().length }} of {{ store.everyoneTotal() }}
+        } @else {
+          {{ store.listRows().length }} shown
+        }
+      </span>
     </div>
+
+    <!-- A search of active members cannot find someone whose membership
+         lapsed long ago; this carries the same search over to everyone. -->
+    @if (store.scope() !== 'everyone' && store.memberFilter().trim()) {
+      <button type="button" class="btn btn--ghost btn--sm search-all" (click)="store.searchEveryone()">
+        Search all members, expired too
+      </button>
+    }
 
     <!-- Its own container, so the rows answer to the width of the LIST rather
          than the window: opening a member narrows this to sit beside the
          detail panel, and the rows fold back to their compact two-line form
          on their own. No media query knows anything about it. -->
     <div class="members-list">
-      @if (!store.visibleMembers().length) {
+      @if (!store.listRows().length) {
         <div class="list">
           <p class="empty">
-            @if (store.memberFilter().trim()) {
+            @if (store.scope() === 'everyone' && store.loadingEveryone()) {
+              Loading members…
+            } @else if (store.memberFilter().trim()) {
               Nobody matches “{{ store.memberFilter() }}”.
             } @else if (store.scope() === 'attention') {
               Nothing to chase — every membership is current.
@@ -105,7 +133,7 @@
             <span></span>
           </div>
 
-          @for (m of store.visibleMembers(); track m.id; let i = $index) {
+          @for (m of store.listRows(); track m.id; let i = $index) {
             @if (i === store.firstCurrentIndex()) {
               <div class="list__divider">Current members</div>
             }
@@ -126,7 +154,9 @@
                 <!-- The narrow row's second line. Wide, these are columns of
                      their own, so it would be saying everything twice. -->
                 <span class="row__sub">
-                  @if (m.expiry === 'none') {
+                  @if (store.isLapsedInactive(m)) {
+                    Expired member · No. {{ m.member_code }}
+                  } @else if (m.expiry === 'none') {
                     Registered · never started
                   } @else {
                     {{ m.plan_name }} · {{ m.expiry === 'expired' ? 'ended' : 'to' }}
@@ -140,7 +170,9 @@
               >
               <span class="cell cell--phone money">{{ m.phone || '—' }}</span>
               <span class="cell cell--plan">
-                @if (m.expiry === 'none') {
+                @if (store.isLapsedInactive(m)) {
+                  Expired
+                } @else if (m.expiry === 'none') {
                   Never started
                 } @else {
                   {{ m.plan_name }}
@@ -155,7 +187,7 @@
                   <span class="badge badge--ok">In now</span>
                 }
                 <!-- A word and a number, never a colour on its own. -->
-                <span class="badge" [class]="store.badgeClass(m.expiry)">
+                <span class="badge" [class]="store.rowBadgeClass(m)">
                   {{ store.daysLabel(m) }}
                 </span>
               </span>
@@ -164,6 +196,17 @@
             </button>
           }
         </div>
+
+        @if (store.scope() === 'everyone' && store.everyoneHasMore()) {
+          <button
+            type="button"
+            class="btn btn--ghost load-more"
+            [disabled]="store.loadingEveryone()"
+            (click)="store.loadMoreEveryone()"
+          >
+            {{ store.loadingEveryone() ? 'Loading…' : 'Load more' }}
+          </button>
+        }
       }
     </div>
   </div>

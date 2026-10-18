@@ -172,22 +172,27 @@
           <div class="av av--xl av--empty">+</div>
         }
         <div>
-          <!-- capture="environment" opens the camera straight away on a phone,
-               and falls back to a file picker on a desktop. -->
-          <label class="btn btn--ghost btn--sm file-btn">
-            {{ store.newPhotoPreview() ? 'Retake photo' : 'Take photo' }}
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              (change)="store.onPhotoPicked($event, 'new')"
-              hidden />
-          </label>
-          @if (store.newPhotoPreview()) {
-            <button type="button" class="btn btn--ghost btn--sm" (click)="store.clearNewPhoto()">
-              Remove
+          <!-- The camera for the person at the counter, a file for a picture
+               that already exists. No `capture` on the input: it would turn
+               "Choose file" into a second camera button on a phone. -->
+          <div class="photo-actions">
+            <button type="button" class="btn btn--ghost btn--sm" (click)="store.openCamera('new')">
+              Open camera
             </button>
-          }
+            <label class="btn btn--ghost btn--sm file-btn">
+              Choose file
+              <input
+                type="file"
+                accept="image/*"
+                (change)="store.onPhotoPicked($event, 'new')"
+                hidden />
+            </label>
+            @if (store.newPhotoPreview()) {
+              <button type="button" class="btn btn--ghost btn--sm" (click)="store.clearNewPhoto()">
+                Remove
+              </button>
+            }
+          </div>
           <p class="muted small">Optional — helps the desk recognise them.</p>
         </div>
       </div>
@@ -248,17 +253,25 @@
         } @else {
           <div class="av av--xl av--empty">{{ store.initials(m.full_name) }}</div>
         }
-        <div>
+        <div class="photo-actions">
+          <button type="button" class="btn btn--ghost btn--sm" (click)="store.openCamera('edit')">
+            Open camera
+          </button>
           <label class="btn btn--ghost btn--sm file-btn">
-            {{ m.photo_id || store.editPhotoPreview() ? 'Replace photo' : 'Take photo' }}
+            Choose file
             <input
               type="file"
               accept="image/*"
-              capture="environment"
               (change)="store.onPhotoPicked($event, 'edit')"
               hidden />
           </label>
-          @if (m.photo_id) {
+          <!-- An unsaved pick is undone locally; only a saved photo needs the
+               server. -->
+          @if (store.editPhotoPreview()) {
+            <button type="button" class="btn btn--ghost btn--sm" (click)="store.clearEditPhoto()">
+              Remove
+            </button>
+          } @else if (m.photo_id) {
             <button type="button" class="btn btn--ghost btn--sm" (click)="store.removePhoto()">
               Remove photo
             </button>
@@ -327,6 +340,14 @@
       </div>
     </div>
   </div>
+}
+
+<!-- The in-app camera, over whichever of the two forms above opened it. The
+     photo lands in that form's preview; nothing uploads until it is saved. -->
+@if (store.cameraFor()) {
+  <app-photo-camera
+    (captured)="store.onPhotoCaptured($event)"
+    (closed)="store.cameraFor.set(null)" />
 }
 
 <!-- Taking a renewal at the desk. Staff can do this: it is money coming IN

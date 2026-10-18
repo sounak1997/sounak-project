@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
+import { environment } from '../../environment/environment';
 
 export interface DashboardSummary {
   active_members: number;
@@ -115,6 +116,7 @@ export interface MemberRow {
   photo_id: string | null;
   emergency_contact: string | null;
   notes: string | null;
+  /** 'inactive' is a lapsed member kept on the register, e.g. from an import. */
   status: string;
   plan_name: string | null;
   end_date: string | null;
@@ -223,18 +225,43 @@ export class GymService {
   }
 
   /**
-   * The gym's members.
+   * The gym's active members — the everyday list.
    *
    * Asks for the server's maximum, because the console filters the list in the
    * browser for instant results — and a filter over a truncated list is worse
    * than no filter: it says "nobody matches" when somebody does.
+   *
+   * Active only: a gym that imported its paper register has well over a
+   * thousand lapsed names, which would bury the people actually training and
+   * push them past the cap. Those are reached through memberPage instead.
    */
   members(gymId: string, search = ''): Promise<MemberRow[]> {
-    const params: Record<string, string> = { limit: '500' };
+    const params: Record<string, string> = { limit: '500', status: 'active' };
     if (search) params['search'] = search;
     return firstValueFrom(
       this.http.get<{ data: MemberRow[] }>(`${this.base(gymId)}/members`, { params }),
     ).then((r) => r.data);
+  }
+
+  /**
+   * One page of EVERY member, inactive included, searched on the server — the
+   * All members view. Paged rather than loaded whole, since this is the list
+   * that grows without bound.
+   */
+  memberPage(
+    gymId: string,
+    opts: { search?: string; offset: number; limit: number },
+  ): Promise<{ rows: MemberRow[]; total: number }> {
+    const params: Record<string, string> = {
+      limit: String(opts.limit),
+      offset: String(opts.offset),
+    };
+    if (opts.search) params['search'] = opts.search;
+    return firstValueFrom(
+      this.http.get<{ data: MemberRow[]; total?: number }>(`${this.base(gymId)}/members`, {
+        params,
+      }),
+    ).then((r) => ({ rows: r.data, total: r.total ?? r.data.length }));
   }
 
   today(gymId: string): Promise<Today> {
@@ -598,9 +625,14 @@ export class GymService {
    *
    * Needs no token — the photo id is 128 random bits and is reissued whenever
    * the photo changes, which is what lets a plain <img> render it.
+   *
+   * Absolute in production. An <img> request never goes through HttpClient, so
+   * apiUrlInterceptor does not see it: a bare /api path went to the Cloudflare
+   * origin, which answers every unknown path with index.html, and every photo
+   * rendered as a broken image.
    */
   photoUrl(photoId: string | null): string | null {
-    return photoId ? `/api/gym/members/photo/${photoId}` : null;
+    return photoId ? `${environment.apiUrl}/api/gym/members/photo/${photoId}` : null;
   }
 
   /** The path for members without a smartphone — the owner marks them present. */

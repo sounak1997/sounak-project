@@ -40,8 +40,12 @@ export type ReversiblePayment = {
   verified_at: string | null;
 };
 
-/** Which slice of the member list the chips are showing. */
-export type MemberScope = 'attention' | 'active' | 'all';
+/**
+ * Which slice of the member list the chips are showing. 'all' is every ACTIVE
+ * member; 'everyone' adds the inactive ones too (lapsed names kept on the
+ * register) and is fetched from the server a page at a time.
+ */
+export type MemberScope = 'attention' | 'active' | 'all' | 'everyone';
 
 /**
  * One store behind the whole console.
@@ -162,6 +166,21 @@ export class ConsoleStore {
   /** The member whose sheet is open — a bottom sheet on a phone, a panel on a laptop. */
   readonly selected = signal<MemberRow | null>(null);
 
+  // --- All members: every name on the register, a page at a time ---
+  /** For the chip's count, so it reads right before the view is ever opened. */
+  readonly registerTotal = signal<number | null>(null);
+  readonly everyone = signal<MemberRow[]>([]);
+  /** Null until first loaded, so a refresh knows whether to bother. */
+  readonly everyoneTotal = signal<number | null>(null);
+  readonly loadingEveryone = signal(false);
+  readonly everyonePageSize = 100;
+  readonly everyoneHasMore = computed(
+    () => this.everyoneTotal() !== null && this.everyone().length < (this.everyoneTotal() ?? 0),
+  );
+  private everyoneTimer?: ReturnType<typeof setTimeout>;
+  /** Drops a response that a newer search has already overtaken. */
+  private everyoneSeq = 0;
+
   // --- editing a member ---
   readonly editing = signal<MemberRow | null>(null);
   readonly editName = signal('');
@@ -172,6 +191,8 @@ export class ConsoleStore {
   readonly editPhoto = signal<File | null>(null);
   readonly editPhotoPreview = signal('');
   readonly savingEdit = signal(false);
+  /** Which form the in-app camera is taking a picture for, while it is open. */
+  readonly cameraFor = signal<'new' | 'edit' | null>(null);
 
   // --- the paged payment record ---
   readonly outstandingPaid = signal<SettledPayment[]>([]);
@@ -194,6 +215,16 @@ export class ConsoleStore {
     effect(() => {
       const gym = this.auth.activeGym();
       if (gym) void this.load(gym.id, gym.gym_code, true);
+    });
+
+    // All members is searched on the server, since it is never loaded whole.
+    // Debounced so typing a name is one request, not one per letter.
+    effect(() => {
+      const gym = this.auth.activeGym();
+      const q = this.memberFilter().trim();
+      if (this.scope() !== 'everyone' || !gym) return;
+      clearTimeout(this.everyoneTimer);
+      this.everyoneTimer = setTimeout(() => void this.loadEveryone(gym.id, q, true), q ? 300 : 0);
     });
   }
 
@@ -244,12 +275,18 @@ export class ConsoleStore {
     );
   });
 
+  /** The rows the member list renders, whichever of its two sources. */
+  readonly listRows = computed(() =>
+    this.scope() === 'everyone' ? this.everyone() : this.visibleMembers(),
+  );
+
   /**
    * Where the worklist ends and the ordinary members begin, so the list can say
    * so instead of making you notice the badges change colour.
    * -1 when there is no boundary to draw.
    */
   readonly firstCurrentIndex = computed(() => {
+    if (this.scope() === 'everyone') return -1;
     const rows = this.visibleMembers();
     const i = rows.findIndex((m) => m.expiry === 'active');
     return i > 0 ? i : -1;
@@ -359,7 +396,12 @@ export class ConsoleStore {
    * can have changed.
    */
   async load(gymId: string, gymCode: string, initial = false): Promise<void> {
-    if (initial) this.loading.set(true);
+    if (initial) {
+      this.loading.set(true);
+      // Another gym's register must not flash up after switching.
+      this.everyone.set([]);
+      this.everyoneTotal.set(null);
+    }
     this.error.set('');
     // environment.publicUrl, never location.origin — see the comment there.
     // Falls back to this origin only if it is somehow unset, which at least
@@ -396,6 +438,7 @@ export class ConsoleStore {
       this.members.set(members);
       this.today.set(today);
       this.plans.set(plans);
+      void this.refreshRegisterTotal(gymId);
       this.provider.set(provider.provider);
       this.webhookUrl.set(provider.webhookUrl);
       this.webhookReachable.set(provider.webhookReachable ?? true);
@@ -482,19 +525,72 @@ export class ConsoleStore {
   }
 
   /** Re-reads the member list, the renewal worklist and the headline counts. */
+  /**
+   * One page of All members. `reset` starts again from the top — a new search,
+   * or a refresh after an action — and otherwise appends the next page.
+   */
+  async loadEveryone(gymId: string, search: string, reset: boolean): Promise<void> {
+    const seq = ++this.everyoneSeq;
+    const offset = reset ? 0 : this.everyone().length;
+    // A refresh re-reads as much as was already showing, so acting on someone
+    // far down the list does not snap it back to the first page.
+    const limit = reset
+      ? Math.min(Math.max(this.everyonePageSize, this.everyone().length), 500)
+      : this.everyonePageSize;
+    this.loadingEveryone.set(true);
+    try {
+      const page = await this.api.memberPage(gymId, { search, offset, limit });
+      if (seq !== this.everyoneSeq) return;
+      this.everyone.set(reset ? page.rows : [...this.everyone(), ...page.rows]);
+      this.everyoneTotal.set(page.total);
+    } catch (err) {
+      if (seq === this.everyoneSeq) this.error.set(this.apiMessage(err, 'Could not load the member list.'));
+    } finally {
+      if (seq === this.everyoneSeq) this.loadingEveryone.set(false);
+    }
+  }
+
+  /** How many members the gym has in all, inactive included. One row fetched. */
+  private async refreshRegisterTotal(gymId: string): Promise<void> {
+    const page = await this.api.memberPage(gymId, { offset: 0, limit: 1 }).catch(() => null);
+    if (page) this.registerTotal.set(page.total);
+  }
+
+  loadMoreEveryone(): void {
+    const gym = this.auth.activeGym();
+    if (gym) void this.loadEveryone(gym.id, this.memberFilter().trim(), false);
+  }
+
+  /** From a search over active members, to the same search over everyone. */
+  searchEveryone(): void {
+    this.scope.set('everyone');
+  }
+
   private async refreshMembers(gymId: string): Promise<void> {
     const [members, watchlist, summary] = await Promise.all([
       this.api.members(gymId).catch(() => this.members()),
       this.api.watchlist(gymId, 7).catch(() => this.watchlist()),
       this.api.dashboard(gymId).catch(() => this.summary()),
+      // Renewing an inactive member changes their row in All members too.
+      this.everyoneTotal() !== null
+        ? this.loadEveryone(gymId, this.memberFilter().trim(), true)
+        : Promise.resolve(),
+      this.refreshRegisterTotal(gymId),
     ]);
     this.members.set(members);
     this.watchlist.set(watchlist);
     this.summary.set(summary);
     // The open sheet must show what the list now shows, or it goes stale behind
-    // the very action that was taken in it.
+    // the very action that was taken in it. An inactive member is only in
+    // All members, so that list is looked in too.
     const open = this.selected();
-    if (open) this.selected.set(members.find((m) => m.id === open.id) ?? null);
+    if (open) {
+      this.selected.set(
+        members.find((m) => m.id === open.id) ??
+          this.everyone().find((m) => m.id === open.id) ??
+          null,
+      );
+    }
   }
 
   /** Re-reads today's attendance and the counts that move with it. */
@@ -643,15 +739,13 @@ export class ConsoleStore {
     this.editEmergency.set(m.emergency_contact ?? '');
     this.editNotes.set(m.notes ?? '');
     this.editStatus.set(m.status === 'inactive' ? 'inactive' : 'active');
-    this.editPhoto.set(null);
-    this.editPhotoPreview.set('');
+    this.clearEditPhoto();
     this.error.set('');
   }
 
   cancelEdit(): void {
     this.editing.set(null);
-    this.editPhoto.set(null);
-    this.editPhotoPreview.set('');
+    this.clearEditPhoto();
   }
 
   async saveEdit(): Promise<void> {
@@ -686,8 +780,7 @@ export class ConsoleStore {
     if (!gym || !m) return;
     try {
       await this.api.deleteMemberPhoto(gym.id, m.id);
-      this.editPhotoPreview.set('');
-      this.editPhoto.set(null);
+      this.clearEditPhoto();
       this.editing.set({ ...m, photo_id: null });
       await this.refreshMembers(gym.id);
     } catch (err) {
@@ -696,26 +789,54 @@ export class ConsoleStore {
   }
 
   /**
-   * `capture="environment"` on the input opens the camera directly on a phone
-   * and falls back to a file picker on a desktop, so one control covers the
-   * desk taking a picture and someone uploading one later.
+   * Two ways to get a photo, side by side: the in-app camera for the person
+   * standing at the counter, and a file for a picture that already exists.
+   * They used to be one input with `capture="environment"`, which opened the
+   * camera on a phone but only a file picker on the desk's laptop — and on a
+   * phone left no way to use a photo already in the gallery.
    */
+  openCamera(which: 'new' | 'edit'): void {
+    this.error.set('');
+    this.cameraFor.set(which);
+  }
+
+  onPhotoCaptured(file: File): void {
+    const which = this.cameraFor();
+    this.cameraFor.set(null);
+    if (which) this.setPhoto(which, file);
+  }
+
   onPhotoPicked(event: Event, which: 'new' | 'edit'): void {
-    const file = (event.target as HTMLInputElement).files?.[0] ?? null;
-    if (!file) return;
-    const preview = URL.createObjectURL(file);
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0] ?? null;
+    // Cleared so picking the same file again, after Remove, still fires change.
+    input.value = '';
+    if (file) this.setPhoto(which, file);
+  }
+
+  private setPhoto(which: 'new' | 'edit', file: File): void {
     if (which === 'new') {
+      this.clearNewPhoto();
       this.newPhoto.set(file);
-      this.newPhotoPreview.set(preview);
+      this.newPhotoPreview.set(URL.createObjectURL(file));
     } else {
+      this.clearEditPhoto();
       this.editPhoto.set(file);
-      this.editPhotoPreview.set(preview);
+      this.editPhotoPreview.set(URL.createObjectURL(file));
     }
   }
 
   clearNewPhoto(): void {
+    if (this.newPhotoPreview()) URL.revokeObjectURL(this.newPhotoPreview());
     this.newPhoto.set(null);
     this.newPhotoPreview.set('');
+  }
+
+  /** Drops a photo picked in Edit but not saved yet. The stored one is untouched. */
+  clearEditPhoto(): void {
+    if (this.editPhotoPreview()) URL.revokeObjectURL(this.editPhotoPreview());
+    this.editPhoto.set(null);
+    this.editPhotoPreview.set('');
   }
 
   // =========================================================================
@@ -1100,6 +1221,16 @@ export class ConsoleStore {
   }
 
   /** The list badge: a word, a tint and a number — never colour on its own. */
+  /** Inactive and without a current plan: shown as Expired wherever it appears. */
+  isLapsedInactive(m: MemberRow): boolean {
+    return m.status === 'inactive' && (m.expiry === 'none' || m.expiry === 'expired');
+  }
+
+  /** The row's status badge, which knows about inactive members as well. */
+  rowBadgeClass(m: MemberRow): string {
+    return this.isLapsedInactive(m) ? 'badge--danger' : this.badgeClass(m.expiry);
+  }
+
   badgeClass(expiry: MemberRow['expiry']): string {
     return {
       active: 'badge--plain',
@@ -1133,6 +1264,8 @@ export class ConsoleStore {
 
   /** "4d left" / "12d ago" / "No plan" — the row's one status word. */
   daysLabel(m: MemberRow): string {
+    // A lapsed name kept on the register, not someone who never started.
+    if (this.isLapsedInactive(m)) return 'Expired';
     if (m.expiry === 'none') return 'No plan';
     const d = m.days_remaining ?? 0;
     if (m.expiry === 'expired') return `${Math.abs(d)}d ago`;

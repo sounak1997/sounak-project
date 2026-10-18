@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AuthService } from '../core/auth.service';
 import { ConsoleStore } from './console.store';
 import { IconComponent } from './icon.component';
+import { PhotoCameraComponent } from '../shared/photo-camera.component';
 
 /**
  * The console's frame: who you are, where you can go, and every dialog.
@@ -28,6 +29,7 @@ import { IconComponent } from './icon.component';
     RouterLinkActive,
     FormsModule,
     IconComponent,
+    PhotoCameraComponent,
   ],
   templateUrl: './console.shell.html',
 })
