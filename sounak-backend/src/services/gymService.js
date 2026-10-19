@@ -455,7 +455,7 @@ const resolveStartDate = async (client, { explicitStart, previousEnd, durationDa
 exports.resolveStartDate = resolveStartDate;
 
 exports.createSubscription = async ({
-  gymId, memberId, planId, startDate, amount, payment, recordedBy, actorRole,
+  gymId, memberId, planId, startDate, endDate, amount, payment, recordedBy, actorRole,
 }) => {
   const member = await exports.getMember({ gymId, memberId });
 
@@ -472,15 +472,12 @@ exports.createSubscription = async ({
   }
   assertMayTakeCash(method, actorRole);
 
-  // A price other than the plan's is the OWNER's call alone.
+  // The owner OR the desk may charge something other than the plan's price.
   //
-  // Discretion over what a membership costs is the difference between running
-  // the gym and working the desk: a discount is a decision about the business,
-  // and quietly letting staff set their own price is also the easiest way for
-  // money to go missing. Enforced here rather than by hiding the field, because
-  // a hidden field is not a permission — the endpoint is open to staff (they
-  // must still be able to sell at list price) and nothing stops them posting an
-  // amount directly.
+  // This used to be the owner's call alone. Imtaj's owner asked (2026-10-19)
+  // for the desk to set it too: the member is standing at the counter, and the
+  // owner is not there to say yes to a discount or a part payment. Every
+  // payment still records who took it, and the owner sees all of them on Money.
   const listPrice = Number(plan.price);
   const chargedAmount = amount === undefined || amount === null || amount === ''
     ? listPrice
@@ -489,13 +486,12 @@ exports.createSubscription = async ({
   if (!Number.isFinite(chargedAmount) || chargedAmount < 0) {
     throw badRequest('The amount must be a number, zero or more.');
   }
-  if (chargedAmount !== listPrice && actorRole === 'staff') {
-    const e = new Error(
-      `Only the gym owner can change the price. ${plan.name} is ₹${listPrice}.`
-    );
-    e.statusCode = 403;
-    throw e;
-  }
+
+  // Dates the desk typed in, checked here so a bad one is a clear 400 rather
+  // than a Postgres cast error surfacing as a 500.
+  const isDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+  if (startDate && !isDay(startDate)) throw badRequest('The start date must be a date (YYYY-MM-DD).');
+  if (endDate && !isDay(endDate)) throw badRequest('The end date must be a date (YYYY-MM-DD).');
 
   // Cash handed over at the desk is money already in the drawer, so it is
   // recorded as collected. A QR payment has no gateway callback to trust, so it
@@ -544,12 +540,21 @@ exports.createSubscription = async ({
       timezone: gymTimezone,
     });
 
+    // A typed end date replaces "start + the plan's length" — extra days given,
+    // or a membership lined up with the date the member actually paid. Both are
+    // 'YYYY-MM-DD' strings here (see pg.config's DATE parser), so they compare
+    // as text.
+    if (endDate && endDate < resolvedStart) {
+      throw badRequest('The end date cannot be before the start date.');
+    }
+
     const subscriptionId = genId('SUB');
     const subResult = await client.query(
       `INSERT INTO gym_subscriptions
          (id, gym_id, member_id, plan_id, plan_name, start_date, end_date, amount, created_by,
           registration_fee)
-       VALUES ($1, $2, $3, $4, $5, $6::date, $6::date + ($7::int - 1), $8, $9, $10)
+       VALUES ($1, $2, $3, $4, $5, $6::date, COALESCE($11::date, $6::date + ($7::int - 1)),
+               $8, $9, $10)
        RETURNING *`,
       [
         subscriptionId,
@@ -562,6 +567,7 @@ exports.createSubscription = async ({
         chargedAmount,
         recordedBy,
         registrationFee,
+        endDate || null,
       ]
     );
 

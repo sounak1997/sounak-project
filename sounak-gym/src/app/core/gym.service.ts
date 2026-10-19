@@ -339,15 +339,23 @@ export class GymService {
   createSubscription(
     gymId: string,
     memberId: string,
-    fields: { planId: string; method: 'cash' | 'qr'; amount?: number },
+    fields: {
+      planId: string;
+      method: 'cash' | 'qr';
+      amount?: number;
+      startDate?: string;
+      endDate?: string;
+    },
   ): Promise<unknown> {
     return firstValueFrom(
       this.http.post<{ data: unknown }>(`${this.base(gymId)}/members/${memberId}/subscriptions`, {
         planId: fields.planId,
-        // Left out unless the owner actually set one, so the server falls back
-        // to the plan's list price. A staff account sending a custom amount is
-        // refused server-side — hiding the field is not the control.
+        // Left out unless someone actually set one, so the server falls back
+        // to the plan's list price.
         amount: fields.amount,
+        // 'YYYY-MM-DD', or left out for the server's own continuation rule.
+        startDate: fields.startDate,
+        endDate: fields.endDate,
         payment: {
           method: fields.method,
           status: fields.method === 'cash' ? 'collected' : 'verified',

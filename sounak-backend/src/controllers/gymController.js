@@ -171,6 +171,7 @@ exports.createSubscription = asyncHandler(async (req, res) => {
     memberId: req.params.memberId,
     planId: req.body.planId,
     startDate: req.body.startDate,
+    endDate: req.body.endDate,
     amount: req.body.amount,
     payment: req.body.payment,
     recordedBy: req.gymAccount.id,

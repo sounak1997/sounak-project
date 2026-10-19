@@ -394,8 +394,8 @@
               [ngModel]="store.renewAmount()"
               (ngModelChange)="store.renewAmount.set($event)" />
             <p class="muted small">
-              Blank charges the plan's ₹{{ store.selectedPlanPrice() }}. Owner only — the desk
-              always charges the plan price.
+              Blank charges the plan's ₹{{ store.selectedPlanPrice() }}. Type a different amount
+              for a discount or a part payment.
             </p>
           </div>
         }
@@ -413,8 +413,38 @@
           <div class="period">
             <div class="period__dates">
               {{ store.fmtDay(period.start) }} &rarr; {{ store.fmtDay(period.end) }}
+              <span class="muted small">· {{ period.days }} days</span>
             </div>
-            @if (period.backdated) {
+            <!-- Suggested from the last membership; either date can be changed,
+                 by the owner or the desk. Changing the start moves the end with
+                 it until the end is changed as well. -->
+            <div class="date-pair">
+              <div class="field">
+                <label for="r-start">Starts</label>
+                <input
+                  id="r-start"
+                  type="date"
+                  [value]="store.isoDay(period.start)"
+                  (change)="store.renewStart.set($any($event.target).value)" />
+              </div>
+              <div class="field">
+                <label for="r-end">Ends</label>
+                <input
+                  id="r-end"
+                  type="date"
+                  [min]="store.isoDay(period.start)"
+                  [value]="store.isoDay(period.end)"
+                  (change)="store.renewEnd.set($any($event.target).value)" />
+              </div>
+            </div>
+            @if (period.custom) {
+              <p class="muted small">
+                Dates set by hand.
+                <button type="button" class="btn btn--ghost btn--sm" (click)="store.resetRenewDates()">
+                  Use suggested dates
+                </button>
+              </p>
+            } @else if (period.backdated) {
               <p class="muted small">
                 Continues from where their last membership ended, so they are paying for the days
                 since it lapsed.

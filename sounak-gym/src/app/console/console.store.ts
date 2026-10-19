@@ -95,6 +95,13 @@ export class ConsoleStore {
   readonly renewMethod = signal<'cash' | 'qr'>('cash');
   /** Blank means "charge the plan's price". Owner-only; the server agrees. */
   readonly renewAmount = signal('');
+  /**
+   * Dates the desk typed over the suggested ones, as 'YYYY-MM-DD'. Empty means
+   * "use the suggestion": start continues from the last membership, and the
+   * end is start plus the plan's length.
+   */
+  readonly renewStart = signal('');
+  readonly renewEnd = signal('');
   readonly savingRenewal = signal(false);
 
   // --- money: ONE list, one lifecycle ---
@@ -247,11 +254,11 @@ export class ConsoleStore {
   readonly loadingPaid = signal(false);
 
   /**
-   * Only the owner may set a price other than the plan's. Mirrors the server,
-   * which refuses a custom amount from a staff account — this hides the field,
-   * it does not enforce anything.
+   * Who may charge something other than the plan's price: the owner AND the
+   * desk, as the owner asked on 2026-10-19 — the member is at the counter and
+   * the owner usually is not. The server allows both too.
    */
-  readonly canSetPrice = computed(() => this.auth.activeGym()?.staff_role !== 'staff');
+  readonly canSetPrice = computed(() => !!this.auth.activeGym());
 
   constructor() {
     // Reloads whenever the owner switches gym — an owner of two gyms sees each
@@ -471,12 +478,39 @@ export class ConsoleStore {
         continuing = true;
       }
     }
-    const end = new Date(start);
+    // The desk's own dates win over the suggestion. A typed start moves the end
+    // with it, by the plan's length, until an end is typed as well.
+    const custom = !!(this.renewStart() || this.renewEnd());
+    if (this.renewStart()) {
+      start = this.parseDay(this.renewStart());
+      continuing = false;
+    }
+    let end = new Date(start);
     end.setDate(end.getDate() + plan.duration_days - 1);
+    if (this.renewEnd()) end = this.parseDay(this.renewEnd());
 
     // True when the member has been lapsed and is paying for that gap.
-    return { start, end, continuing, backdated: continuing && start < today };
+    return {
+      start,
+      end,
+      continuing,
+      backdated: continuing && start < today,
+      custom,
+      days: Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1,
+    };
   });
+
+  /** A Date as the 'YYYY-MM-DD' a date input and the API both expect. */
+  isoDay(d: Date): string {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  }
+
+  /** Back to the suggested dates. */
+  resetRenewDates(): void {
+    this.renewStart.set('');
+    this.renewEnd.set('');
+  }
 
   // =========================================================================
   // Loading
@@ -960,6 +994,7 @@ export class ConsoleStore {
     this.renewing.set(member);
     this.renewPlanId.set(this.plans()[0]?.id ?? '');
     this.renewAmount.set('');
+    this.resetRenewDates();
     // The owner cannot record cash, so their dialog opens on UPI.
     this.renewMethod.set(this.auth.isOwner() ? 'qr' : 'cash');
     this.error.set('');
@@ -1005,12 +1040,25 @@ export class ConsoleStore {
         return;
       }
 
+      // Dates go to the server only when the desk changed them, so by default
+      // the server applies its own continuation rule. When they did, the start
+      // is sent too, so an end typed on its own is checked against the start
+      // shown on screen.
+      const period = this.renewalPeriod();
+      const datesTyped = !!period && period.custom;
+      if (period && period.end < period.start) {
+        this.error.set('The end date cannot be before the start date.');
+        return;
+      }
+
       await this.api.createSubscription(gym.id, member.id, {
         planId: this.renewPlanId(),
         method: this.renewMethod(),
-        // Sent only when the owner actually typed one, so the server charges
+        // Sent only when someone actually typed one, so the server charges
         // the plan's price by default rather than whatever was last in the box.
         amount: custom,
+        startDate: datesTyped ? this.isoDay(period!.start) : undefined,
+        endDate: datesTyped && this.renewEnd() ? this.isoDay(period!.end) : undefined,
       });
       this.renewing.set(null);
       this.notice.set(`Recorded for ${member.full_name}.`);

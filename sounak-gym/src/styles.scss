@@ -1504,3 +1504,9 @@ a { color: var(--purple); }
 @container col (min-width: 820px) {
   .filterbar { grid-template-columns: repeat(auto-fill, minmax(190px, 230px)); }
 }
+
+/* Starts / Ends on the renewal dialog, side by side even on a phone: two
+   dates read as one period. */
+.date-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.date-pair .field { margin-bottom: 0; }
+.date-pair input { width: 100%; min-width: 0; }
