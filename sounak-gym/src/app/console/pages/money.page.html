@@ -317,7 +317,8 @@
             <p class="empty">Nothing has been undone in the last 90 days.</p>
           </div>
         } @else {
-          <div class="list">
+          <!-- 90 days of reversals can run long; it scrolls like the other lists. -->
+          <div class="list scroll-y">
             @for (p of store.reversed(); track p.id) {
               <div class="row row--static">
                 <span class="row__main">

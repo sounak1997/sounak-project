@@ -1339,20 +1339,27 @@ a { color: var(--purple); }
 }
 
 /* A visible scrollbar, not the macOS overlay one that is hidden until you
-   scroll: how long the list is should show at a glance. Styling it through
+   scroll: how long a list is should show at a glance. Styling it through
    ::-webkit-scrollbar is what makes Chrome and Safari keep it on screen.
-   Firefox has no such pseudo-element and takes the standard properties. */
-.members-list > .list::-webkit-scrollbar { width: 12px; }
-.members-list > .list::-webkit-scrollbar-track { background: var(--surface-2); }
-.members-list > .list::-webkit-scrollbar-thumb {
+   Firefox has no such pseudo-element and takes the standard properties.
+   Shared by every list that scrolls in its own box (.scroll-y too), so the
+   member list, who is on the floor and the money lists all look alike. */
+.members-list > .list::-webkit-scrollbar,
+.scroll-y::-webkit-scrollbar { width: 12px; }
+.members-list > .list::-webkit-scrollbar-track,
+.scroll-y::-webkit-scrollbar-track { background: var(--surface-2); }
+.members-list > .list::-webkit-scrollbar-thumb,
+.scroll-y::-webkit-scrollbar-thumb {
   background: var(--text-muted);
   border-radius: 999px;
   border: 3px solid var(--surface-2);
 }
-.members-list > .list::-webkit-scrollbar-thumb:hover { background: var(--text); }
+.members-list > .list::-webkit-scrollbar-thumb:hover,
+.scroll-y::-webkit-scrollbar-thumb:hover { background: var(--text); }
 
 @supports not selector(::-webkit-scrollbar) {
-  .members-list > .list { scrollbar-width: auto; scrollbar-color: var(--text-muted) var(--surface-2); }
+  .members-list > .list,
+  .scroll-y { scrollbar-width: auto; scrollbar-color: var(--text-muted) var(--surface-2); }
 }
 
 /* Column headings stay in view while the rows scroll under them. */
