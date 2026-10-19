@@ -162,6 +162,9 @@
         <div class="alert alert--success">
           <strong>{{ m.full_name }}</strong> is registered. Their member code is
           <code class="code">{{ m.member_code }}</code> — read it out to them.
+          @if (+store.registrationFee() > 0) {
+            Their first plan will include the ₹{{ store.registrationFee() }} registration fee.
+          }
         </div>
       }
 
@@ -394,6 +397,15 @@
               Blank charges the plan's ₹{{ store.selectedPlanPrice() }}. Owner only — the desk
               always charges the plan price.
             </p>
+          </div>
+        }
+
+        <!-- A new member's first plan. The server adds the fee; this is so the
+             desk asks for the right amount before the member walks off. -->
+        @if (store.renewFee() > 0) {
+          <div class="alert alert--warn">
+            New member: a <strong>₹{{ store.renewFee() }}</strong> registration fee is added to this
+            first plan. Collect <strong>₹{{ store.renewTotal() }}</strong> in all.
           </div>
         }
 

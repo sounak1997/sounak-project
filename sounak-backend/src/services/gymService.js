@@ -33,7 +33,14 @@ const newMemberCode = () => crypto.randomBytes(6).toString('base64url');
 
 // --- this gym's settings ---------------------------------------------------
 
-exports.updateGym = async ({ gymId, name, address, phone, timezone, closedWeekdays, rescanGraceSeconds, paymentQrUrl }) => {
+exports.updateGym = async ({
+  gymId, name, address, phone, timezone, closedWeekdays, rescanGraceSeconds, paymentQrUrl, registrationFee,
+}) => {
+  let fee = null;
+  if (registrationFee !== undefined && registrationFee !== null && registrationFee !== '') {
+    fee = Number(registrationFee);
+    if (!Number.isFinite(fee) || fee < 0) throw badRequest('The registration fee must be a number, zero or more.');
+  }
   if (closedWeekdays !== undefined) {
     const ok = Array.isArray(closedWeekdays)
       && closedWeekdays.every((d) => Number.isInteger(d) && d >= 0 && d <= 6);
@@ -49,6 +56,7 @@ exports.updateGym = async ({ gymId, name, address, phone, timezone, closedWeekda
             closed_weekdays      = COALESCE($5::jsonb, closed_weekdays),
             rescan_grace_seconds = COALESCE($6, rescan_grace_seconds),
             payment_qr_url       = COALESCE($7, payment_qr_url),
+            registration_fee     = COALESCE($9, registration_fee),
             updated_at           = now()
       WHERE id = $8
       RETURNING *`,
@@ -61,6 +69,7 @@ exports.updateGym = async ({ gymId, name, address, phone, timezone, closedWeekda
       rescanGraceSeconds ?? null,
       paymentQrUrl ?? null,
       gymId,
+      fee,
     ]
   );
   if (!result.rows[0]) throw notFound('Gym not found.');
@@ -164,10 +173,13 @@ exports.createMember = async ({ gymId, fullName, phone, emergencyContact, notes,
     );
   }
 
+  // registration_fee_due: someone registered here is a new member, and their
+  // first plan carries the gym's registration fee (see createSubscription).
   const result = await pgPool.query(
     `INSERT INTO gym_members
-       (id, gym_id, member_code, full_name, phone, emergency_contact, notes, joined_on)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::date, CURRENT_DATE))
+       (id, gym_id, member_code, full_name, phone, emergency_contact, notes, joined_on,
+        registration_fee_due)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::date, CURRENT_DATE), true)
      RETURNING *`,
     [
       genId('MEM'),
@@ -427,8 +439,23 @@ exports.createSubscription = async ({
   try {
     await client.query('BEGIN');
 
-    const tzResult = await client.query('SELECT timezone FROM gyms WHERE id = $1', [gymId]);
+    const tzResult = await client.query(
+      'SELECT timezone, registration_fee FROM gyms WHERE id = $1',
+      [gymId]
+    );
     const gymTimezone = tzResult.rows[0].timezone;
+
+    // A new member's first plan carries the gym's registration fee. Claimed by
+    // clearing the flag in the same statement that reads it, so two sales
+    // racing for one new member cannot both charge it — or both skip it.
+    // Not waivable at the desk: like the plan price, it is the owner's figure.
+    const feeClaim = await client.query(
+      `UPDATE gym_members SET registration_fee_due = false, updated_at = now()
+        WHERE id = $1 AND registration_fee_due
+        RETURNING id`,
+      [memberId]
+    );
+    const registrationFee = feeClaim.rowCount ? Number(tzResult.rows[0].registration_fee) : 0;
 
     const currentResult = await client.query(
       `SELECT end_date FROM gym_subscriptions
@@ -452,8 +479,9 @@ exports.createSubscription = async ({
     const subscriptionId = genId('SUB');
     const subResult = await client.query(
       `INSERT INTO gym_subscriptions
-         (id, gym_id, member_id, plan_id, plan_name, start_date, end_date, amount, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6::date, $6::date + ($7::int - 1), $8, $9)
+         (id, gym_id, member_id, plan_id, plan_name, start_date, end_date, amount, created_by,
+          registration_fee)
+       VALUES ($1, $2, $3, $4, $5, $6::date, $6::date + ($7::int - 1), $8, $9, $10)
        RETURNING *`,
       [
         subscriptionId,
@@ -465,6 +493,7 @@ exports.createSubscription = async ({
         plan.duration_days,
         chargedAmount,
         recordedBy,
+        registrationFee,
       ]
     );
 
@@ -497,7 +526,8 @@ exports.createSubscription = async ({
         gymId,
         subscriptionId,
         memberId,
-        (payment && payment.amount) ?? chargedAmount,
+        // One payment for the lot: the member hands over plan + fee together.
+        (payment && payment.amount) ?? chargedAmount + registrationFee,
         method,
         status,
         (payment && payment.reference) || null,

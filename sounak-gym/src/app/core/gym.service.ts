@@ -123,6 +123,8 @@ export interface MemberRow {
   days_remaining: number | null;
   expiry: 'none' | 'active' | 'expiring' | 'expired';
   device_count: number;
+  /** Registered here and not sold a plan yet: the first plan carries the fee. */
+  registration_fee_due?: boolean;
 }
 
 export interface TodayVisit {
@@ -452,6 +454,13 @@ export class GymService {
    * bank's app or a printout, and hosting it here would mean a file store this
    * app does not otherwise need.
    */
+  /** Owner only: the one-time fee a new member pays with their first plan. */
+  saveRegistrationFee(gymId: string, registrationFee: number): Promise<{ registration_fee: string }> {
+    return firstValueFrom(
+      this.http.put<{ data: { registration_fee: string } }>(`${this.base(gymId)}`, { registrationFee }),
+    ).then((r) => r.data);
+  }
+
   savePaymentQr(gymId: string, paymentQrUrl: string): Promise<unknown> {
     return firstValueFrom(
       this.http.put<{ data: unknown }>(`${this.base(gymId)}`, { paymentQrUrl }),

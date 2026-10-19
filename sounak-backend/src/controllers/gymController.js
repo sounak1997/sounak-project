@@ -33,6 +33,7 @@ exports.updateGym = asyncHandler(async (req, res) => {
     closedWeekdays: req.body.closedWeekdays,
     rescanGraceSeconds: req.body.rescanGraceSeconds,
     paymentQrUrl: req.body.paymentQrUrl,
+    registrationFee: req.body.registrationFee,
   });
   res.status(200).json({ success: true, data: gym });
 });

@@ -192,6 +192,46 @@
         }
       </div>
     }
+
+    <!-- Charged once, with a new member's first plan. Members imported from a
+         paper register are not new and never owe it. -->
+    <div class="sec-row mt">
+      <h2 class="sec">Registration fee</h2>
+    </div>
+    @if (auth.isOwner()) {
+      <div class="pane">
+        <div class="field">
+          <label for="regfee">New members pay, with their first plan (₹)</label>
+          <input
+            id="regfee"
+            type="text"
+            inputmode="decimal"
+            placeholder="0 for none"
+            [ngModel]="store.registrationFee()"
+            (ngModelChange)="store.registrationFee.set($event)" />
+          <p class="muted small">
+            Added automatically when the desk sells a newly registered member their first plan.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn"
+          [disabled]="store.savingFee()"
+          (click)="store.saveRegistrationFee()">
+          {{ store.savingFee() ? 'Saving…' : 'Save fee' }}
+        </button>
+      </div>
+    } @else {
+      <div class="list">
+        <div class="row row--static">
+          <span class="row__main">
+            <span class="row__title">Registration fee</span>
+            <span class="row__sub">Added to a new member's first plan</span>
+          </span>
+          <span class="row__amount">₹{{ store.registrationFee() || 0 }}</span>
+        </div>
+      </div>
+    }
   </section>
 
   <section>

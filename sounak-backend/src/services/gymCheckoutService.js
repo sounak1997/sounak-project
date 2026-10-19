@@ -63,6 +63,11 @@ exports.startQrClaim = async ({ gym, memberId, planId }) => {
     [memberId, gym.id]
   )).rows[0];
   if (!member) throw err(404, 'We could not find your membership. Please ask at the gym desk.');
+  // The first plan carries the registration fee, which these online paths do
+  // not price in — so a new member settles it at the desk, where it is added.
+  if (member.registration_fee_due) {
+    throw err(400, 'Your first plan is paid at the gym desk, together with the registration fee.');
+  }
 
   const plan = (await pgPool.query(
     "SELECT * FROM gym_plans WHERE id = $1 AND gym_id = $2 AND active = true",
@@ -169,6 +174,11 @@ exports.startRenewal = async ({ gym, memberId, planId }) => {
   );
   const member = memberResult.rows[0];
   if (!member) throw err(404, 'We could not find your membership. Please ask at the gym desk.');
+  // The first plan carries the registration fee, which these online paths do
+  // not price in — so a new member settles it at the desk, where it is added.
+  if (member.registration_fee_due) {
+    throw err(400, 'Your first plan is paid at the gym desk, together with the registration fee.');
+  }
 
   const planResult = await pgPool.query(
     "SELECT * FROM gym_plans WHERE id = $1 AND gym_id = $2 AND active = true",

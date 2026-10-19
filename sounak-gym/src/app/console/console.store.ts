@@ -24,6 +24,7 @@ export type RenewTarget = {
   full_name: string;
   expiry?: MemberRow['expiry'];
   end_date?: string | null;
+  registration_fee_due?: boolean;
 };
 
 /**
@@ -129,6 +130,9 @@ export class ConsoleStore {
   readonly moneyTab = signal<'settle' | 'history'>('settle');
 
   // --- setup ---
+  /** The gym's registration fee, as typed in Setup. Seeded from the account's gym. */
+  readonly registrationFee = signal('');
+  readonly savingFee = signal(false);
   readonly payQrUrl = signal('');
   readonly savingQr = signal(false);
   readonly provider = signal<PaymentProvider | null>(null);
@@ -447,6 +451,7 @@ export class ConsoleStore {
       // Cash figures last, each swallowing its own failure: they are an extra,
       // and must never be what stops the console rendering.
       this.payQrUrl.set(this.auth.activeGym()?.payment_qr_url ?? '');
+      this.registrationFee.set(String(Number(this.auth.activeGym()?.registration_fee ?? 0)));
       this.myCash.set(await this.api.myCashInHand(gymId).catch(() => null));
       this.openPayments.set(await this.api.openPayments(gymId).catch(() => []));
       if (owner) {
@@ -863,6 +868,23 @@ export class ConsoleStore {
     return this.plans().find((p) => p.id === this.renewPlanId())?.price ?? '';
   }
 
+  /**
+   * The registration fee this sale will add: the gym's fee, for a member who
+   * has not had their first plan yet. Mirrors the server, which adds it — this
+   * only shows the desk what to collect.
+   */
+  readonly renewFee = computed(() =>
+    this.renewing()?.registration_fee_due ? Number(this.registrationFee()) || 0 : 0,
+  );
+
+  /** What the member hands over: the plan (or the owner's figure) plus any fee. */
+  readonly renewTotal = computed(() => {
+    const typed = String(this.renewAmount() ?? '').trim();
+    const custom = this.canSetPrice() && typed !== '' ? Number(typed) : NaN;
+    const plan = Number.isFinite(custom) ? custom : Number(this.selectedPlanPrice()) || 0;
+    return plan + this.renewFee();
+  });
+
   /** Sell or renew a membership and book the payment against it. */
   async confirmRenewal(): Promise<void> {
     const gym = this.auth.activeGym();
@@ -1070,6 +1092,32 @@ export class ConsoleStore {
   // =========================================================================
   // Setup
   // =========================================================================
+
+  /** Owner only: set the fee a new member pays with their first plan. */
+  async saveRegistrationFee(): Promise<void> {
+    const gym = this.auth.activeGym();
+    const fee = Number(String(this.registrationFee()).trim());
+    if (!gym) return;
+    if (!Number.isFinite(fee) || fee < 0) {
+      this.error.set('Enter the registration fee as a number, or 0 for none.');
+      return;
+    }
+    this.savingFee.set(true);
+    this.error.set('');
+    try {
+      const saved = await this.api.saveRegistrationFee(gym.id, fee);
+      this.registrationFee.set(String(Number(saved.registration_fee)));
+      this.notice.set(
+        fee > 0
+          ? `Registration fee set to ₹${fee}. New members pay it with their first plan.`
+          : 'No registration fee. New members pay only for their plan.',
+      );
+    } catch (err) {
+      this.error.set(this.apiMessage(err, 'Could not save the registration fee.'));
+    } finally {
+      this.savingFee.set(false);
+    }
+  }
 
   /**
    * Put up the gym's UPI QR. This is what members scan at the door, so until it

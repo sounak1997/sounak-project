@@ -12,6 +12,8 @@ export interface GymSummary {
   staff_role: string;
   /** The gym's UPI QR, shown to members on the door screen. Public by nature. */
   payment_qr_url: string | null;
+  /** One-time fee added to a new member's first plan. '0' when the gym has none. */
+  registration_fee?: string;
 }
 
 export interface Membership {

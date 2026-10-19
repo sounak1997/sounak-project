@@ -639,3 +639,27 @@ INSERT INTO gym_attendance_sessions (id, attendance_id, gym_id, member_id, check
 SELECT 'SES_' || a.id, a.id, a.gym_id, a.member_id, a.check_in_at, a.check_out_at, a.method, a.recorded_by
   FROM gym_attendance a
  WHERE NOT EXISTS (SELECT 1 FROM gym_attendance_sessions s WHERE s.attendance_id = a.id);
+
+-- ---------------------------------------------------------------------------
+-- REGISTRATION FEE (added 2026-10-19)
+--
+-- A one-time fee a new member pays with their first plan (Imtaj: Rs 1000).
+--
+-- `gyms.registration_fee` is the gym's current fee, set by the owner.
+-- `gym_members.registration_fee_due` is true from registration until the
+-- first plan is sold, and is what decides whether the fee is charged — not
+-- "has this member ever had a subscription". The register imported on
+-- 2026-10-18 brought in 1,342 lapsed members with no subscription, and they
+-- are not new members; DEFAULT false leaves every existing row owing nothing.
+-- `gym_subscriptions.registration_fee` snapshots what was charged with that
+-- sale, so the fee stays separable from plan income.
+-- ---------------------------------------------------------------------------
+ALTER TABLE gyms ADD COLUMN IF NOT EXISTS registration_fee NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE gyms DROP CONSTRAINT IF EXISTS gyms_registration_fee_ck;
+ALTER TABLE gyms ADD CONSTRAINT gyms_registration_fee_ck CHECK (registration_fee >= 0);
+
+ALTER TABLE gym_members ADD COLUMN IF NOT EXISTS registration_fee_due BOOLEAN NOT NULL DEFAULT false;
+
+ALTER TABLE gym_subscriptions ADD COLUMN IF NOT EXISTS registration_fee NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE gym_subscriptions DROP CONSTRAINT IF EXISTS gym_subscriptions_registration_fee_ck;
+ALTER TABLE gym_subscriptions ADD CONSTRAINT gym_subscriptions_registration_fee_ck CHECK (registration_fee >= 0);
