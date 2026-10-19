@@ -92,16 +92,20 @@ exports.setPlanActive = asyncHandler(async (req, res) => {
 // --- members ---------------------------------------------------------------
 
 // @desc    Member list with each member's derived expiry state
-// @route   GET /api/gym/gyms/:gymId/members?search=&status=&expiry=&expiringWithinDays=
+// @route   GET /api/gym/gyms/:gymId/members?search=&status=&expiry=&phone=&sort=&limit=&offset=
+//          sort: code | code_desc | name | name_desc | joined | joined_desc | expiry | expiry_desc
 exports.listMembers = asyncHandler(async (req, res) => {
   const members = await gymService.listMembers({
     gymId: req.gym.id,
     search: req.query.search,
     status: req.query.status,
     expiry: req.query.expiry,
+    phone: req.query.phone,
+    sort: req.query.sort || 'name',
     expiringWithinDays: Number(req.query.expiringWithinDays) || 7,
     limit: Math.min(Number(req.query.limit) || 200, 500),
-    offset: Number(req.query.offset) || 0,
+    // Clamped: Postgres refuses a negative OFFSET, which surfaced as a 500.
+    offset: Math.max(Number(req.query.offset) || 0, 0),
   });
   // `total` counts every match, so a paged view knows whether there is more.
   const total = members.length ? members[0].total_count : 0;

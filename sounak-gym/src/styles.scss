@@ -1489,3 +1489,18 @@ a { color: var(--purple); }
    heading, not stretched across the column like a primary action. */
 .search-all { align-self: flex-start; }
 .load-more { margin-top: 12px; }
+
+/* Sort and filters: two to a row on a phone, one line once there is room.
+   Kept at 16px, as every select here is, so iOS does not zoom on tap. */
+.filterbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.filterbar select { padding: 9px 12px; }
+.filterbar__clear { width: auto; min-height: 0; align-self: center; justify-self: start; }
+
+@container col (min-width: 820px) {
+  .filterbar { grid-template-columns: repeat(auto-fill, minmax(190px, 230px)); }
+}

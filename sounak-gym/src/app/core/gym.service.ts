@@ -125,6 +125,30 @@ export interface MemberRow {
   device_count: number;
   /** Registered here and not sold a plan yet: the first plan carries the fee. */
   registration_fee_due?: boolean;
+  joined_on?: string;
+}
+
+/**
+ * How the server may order a member list. 'code' is register order, with an
+ * all-digit member code sorted by value — 2 before 10 — so a gym's paper
+ * register numbers come out in the order the register has them.
+ */
+export type MemberSort =
+  | 'code'
+  | 'code_desc'
+  | 'name'
+  | 'name_desc'
+  | 'joined'
+  | 'joined_desc'
+  | 'expiry'
+  | 'expiry_desc';
+
+/** The All members view's filters. Blank means "any". */
+export interface MemberFilters {
+  sort: MemberSort;
+  status: '' | 'active' | 'inactive';
+  expiry: '' | MemberRow['expiry'];
+  phone: '' | 'missing' | 'present';
 }
 
 export interface TodayVisit {
@@ -252,18 +276,30 @@ export class GymService {
    */
   memberPage(
     gymId: string,
-    opts: { search?: string; offset: number; limit: number },
-  ): Promise<{ rows: MemberRow[]; total: number }> {
+    opts: { search?: string; offset: number; limit: number; filters?: Partial<MemberFilters> },
+  ): Promise<{ rows: MemberRow[]; total: number | null }> {
     const params: Record<string, string> = {
       limit: String(opts.limit),
       offset: String(opts.offset),
     };
     if (opts.search) params['search'] = opts.search;
+    // Sorted and filtered on the server, over the whole register. Doing either
+    // to one page in the browser would reorder 100 names out of 1,556.
+    for (const key of ['sort', 'status', 'expiry', 'phone'] as const) {
+      const value = opts.filters?.[key];
+      if (value) params[key] = value;
+    }
     return firstValueFrom(
       this.http.get<{ data: MemberRow[]; total?: number }>(`${this.base(gymId)}/members`, {
         params,
       }),
-    ).then((r) => ({ rows: r.data, total: r.total ?? r.data.length }));
+    ).then((r) => ({
+      rows: r.data,
+      // Null when the server did not say, NOT the page length: guessing the
+      // page length made a 1,556-member register read as 100 with no Load
+      // more, and a 1-row count request read as "1".
+      total: typeof r.total === 'number' ? r.total : null,
+    }));
   }
 
   today(gymId: string): Promise<Today> {

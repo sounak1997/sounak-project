@@ -8,7 +8,9 @@ import {
   CreatedMember,
   DashboardSummary,
   GymService,
+  MemberFilters,
   MemberRow,
+  MemberSort,
   OpenPayment,
   PaymentProvider,
   ReversedPayment,
@@ -174,13 +176,51 @@ export class ConsoleStore {
   /** For the chip's count, so it reads right before the view is ever opened. */
   readonly registerTotal = signal<number | null>(null);
   readonly everyone = signal<MemberRow[]>([]);
-  /** Null until first loaded, so a refresh knows whether to bother. */
+  /** How many match, as the server counted them. Null when it did not say. */
   readonly everyoneTotal = signal<number | null>(null);
+  /** False until first loaded, so a refresh knows whether to bother. */
+  readonly everyoneLoaded = signal(false);
+  /** The last page came back short, so there is nothing after it. */
+  private readonly everyoneEnded = signal(false);
   readonly loadingEveryone = signal(false);
   readonly everyonePageSize = 100;
-  readonly everyoneHasMore = computed(
-    () => this.everyoneTotal() !== null && this.everyone().length < (this.everyoneTotal() ?? 0),
-  );
+  /**
+   * Register order by default — 1, 2, 3 as the paper register has them — since
+   * this is the view for finding a name from the old register. Applied on the
+   * server, because a sort or filter over one page of 100 is a different list.
+   */
+  readonly everyoneFilters = signal<MemberFilters>({ sort: 'code', status: '', expiry: '', phone: '' });
+  /** How many filters are narrowing the list, for the Clear button. A sort is not one. */
+  readonly everyoneFilterCount = computed(() => {
+    const f = this.everyoneFilters();
+    return [f.status, f.expiry, f.phone].filter(Boolean).length;
+  });
+  readonly everyoneHasMore = computed(() => {
+    const total = this.everyoneTotal();
+    // Without a count from the server, a full page is the only sign of more.
+    return total !== null
+      ? this.everyone().length < total
+      : this.everyoneLoaded() && !this.everyoneEnded();
+  });
+
+  /**
+   * Order of the active lists. 'lapse' is the worklist order — expiring, then
+   * lapsed, then never started, then current — and stays the default, because
+   * the top of the screen should be the work.
+   */
+  readonly listSort = signal<'lapse' | MemberSort>('lapse');
+
+  /** The orderings the menu offers, in menu order. Short: a phone shows ~18 characters. */
+  readonly sortOptions: { value: MemberSort; label: string }[] = [
+    { value: 'code', label: 'ID, lowest first' },
+    { value: 'code_desc', label: 'ID, highest first' },
+    { value: 'name', label: 'Name, A to Z' },
+    { value: 'name_desc', label: 'Name, Z to A' },
+    { value: 'joined_desc', label: 'Newest joined' },
+    { value: 'joined', label: 'Oldest joined' },
+    { value: 'expiry', label: 'Plan ends soonest' },
+    { value: 'expiry_desc', label: 'Plan ends latest' },
+  ];
   private everyoneTimer?: ReturnType<typeof setTimeout>;
   /** Drops a response that a newer search has already overtaken. */
   private everyoneSeq = 0;
@@ -226,6 +266,8 @@ export class ConsoleStore {
     effect(() => {
       const gym = this.auth.activeGym();
       const q = this.memberFilter().trim();
+      // Read here so a new sort or filter reloads from the first page.
+      this.everyoneFilters();
       if (this.scope() !== 'everyone' || !gym) return;
       clearTimeout(this.everyoneTimer);
       this.everyoneTimer = setTimeout(() => void this.loadEveryone(gym.id, q, true), q ? 300 : 0);
@@ -239,6 +281,51 @@ export class ConsoleStore {
   /** Expiring first, then lapsed, then never-started: preventable before lost. */
   private rank(m: MemberRow): number {
     return { expiring: 0, expired: 1, none: 2, active: 3 }[m.expiry];
+  }
+
+  /**
+   * The browser's copy of the server's orderings (gymService.listMembers), for
+   * the active lists, which are loaded whole and sorted here. Kept to the same
+   * rules so a sort reads the same in every view: an all-digit member code by
+   * value, ahead of the app's own random codes either way; no plan last.
+   */
+  private compareBy(sort: MemberSort, a: MemberRow, b: MemberRow): number {
+    const dir = sort.endsWith('_desc') ? -1 : 1;
+    switch (sort) {
+      case 'code':
+      case 'code_desc': {
+        const na = /^\d{1,18}$/.test(a.member_code);
+        const nb = /^\d{1,18}$/.test(b.member_code);
+        if (na !== nb) return na ? -1 : 1;
+        return na
+          ? dir * (Number(a.member_code) - Number(b.member_code))
+          : dir * a.member_code.localeCompare(b.member_code);
+      }
+      case 'name':
+      case 'name_desc':
+        return dir * a.full_name.localeCompare(b.full_name);
+      case 'joined':
+      case 'joined_desc':
+        return dir * (a.joined_on ?? '').localeCompare(b.joined_on ?? '');
+      default:
+        if (!a.end_date || !b.end_date) return (a.end_date ? 0 : 1) - (b.end_date ? 0 : 1);
+        return dir * a.end_date.localeCompare(b.end_date);
+    }
+  }
+
+  /** What the list heading says about its order. */
+  readonly sortHeading = computed(() => {
+    const sort = this.scope() === 'everyone' ? this.everyoneFilters().sort : this.listSort();
+    if (sort === 'lapse') return 'Soonest to lapse first';
+    return this.sortOptions.find((o) => o.value === sort)?.label ?? '';
+  });
+
+  setEveryoneFilter<K extends keyof MemberFilters>(key: K, value: MemberFilters[K]): void {
+    this.everyoneFilters.update((f) => ({ ...f, [key]: value }));
+  }
+
+  clearEveryoneFilters(): void {
+    this.everyoneFilters.update((f) => ({ ...f, status: '', expiry: '', phone: '' }));
   }
 
   private matches(m: MemberRow, q: string): boolean {
@@ -271,11 +358,13 @@ export class ConsoleStore {
           ? this.activeMembers()
           : this.members();
     const rows = q ? base.filter((m) => this.matches(m, q)) : [...base];
-    return rows.sort(
-      (a, b) =>
-        this.rank(a) - this.rank(b) ||
-        Math.abs(a.days_remaining ?? 9999) - Math.abs(b.days_remaining ?? 9999) ||
-        a.full_name.localeCompare(b.full_name),
+    const sort = this.listSort();
+    return rows.sort((a, b) =>
+      sort === 'lapse'
+        ? this.rank(a) - this.rank(b) ||
+          Math.abs(a.days_remaining ?? 9999) - Math.abs(b.days_remaining ?? 9999) ||
+          a.full_name.localeCompare(b.full_name)
+        : this.compareBy(sort, a, b) || a.full_name.localeCompare(b.full_name),
     );
   });
 
@@ -290,7 +379,8 @@ export class ConsoleStore {
    * -1 when there is no boundary to draw.
    */
   readonly firstCurrentIndex = computed(() => {
-    if (this.scope() === 'everyone') return -1;
+    // Only the worklist order has a worklist to end.
+    if (this.scope() === 'everyone' || this.listSort() !== 'lapse') return -1;
     const rows = this.visibleMembers();
     const i = rows.findIndex((m) => m.expiry === 'active');
     return i > 0 ? i : -1;
@@ -405,6 +495,8 @@ export class ConsoleStore {
       // Another gym's register must not flash up after switching.
       this.everyone.set([]);
       this.everyoneTotal.set(null);
+      this.everyoneLoaded.set(false);
+      this.everyoneEnded.set(false);
     }
     this.error.set('');
     // environment.publicUrl, never location.origin — see the comment there.
@@ -532,22 +624,32 @@ export class ConsoleStore {
   /** Re-reads the member list, the renewal worklist and the headline counts. */
   /**
    * One page of All members. `reset` starts again from the top — a new search,
-   * or a refresh after an action — and otherwise appends the next page.
+   * sort or filter, or a refresh after an action — and otherwise appends the
+   * next page.
+   *
+   * `keep` is the refresh: it re-reads as much as was already showing, so acting
+   * on someone far down the list does not snap it back to the first page. A new
+   * search or filter is a different list, so it starts from one page again.
    */
-  async loadEveryone(gymId: string, search: string, reset: boolean): Promise<void> {
+  async loadEveryone(gymId: string, search: string, reset: boolean, keep = false): Promise<void> {
     const seq = ++this.everyoneSeq;
     const offset = reset ? 0 : this.everyone().length;
-    // A refresh re-reads as much as was already showing, so acting on someone
-    // far down the list does not snap it back to the first page.
-    const limit = reset
+    const limit = reset && keep
       ? Math.min(Math.max(this.everyonePageSize, this.everyone().length), 500)
       : this.everyonePageSize;
     this.loadingEveryone.set(true);
     try {
-      const page = await this.api.memberPage(gymId, { search, offset, limit });
+      const page = await this.api.memberPage(gymId, {
+        search,
+        offset,
+        limit,
+        filters: this.everyoneFilters(),
+      });
       if (seq !== this.everyoneSeq) return;
       this.everyone.set(reset ? page.rows : [...this.everyone(), ...page.rows]);
       this.everyoneTotal.set(page.total);
+      this.everyoneEnded.set(page.rows.length < limit);
+      this.everyoneLoaded.set(true);
     } catch (err) {
       if (seq === this.everyoneSeq) this.error.set(this.apiMessage(err, 'Could not load the member list.'));
     } finally {
@@ -577,8 +679,8 @@ export class ConsoleStore {
       this.api.watchlist(gymId, 7).catch(() => this.watchlist()),
       this.api.dashboard(gymId).catch(() => this.summary()),
       // Renewing an inactive member changes their row in All members too.
-      this.everyoneTotal() !== null
-        ? this.loadEveryone(gymId, this.memberFilter().trim(), true)
+      this.everyoneLoaded()
+        ? this.loadEveryone(gymId, this.memberFilter().trim(), true, true)
         : Promise.resolve(),
       this.refreshRegisterTotal(gymId),
     ]);

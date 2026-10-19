@@ -255,7 +255,54 @@ exports.updateMember = async ({ gymId, memberId, fullName, phone, emergencyConta
 //
 // `expiry` is one of none / expired / expiring / active, computed from end_date
 // against this gym's own timezone. Never read from a stored flag.
-exports.listMembers = async ({ gymId, search, status, expiry, expiringWithinDays = 7, limit = 200, offset = 0 }) => {
+
+// Register order. member_code is text, and a gym moving off paper keeps its
+// register numbers ("1" to "1556"), which sorted as text read 1, 10, 100, 1000,
+// 1001… So an all-digit code sorts by its value, and the random codes the app
+// issues itself follow in plain text order. Capped at 18 digits so the cast to
+// bigint can never overflow.
+const NUMERIC_CODE = "CASE WHEN l.member_code ~ '^[0-9]{1,18}$' THEN l.member_code::bigint END";
+
+// ORDER BY cannot take a placeholder, so the caller names an ordering and this
+// map supplies the SQL. Nothing from the request ever reaches the statement.
+const MEMBER_SORTS = {
+  code: `${NUMERIC_CODE} ASC NULLS LAST, l.member_code ASC`,
+  code_desc: `${NUMERIC_CODE} DESC NULLS LAST, l.member_code DESC`,
+  // lower(): a database with the C collation (byte order) would otherwise put
+  // every lower-case name after "Zubair". The raw name breaks the tie.
+  name: 'lower(l.full_name) ASC, l.full_name ASC',
+  name_desc: 'lower(l.full_name) DESC, l.full_name DESC',
+  joined: 'l.joined_on ASC',
+  joined_desc: 'l.joined_on DESC',
+  // Members with no plan have nothing to expire, so they go last either way.
+  expiry: 'l.end_date ASC NULLS LAST',
+  expiry_desc: 'l.end_date DESC NULLS LAST',
+};
+
+exports.MEMBER_SORTS = Object.keys(MEMBER_SORTS);
+
+exports.listMembers = async ({
+  gymId, search, status, expiry, phone, sort = 'name', expiringWithinDays = 7, limit = 200, offset = 0,
+}) => {
+  if (status && !['active', 'inactive'].includes(status)) {
+    throw badRequest("status must be 'active' or 'inactive'.");
+  }
+  if (expiry && !['none', 'expired', 'expiring', 'active'].includes(expiry)) {
+    throw badRequest("expiry must be 'none', 'expired', 'expiring' or 'active'.");
+  }
+  if (phone && !['missing', 'present'].includes(phone)) {
+    throw badRequest("phone must be 'missing' or 'present'.");
+  }
+  if (!MEMBER_SORTS[sort]) throw badRequest(`sort must be one of: ${exports.MEMBER_SORTS.join(', ')}.`);
+
+  // Typed digits match a phone however it was saved, so "9876543210" finds
+  // "98765 43210". Three or more, or a single digit would match half the gym.
+  const digits = String(search || '').replace(/\D/g, '');
+
+  // Filters and ordering run in SQL over the WHOLE register, never over one
+  // page of it: the All members view pages through thousands of names, and a
+  // filter applied after LIMIT reports "nobody" whenever the matches happen to
+  // start on page two.
   const result = await pgPool.query(
     `WITH tz AS (SELECT timezone FROM gyms WHERE id = $1),
      today AS (SELECT (now() AT TIME ZONE (SELECT timezone FROM tz))::date AS d),
@@ -265,40 +312,61 @@ exports.listMembers = async ({ gymId, search, status, expiry, expiringWithinDays
          FROM gym_subscriptions
         WHERE gym_id = $1 AND status = 'active'
         ORDER BY member_id, end_date DESC
+     ),
+     listed AS (
+       SELECT m.*,
+              s.subscription_id, s.plan_name, s.start_date, s.end_date,
+              (s.end_date - t.d) AS days_remaining,
+              CASE
+                WHEN s.end_date IS NULL            THEN 'none'
+                WHEN s.end_date <  t.d             THEN 'expired'
+                WHEN s.end_date <= t.d + $2::int   THEN 'expiring'
+                ELSE 'active'
+              END AS expiry,
+              (SELECT COUNT(*)::int FROM gym_device_tokens d
+                WHERE d.member_id = m.id AND d.revoked = false) AS device_count
+         FROM gym_members m
+         CROSS JOIN today t
+         LEFT JOIN current_sub s ON s.member_id = m.id
+        WHERE m.gym_id = $1
+          AND ($3::text IS NULL OR m.full_name   ILIKE '%' || $3 || '%'
+                                OR m.phone       ILIKE '%' || $3 || '%'
+                                -- The register number a gym's members already
+                                -- know themselves by, carried over on import.
+                                OR m.member_code ILIKE '%' || $3 || '%'
+                                OR ($9::text IS NOT NULL
+                                    AND regexp_replace(COALESCE(m.phone, ''), '[^0-9]', '', 'g')
+                                        LIKE '%' || $9 || '%'))
+          AND ($4::text IS NULL OR m.status = $4)
      )
-     SELECT m.*,
-            s.subscription_id, s.plan_name, s.start_date, s.end_date,
-            (s.end_date - t.d) AS days_remaining,
-            CASE
-              WHEN s.end_date IS NULL            THEN 'none'
-              WHEN s.end_date <  t.d             THEN 'expired'
-              WHEN s.end_date <= t.d + $2::int   THEN 'expiring'
-              ELSE 'active'
-            END AS expiry,
-            (SELECT COUNT(*)::int FROM gym_device_tokens d
-              WHERE d.member_id = m.id AND d.revoked = false) AS device_count,
+     SELECT l.*,
             -- Every match, not just this page: the All members view pages
             -- through a gym's whole register and has to say how many there are.
             COUNT(*) OVER ()::int AS total_count
-       FROM gym_members m
-       CROSS JOIN today t
-       LEFT JOIN current_sub s ON s.member_id = m.id
-      WHERE m.gym_id = $1
-        AND ($3::text IS NULL OR m.full_name   ILIKE '%' || $3 || '%'
-                              OR m.phone       ILIKE '%' || $3 || '%'
-                              -- The register number a gym's members already
-                              -- know themselves by, carried over on import.
-                              OR m.member_code ILIKE '%' || $3 || '%')
-        AND ($4::text IS NULL OR m.status = $4)
-      ORDER BY m.full_name ASC
+       FROM listed l
+      WHERE ($7::text IS NULL OR l.expiry = $7)
+        -- Imported register rows arrive with no number, and a member without
+        -- one cannot identify themselves at the door — the desk's to-do list.
+        AND ($8::text IS NULL
+             OR ($8 = 'missing' AND COALESCE(btrim(l.phone), '') = '')
+             OR ($8 = 'present' AND COALESCE(btrim(l.phone), '') <> ''))
+      -- Tie-broken by id, so two equal keys cannot swap places between pages
+      -- and show one member twice and another never.
+      ORDER BY ${MEMBER_SORTS[sort]}, l.id ASC
       LIMIT $5 OFFSET $6`,
-    [gymId, expiringWithinDays, search || null, status || null, limit, offset]
+    [
+      gymId,
+      expiringWithinDays,
+      search || null,
+      status || null,
+      limit,
+      offset,
+      expiry || null,
+      phone || null,
+      digits.length >= 3 ? digits : null,
+    ]
   );
-
-  // Filtered in Node rather than SQL because `expiry` is a derived column and
-  // referencing it in the same query's WHERE would mean repeating the whole
-  // CASE expression. The page size is already bounded by LIMIT.
-  return expiry ? result.rows.filter((r) => r.expiry === expiry) : result.rows;
+  return result.rows;
 };
 
 exports.getMember = async ({ gymId, memberId }) => {

@@ -73,14 +73,82 @@
       </div>
     </div>
 
+    <!-- A sort for every view; filters only for All members, the list too long
+         to read through. Those run on the server across the whole register,
+         never over the one page that happens to be loaded. -->
+    <div class="filterbar">
+      @if (store.scope() === 'everyone') {
+        <select
+          aria-label="Sort"
+          [ngModel]="store.everyoneFilters().sort"
+          (ngModelChange)="store.setEveryoneFilter('sort', $event)"
+        >
+          @for (o of store.sortOptions; track o.value) {
+            <option [value]="o.value">{{ o.label }}</option>
+          }
+        </select>
+        <select
+          aria-label="Status"
+          [ngModel]="store.everyoneFilters().status"
+          (ngModelChange)="store.setEveryoneFilter('status', $event)"
+        >
+          <option value="">Any status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+        <select
+          aria-label="Plan"
+          [ngModel]="store.everyoneFilters().expiry"
+          (ngModelChange)="store.setEveryoneFilter('expiry', $event)"
+        >
+          <option value="">Any plan</option>
+          <option value="active">Paid up</option>
+          <option value="expiring">Ending within 7 days</option>
+          <option value="expired">Expired</option>
+          <option value="none">No plan</option>
+        </select>
+        <!-- Imported register rows have no number, and without one a member
+             cannot find themselves at the door. -->
+        <select
+          aria-label="Mobile number"
+          [ngModel]="store.everyoneFilters().phone"
+          (ngModelChange)="store.setEveryoneFilter('phone', $event)"
+        >
+          <option value="">Any mobile</option>
+          <option value="missing">No mobile number</option>
+          <option value="present">Has a mobile number</option>
+        </select>
+        @if (store.everyoneFilterCount()) {
+          <button
+            type="button"
+            class="btn btn--ghost btn--sm filterbar__clear"
+            (click)="store.clearEveryoneFilters()"
+          >
+            Clear filters
+          </button>
+        }
+      } @else {
+        <select
+          aria-label="Sort"
+          [ngModel]="store.listSort()"
+          (ngModelChange)="store.listSort.set($event)"
+        >
+          <option value="lapse">Needs action first</option>
+          @for (o of store.sortOptions; track o.value) {
+            <option [value]="o.value">{{ o.label }}</option>
+          }
+        </select>
+      }
+    </div>
+
     <div class="sec-row">
       <h2 class="sec">
         @if (store.scope() === 'everyone') {
-          {{ store.memberFilter().trim() ? 'Matches in all members' : 'All members, A to Z' }}
+          {{ store.memberFilter().trim() ? 'Matches in all members' : 'All members' }}
         } @else if (store.memberFilter().trim()) {
           Matches among active members
         } @else {
-          Soonest to lapse first
+          {{ store.sortHeading() }}
         }
       </h2>
       <span class="muted small money">
@@ -110,6 +178,8 @@
           <p class="empty">
             @if (store.scope() === 'everyone' && store.loadingEveryone()) {
               Loading members…
+            } @else if (store.scope() === 'everyone' && store.everyoneFilterCount()) {
+              No members match these filters.
             } @else if (store.memberFilter().trim()) {
               Nobody matches “{{ store.memberFilter() }}”.
             } @else if (store.scope() === 'attention') {
@@ -156,11 +226,18 @@
                 <span class="row__sub">
                   @if (store.isLapsedInactive(m)) {
                     Expired member · No. {{ m.member_code }}
-                  } @else if (m.expiry === 'none') {
-                    Registered · never started
                   } @else {
-                    {{ m.plan_name }} · {{ m.expiry === 'expired' ? 'ended' : 'to' }}
-                    {{ store.day(m.end_date) }}
+                    <!-- All members is read by register number, so the
+                         number leads every line there, not only lapsed ones. -->
+                    @if (store.scope() === 'everyone') {
+                      No. {{ m.member_code }} ·
+                    }
+                    @if (m.expiry === 'none') {
+                      Registered · never started
+                    } @else {
+                      {{ m.plan_name }} · {{ m.expiry === 'expired' ? 'ended' : 'to' }}
+                      {{ store.day(m.end_date) }}
+                    }
                   }
                 </span>
               </span>
