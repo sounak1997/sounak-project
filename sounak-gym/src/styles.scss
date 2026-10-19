@@ -1324,6 +1324,45 @@ a { color: var(--purple); }
   container-name: col;
 }
 
+/* The list scrolls inside its own box, under a search and chips that stay put.
+   An imported register is hundreds of rows, and scrolling the whole page
+   carried the search box away with it. The height leaves room for the bars and
+   the toolbar above; max() keeps a short window from squeezing it to nothing. */
+.members-list > .list {
+  max-height: max(300px, calc(100dvh - 280px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 1024px) {
+  .members-list > .list { max-height: max(360px, calc(100dvh - 230px)); }
+}
+
+/* A visible scrollbar, not the macOS overlay one that is hidden until you
+   scroll: how long the list is should show at a glance. Styling it through
+   ::-webkit-scrollbar is what makes Chrome and Safari keep it on screen.
+   Firefox has no such pseudo-element and takes the standard properties. */
+.members-list > .list::-webkit-scrollbar { width: 12px; }
+.members-list > .list::-webkit-scrollbar-track { background: var(--surface-2); }
+.members-list > .list::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 999px;
+  border: 3px solid var(--surface-2);
+}
+.members-list > .list::-webkit-scrollbar-thumb:hover { background: var(--text); }
+
+@supports not selector(::-webkit-scrollbar) {
+  .members-list > .list { scrollbar-width: auto; scrollbar-color: var(--text-muted) var(--surface-2); }
+}
+
+/* Column headings stay in view while the rows scroll under them. */
+.members-list .list__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
 .cell { display: none; }
 .list__head { display: none; }
 
