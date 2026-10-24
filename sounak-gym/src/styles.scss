@@ -1510,3 +1510,21 @@ a { color: var(--purple); }
 .date-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .date-pair .field { margin-bottom: 0; }
 .date-pair input { width: 100%; min-width: 0; }
+
+/* Plan + registration fee = total, on a new member's first plan. A bill the
+   desk reads out, so the total is the line that stands out. */
+.fee-box {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  padding: 4px 14px;
+  margin-bottom: 16px;
+}
+.fee-box__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  font-size: 15px;
+}
+.fee-box__row + .fee-box__row { border-top: 1px solid var(--border); }
+.fee-box__total { font-weight: 900; font-size: 17px; }

@@ -88,7 +88,14 @@ export interface StaffCollection {
 }
 
 export interface CreatedMember {
-  member: { id: string; full_name: string; member_code: string; phone: string | null };
+  member: {
+    id: string;
+    full_name: string;
+    member_code: string;
+    phone: string | null;
+    /** Always true for someone just registered: their first plan carries the fee. */
+    registration_fee_due?: boolean;
+  };
 }
 
 export interface WatchlistRow {

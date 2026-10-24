@@ -158,16 +158,6 @@
         using the member code this gives you.
       </p>
 
-      @if (store.justAdded(); as m) {
-        <div class="alert alert--success">
-          <strong>{{ m.full_name }}</strong> is registered. Their member code is
-          <code class="code">{{ m.member_code }}</code> — read it out to them.
-          @if (+store.registrationFee() > 0) {
-            Their first plan will include the ₹{{ store.registrationFee() }} registration fee.
-          }
-        </div>
-      }
-
       <div class="photo-row">
         @if (store.newPhotoPreview()) {
           <img class="av av--xl" [src]="store.newPhotoPreview()" alt="" />
@@ -226,7 +216,7 @@
       }
 
       <div class="modal__actions">
-        <button type="button" class="btn btn--ghost" (click)="store.addOpen.set(false)">Done</button>
+        <button type="button" class="btn btn--ghost" (click)="store.addOpen.set(false)">Cancel</button>
         <button
           type="button"
           class="btn"
@@ -361,6 +351,17 @@
       <h2>{{ m.expiry === 'none' ? 'Start a plan' : 'Renew' }} — {{ m.full_name }}</h2>
       <div class="accent-bar accent-bar--left"></div>
 
+      <!-- Arrived here straight from Add member: confirm the registration and
+           give the desk the member code to read out, then sell the first plan. -->
+      @if (store.justAdded(); as added) {
+        @if (added.id === m.id) {
+          <div class="alert alert--success">
+            <strong>{{ added.full_name }}</strong> is registered. Their member code is
+            <code class="code">{{ added.member_code }}</code> — read it out to them.
+          </div>
+        }
+      }
+
       @if (!store.plans().length) {
         <p class="muted">
           This gym has no active plans yet. The owner needs to add one before a membership can be
@@ -400,12 +401,22 @@
           </div>
         }
 
-        <!-- A new member's first plan. The server adds the fee; this is so the
-             desk asks for the right amount before the member walks off. -->
+        <!-- A new member's first plan. The server adds the fee; this shows the
+             desk the whole bill before the member walks off. -->
         @if (store.renewFee() > 0) {
-          <div class="alert alert--warn">
-            New member: a <strong>₹{{ store.renewFee() }}</strong> registration fee is added to this
-            first plan. Collect <strong>₹{{ store.renewTotal() }}</strong> in all.
+          <div class="fee-box">
+            <div class="fee-box__row">
+              <span>{{ store.selectedPlanName() }}</span>
+              <span class="money">₹{{ store.renewPlanCharge() }}</span>
+            </div>
+            <div class="fee-box__row">
+              <span>Registration fee <span class="muted small">(new member, once)</span></span>
+              <span class="money">₹{{ store.renewFee() }}</span>
+            </div>
+            <div class="fee-box__row fee-box__total">
+              <span>Total to collect</span>
+              <span class="money">₹{{ store.renewTotal() }}</span>
+            </div>
           </div>
         }
 
@@ -493,7 +504,7 @@
           class="btn"
           [disabled]="store.savingRenewal() || !store.renewPlanId()"
           (click)="store.confirmRenewal()">
-          {{ store.savingRenewal() ? 'Saving…' : 'Record it' }}
+          {{ store.savingRenewal() ? 'Saving…' : 'Record ₹' + store.renewTotal() }}
         </button>
       </div>
     </div>

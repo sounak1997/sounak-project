@@ -836,20 +836,35 @@ export class ConsoleStore {
       // A second call rather than folded into the create: the member exists
       // either way, so a failed photo upload costs a picture, not the
       // registration.
+      const member = created.member;
+      let photoError = '';
       const photo = this.newPhoto();
       if (photo) {
         try {
-          await this.api.uploadMemberPhoto(gym.id, created.member.id, photo);
+          await this.api.uploadMemberPhoto(gym.id, member.id, photo);
         } catch {
-          this.error.set(
-            `${created.member.full_name} was added, but the photo did not upload. Add it from Edit.`,
-          );
+          photoError = `${member.full_name} was added, but the photo did not upload. Add it from Edit.`;
         }
       }
-      this.justAdded.set(created.member);
+      this.justAdded.set(member);
       this.newName.set('');
       this.newPhone.set('');
       this.clearNewPhoto();
+
+      // Straight on to their first plan. Registering and paying happen in one
+      // visit at the counter, and the first plan is where the registration fee
+      // is collected — so the desk lands on the screen that shows plan + fee
+      // instead of having to find the new name in the list.
+      this.addOpen.set(false);
+      this.openRenewal({
+        id: member.id,
+        full_name: member.full_name,
+        expiry: 'none',
+        end_date: null,
+        registration_fee_due: member.registration_fee_due ?? true,
+      });
+      // openRenewal clears the error line; the photo warning still needs saying.
+      if (photoError) this.error.set(photoError);
       await this.refreshMembers(gym.id);
     } catch (err) {
       this.error.set(this.apiMessage(err, 'Could not add that member.'));
@@ -1014,13 +1029,20 @@ export class ConsoleStore {
     this.renewing()?.registration_fee_due ? Number(this.registrationFee()) || 0 : 0,
   );
 
-  /** What the member hands over: the plan (or the owner's figure) plus any fee. */
-  readonly renewTotal = computed(() => {
+  /** The plan part of the charge: the typed amount, or the plan's price. */
+  readonly renewPlanCharge = computed(() => {
     const typed = String(this.renewAmount() ?? '').trim();
     const custom = this.canSetPrice() && typed !== '' ? Number(typed) : NaN;
-    const plan = Number.isFinite(custom) ? custom : Number(this.selectedPlanPrice()) || 0;
-    return plan + this.renewFee();
+    return Number.isFinite(custom) ? custom : Number(this.selectedPlanPrice()) || 0;
   });
+
+  /** What the member hands over: the plan charge plus any registration fee. */
+  readonly renewTotal = computed(() => this.renewPlanCharge() + this.renewFee());
+
+  /** The selected plan's name, for the fee breakdown. */
+  selectedPlanName(): string {
+    return this.plans().find((p) => p.id === this.renewPlanId())?.name ?? 'Plan';
+  }
 
   /** Sell or renew a membership and book the payment against it. */
   async confirmRenewal(): Promise<void> {
